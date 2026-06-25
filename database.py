@@ -1,3 +1,10 @@
+"""
+Database management for GoodDeeds.space.
+
+This module handles SQLite database connections, schema initialization,
+password hashing, and demo data seeding.
+"""
+
 import sqlite3
 import hashlib
 import json
@@ -8,15 +15,40 @@ DEFAULT_DB = os.path.join(os.path.dirname(os.path.abspath(__file__)), "gooddeeds
 DB_PATH = os.environ.get("DB_PATH", DEFAULT_DB)
 
 def get_db():
+    """
+    Establishes a connection to the SQLite database.
+    
+    Sets the row factory to sqlite3.Row for dictionary-like access
+    and enables foreign key support.
+    
+    Returns:
+        sqlite3.Connection: The database connection object.
+    """
     conn = sqlite3.connect(DB_PATH)
     conn.row_factory = sqlite3.Row
     conn.execute("PRAGMA foreign_keys = ON")
     return conn
 
 def hash_password(password: str) -> str:
+    """
+    Hashes a plain text password using SHA-256.
+    
+    Args:
+        password: The plain text password to hash.
+        
+    Returns:
+        str: The hex digest of the hashed password.
+    """
     return hashlib.sha256(password.encode("utf-8")).hexdigest()
 
 def init_db():
+    """
+    Initializes the database schema.
+    
+    Creates all necessary tables if they do not exist.
+    If the users table is empty after creation, it automatically
+    triggers data seeding.
+    """
     conn = get_db()
     cursor = conn.cursor()
 
@@ -200,6 +232,15 @@ def init_db():
     conn.close()
 
 def seed_data(cursor):
+    """
+    Seeds the database with realistic demo data.
+    
+    Populates sample users, groups, memberships, resources, chat messages,
+    feed items (posts/kudos), reactions, comments, and invitations.
+    
+    Args:
+        cursor: sqlite3.Cursor object to execute inserts.
+    """
     pw_hash = hash_password("password123")
 
     # Diverse Sample Users across age groups and backgrounds

@@ -1,3 +1,10 @@
+"""
+GoodDeeds.space Backend Server.
+
+This module implements a threaded HTTP server using the standard http.server library.
+It serves static frontend files and routes API requests to the handlers module.
+"""
+
 import os
 import sys
 import mimetypes
@@ -9,17 +16,32 @@ PORT = int(os.environ.get("PORT", 8080))
 STATIC_DIR = os.path.join(os.path.dirname(os.path.abspath(__file__)), "static")
 
 class GoodDeedsServerHandler(BaseHTTPRequestHandler):
+    """
+    HTTP Request Handler for GoodDeeds.space.
+    
+    Handles CORS headers, routes API requests to handlers.py,
+    and serves static frontend files.
+    """
+    
     def send_cors_headers(self):
+        """Sends standard CORS headers to allow cross-origin requests."""
         self.send_header("Access-Control-Allow-Origin", "*")
         self.send_header("Access-Control-Allow-Methods", "GET, POST, PUT, DELETE, OPTIONS")
         self.send_header("Access-Control-Allow-Headers", "Content-Type, Authorization")
 
     def do_OPTIONS(self):
+        """Handles preflight OPTIONS requests for CORS."""
         self.send_response(204)
         self.send_cors_headers()
         self.end_headers()
 
     def handle_request(self, method):
+        """
+        Routes the request based on the path.
+        
+        If the path starts with '/api/', it reads the body and delegates to
+        handlers.handle_api_request. Otherwise, it serves static files (GET only).
+        """
         if self.path.startswith("/api/"):
             content_len = int(self.headers.get("Content-Length", 0))
             body_bytes = self.rfile.read(content_len) if content_len > 0 else b""
@@ -38,18 +60,28 @@ class GoodDeedsServerHandler(BaseHTTPRequestHandler):
             self.serve_static_file()
 
     def do_GET(self):
+        """Handles GET requests."""
         self.handle_request("GET")
 
     def do_POST(self):
+        """Handles POST requests."""
         self.handle_request("POST")
 
     def do_PUT(self):
+        """Handles PUT requests."""
         self.handle_request("PUT")
 
     def do_DELETE(self):
+        """Handles DELETE requests."""
         self.handle_request("DELETE")
 
     def serve_static_file(self):
+        """
+        Serves static files from the static/ directory.
+        
+        Resolves the file path, guesses the MIME type, and writes the file content
+        to the response. Defaults to serving index.html for SPA routing support.
+        """
         path = self.path.split("?")[0].split("#")[0]
         if path == "/":
             path = "/index.html"
@@ -91,6 +123,11 @@ class GoodDeedsServerHandler(BaseHTTPRequestHandler):
             self.wfile.write(f"500 Server Error: {str(e)}".encode("utf-8"))
 
 def run():
+    """
+    Initializes the database and starts the HTTP server.
+    
+    Listens on the port specified by the PORT environment variable.
+    """
     print("Initializing SQLite database & demo seed data...")
     init_db()
     server_address = ("0.0.0.0", PORT)

@@ -1,3 +1,11 @@
+"""
+API Request Handlers for GoodDeeds.space.
+
+This module implements the business logic for all API endpoints, including
+authentication, feed retrieval with smart sorting, posts/kudos creation,
+reactions, comments, groups management, invitations, and the spotlight system.
+"""
+
 import os
 import json
 import uuid
@@ -10,6 +18,16 @@ from urllib.parse import parse_qs, urlparse
 from database import get_db, hash_password
 
 def get_user_from_token(headers):
+    """
+    Authenticates a user based on the Bearer token in the Authorization header.
+
+    Args:
+        headers: A dictionary-like object containing request headers.
+
+    Returns:
+        dict: A dictionary containing user details (id, email, username, phone, avatar_url, bio)
+              if authentication is successful; None otherwise.
+    """
     auth = headers.get("Authorization", "")
     if not auth.startswith("Bearer "):
         return None
@@ -29,15 +47,28 @@ def get_user_from_token(headers):
     return None
 
 def json_response(data, status=200):
+    """Helper to generate a JSON response tuple."""
     return status, {"Content-Type": "application/json"}, json.dumps(data)
 
 def error_response(msg, status=400):
+    """Helper to generate an error JSON response tuple."""
     return json_response({"error": msg}, status)
 
 def send_real_or_simulated_email(recipient_email, subject, text_body, html_body=None):
     """
     Attempts real SMTP email delivery if SMTP_HOST environment variable is set.
-    Always records the transmission in the SQLite email_outbox table for verification.
+    
+    Always records the transmission in the SQLite email_outbox table for verification
+    and audit purposes (accessible via /api/outbox).
+    
+    Args:
+        recipient_email: Recipient's email address.
+        subject: Email subject.
+        text_body: Plain text body.
+        html_body: Optional HTML body.
+        
+    Returns:
+        bool: True if sent via live SMTP, False if logged only (or on error).
     """
     smtp_host = os.environ.get("SMTP_HOST")
     smtp_port = int(os.environ.get("SMTP_PORT", 587))
@@ -83,6 +114,20 @@ def send_real_or_simulated_email(recipient_email, subject, text_body, html_body=
 
 # ================== MODULE-LEVEL FEED HELPER FUNCTIONS ==================
 def enrich_items_list(raw_items, user_id=None):
+    """
+    Enriches a list of raw feed items with groups, reactions, and comments.
+    
+    Also calculates a '_score' for each item used in smart sorting:
+    _score = (100 if user_has_joined_any_group_tagged_to_item else 0) + total_reactions
+    
+    Args:
+        raw_items: List of dictionaries representing raw feed items.
+        user_id: Optional ID of the currently logged-in user to check group membership
+                 and user-specific reactions.
+                 
+    Returns:
+        list: Enriched list of feed items.
+    """
     conn = get_db()
     cursor = conn.cursor()
 
@@ -130,6 +175,19 @@ def enrich_items_list(raw_items, user_id=None):
     return enriched
 
 def fetch_enriched_items(where_clause, params, user_id=None, sort_mode="smart"):
+    """
+    Fetches feed items from the database based on a WHERE clause, enriches them,
+    and sorts them according to the selected mode.
+    
+    Args:
+        where_clause: SQL WHERE clause string.
+        params: Tuple of parameters for the SQL query.
+        user_id: Optional ID of the currently logged-in user.
+        sort_mode: 'smart' (default) or 'recent'.
+        
+    Returns:
+        list: Sorted and enriched feed items.
+    """
     conn = get_db()
     cursor = conn.cursor()
     sql = f"""
@@ -146,13 +204,28 @@ def fetch_enriched_items(where_clause, params, user_id=None, sort_mode="smart"):
 
     enriched = enrich_items_list(raw_items, user_id)
     if sort_mode == "smart":
-        enriched.sort(key=lambda x: (x["_score"], x["created_at"]), reverse=True)
+        enriched.sort(key=lambda x: (x["_score"], x["created_at"], x["id"]), reverse=True)
     else:
-        enriched.sort(key=lambda x: x["created_at"], reverse=True)
+        enriched.sort(key=lambda x: (x["created_at"], x["id"]), reverse=True)
     return enriched
 
 # ================== MAIN API DISPATCHER ==================
 def handle_api_request(method, path, headers, body_bytes):
+    """
+    Main entry point for routing and handling API requests.
+    
+    Parses the path and query parameters, decodes the request body,
+    authenticates the user, and dispatches to the appropriate handler block.
+    
+    Args:
+        method: HTTP method (GET, POST, PUT, DELETE).
+        path: Full request path including query string.
+        headers: Request headers.
+        body_bytes: Raw request body bytes.
+        
+    Returns:
+        tuple: (status_code, headers_dict, response_body_string)
+    """
     parsed = urlparse(path)
     path_only = parsed.path
     if len(path_only) > 1:
@@ -320,6 +393,21 @@ def handle_api_request(method, path, headers, body_bytes):
 
     # ================== GAMIFICATION / MONTHLY HALL OF FAME ==================
     if path_only in ("/api/spotlight", "/api/gamification", "/api/halloffame") and method == "GET":
+        """
+        Handles the Monthly Hall of Fame Spotlight aggregation.
+        
+        Aggregates data for three categories:
+        1. Top Kudos Champions: Users receiving the most Kudos.
+        2. Top Post Creators: Users with the most likes (reactions) on their posts.
+        3. Valuable Resources: Curated resources grouped by category and sorted by saves.
+        
+        Supports a 'month' query parameter to rotate the standings using offsets
+        and simulated multipliers to make the standings dynamic for past months:
+        - June 2026: Offset 0
+        - May 2026: Offset 1
+        - April 2026: Offset 2
+        - March 2026: Offset 3
+        """
         req_month = query.get("month", ["June 2026"])[0].strip()
         offset = 0
         if "May" in req_month: offset = 1
@@ -341,6 +429,7 @@ def handle_api_request(method, path, headers, body_bytes):
             LIMIT 4
         """)
         raw_kudos = [dict(row) for row in cursor.fetchall()]
+        # Rotate standings based on month offset to simulate historical changes
         if raw_kudos and offset > 0:
             raw_kudos = raw_kudos[offset % len(raw_kudos):] + raw_kudos[:offset % len(raw_kudos)]
 
@@ -348,6 +437,7 @@ def handle_api_request(method, path, headers, body_bytes):
         mult_k = [14, 11, 9, 7]
         mult_r = [86, 72, 64, 52]
         for idx, d in enumerate(raw_kudos):
+            # Apply multipliers and offsets to simulate high-volume community engagement
             d["kudos_count"] = d["base_kudos"] + mult_k[idx % len(mult_k)] + (offset * 3)
             d["total_reactions"] = d["base_reactions"] + mult_r[idx % len(mult_r)] + (offset * 10)
             top_kudos.append(d)
@@ -364,6 +454,7 @@ def handle_api_request(method, path, headers, body_bytes):
             LIMIT 4
         """)
         raw_posts = [dict(row) for row in cursor.fetchall()]
+        # Rotate standings based on month offset
         if raw_posts and offset > 0:
             raw_posts = raw_posts[offset % len(raw_posts):] + raw_posts[:offset % len(raw_posts)]
 
@@ -371,6 +462,7 @@ def handle_api_request(method, path, headers, body_bytes):
         mult_l = [142, 118, 96, 74]
         mult_p = [8, 6, 5, 4]
         for idx, d in enumerate(raw_posts):
+            # Apply multipliers and offsets
             d["total_likes"] = d["base_likes"] + mult_l[idx % len(mult_l)] + (offset * 12)
             d["post_count"] = d["base_posts"] + mult_p[idx % len(mult_p)]
             top_posts.append(d)
@@ -388,11 +480,13 @@ def handle_api_request(method, path, headers, body_bytes):
         for idx, row in enumerate(cursor.fetchall()):
             res = dict(row)
             th = res.get("theme") or "Community Resources"
+            # Assign saves count based on value map and offset
             res["saves"] = val_map[(idx + offset) % len(val_map)]
             if th not in valuable_res:
                 valuable_res[th] = []
             valuable_res[th].append(res)
 
+        # Sort within each category by saves descending
         for th in valuable_res:
             valuable_res[th].sort(key=lambda x: x["saves"], reverse=True)
 
@@ -404,7 +498,7 @@ def handle_api_request(method, path, headers, body_bytes):
             "valuable_resources": valuable_res
         })
 
-    # ================== SINGLE ITEM VIEW (DIRECT LINKS Req #2 & #3) ==================
+    # ================== SINGLE ITEM VIEW (DIRECT LINKS) ==================
     if (path_only.startswith("/api/feed/") or path_only.startswith("/api/kudos/") or path_only.startswith("/api/posts/") or path_only.startswith("/api/post/")) and method == "GET":
         item_id_str = path_only.split("/")[-1]
         try:
@@ -939,7 +1033,7 @@ def handle_api_request(method, path, headers, body_bytes):
         conn.close()
         return json_response({"success": True, "message": msg, "group_id": gid, "action": action})
 
-    # ADD GROUP RESOURCE (Req #9 Strict Admin Check)
+    # ADD GROUP RESOURCE (Strict Admin Check)
     if path_only.startswith("/api/groups/") and path_only.endswith("/resources") and method == "POST":
         if not user:
             return error_response("Login required", 401)
@@ -951,6 +1045,7 @@ def handle_api_request(method, path, headers, body_bytes):
 
         conn = get_db()
         cursor = conn.cursor()
+        # Admin Constraint Check: Verify user is an admin of the target group
         cursor.execute("SELECT is_admin FROM group_members WHERE group_id = ? AND user_id = ?", (gid, user["id"]))
         admin_row = cursor.fetchone()
         if not admin_row or admin_row["is_admin"] != 1:
@@ -1016,7 +1111,7 @@ def handle_api_request(method, path, headers, body_bytes):
         conn.close()
         return json_response({"message": new_m, "success": True}, 201)
 
-    # ================== EMAIL OUTBOX LOG VIEWER (Req #19) ==================
+    # ================== EMAIL OUTBOX LOG VIEWER ==================
     if path_only in ("/api/outbox", "/api/emails", "/api/notifications") and method == "GET":
         conn = get_db()
         cursor = conn.cursor()
@@ -1025,7 +1120,7 @@ def handle_api_request(method, path, headers, body_bytes):
         conn.close()
         return json_response({"emails": rows, "outbox": rows, "notifications": rows})
 
-    # ================== CUSTOMER SERVICE PORTAL (Req #22) ==================
+    # ================== CUSTOMER SERVICE PORTAL ==================
     if path_only in ("/api/support", "/api/customer_service", "/api/inquiry", "/api/inquiries") and method == "POST":
         if not user:
             return error_response("Login required to submit customer service requests", 401)
