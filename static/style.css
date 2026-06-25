@@ -1,0 +1,79 @@
+/* gooddeeds.space Universal Accessible Stylesheet */
+
+@layer base {
+  html {
+    font-size: 16px;
+    scroll-behavior: smooth;
+    background-color: #f8fafc;
+    color: #0f172a;
+    font-family: system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, Cantarell, 'Inter', 'Helvetica Neue', sans-serif;
+  }
+  body {
+    line-height: 1.6;
+  }
+}
+
+/* Enforce Minimum 48x48px Touch Targets for WCAG Accessibility */
+button, 
+input[type="button"], 
+input[type="submit"], 
+input[type="reset"],
+select,
+a.touch-target {
+  min-height: 48px;
+  min-width: 48px;
+}
+
+/* Sleek High Contrast Focus States */
+*:focus-visible {
+  outline: 2px solid #6366f1 !important;
+  outline-offset: 2px !important;
+}
+
+/* Clean Minimalist Custom Scrollbar */
+::-webkit-scrollbar {
+  width: 8px;
+  height: 8px;
+}
+::-webkit-scrollbar-track {
+  background: #f1f5f9;
+}
+::-webkit-scrollbar-thumb {
+  background: #cbd5e1;
+  border-radius: 9999px;
+}
+::-webkit-scrollbar-thumb:hover {
+  background: #94a3b8;
+}
+
+/* Modal Glassmorphism Backdrop */
+dialog::backdrop {
+  background: rgba(15, 23, 42, 0.65);
+  backdrop-filter: blur(8px);
+}
+
+dialog[open] {
+  animation: modalSlideIn 0.2s cubic-bezier(0.16, 1, 0.3, 1) normal;
+}
+
+@keyframes modalSlideIn {
+  from {
+    opacity: 0;
+    transform: translateY(12px) scale(0.97);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0) scale(1);
+  }
+}
+
+/* Modern Card Accents */
+.kudos-card {
+  border-left: 4px solid #f59e0b;
+  background: linear-gradient(135deg, #fffbeb 0%, #ffffff 100%);
+}
+
+.post-card {
+  border-left: 4px solid #6366f1;
+  background: #ffffff;
+}

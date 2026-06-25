@@ -1,0 +1,984 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>GoodDeeds.space - One Good Deed at a Time</title>
+  <!-- Tailwind CSS via CDN -->
+  <script src="https://cdn.tailwindcss.com"></script>
+  <link rel="stylesheet" href="/style.css">
+  <script>
+    tailwind.config = {
+      theme: {
+        extend: {
+          colors: {
+            warmcream: '#fcfaf5',
+            warmamber: '#d97706',
+            deepteal: '#0f766e',
+            slatecharcoal: '#1e293b'
+          }
+        }
+      }
+    }
+  </script>
+</head>
+<body class="bg-slate-50 text-slate-800 antialiased min-h-screen flex flex-col selection:bg-amber-500 selection:text-white">
+
+  <!-- A11Y Skip to Main Content -->
+  <a href="#main-content" class="sr-only focus:not-sr-only focus:absolute focus:top-4 focus:left-4 bg-amber-600 text-white font-black p-4 rounded-xl z-50 shadow-2xl">
+    Skip to main content
+  </a>
+
+  <!-- Header & Primary Navigation -->
+  <header class="bg-white/95 backdrop-blur-md border-b border-slate-200/80 sticky top-0 z-40 shadow-sm">
+    <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
+      <div class="flex justify-between items-center min-h-[80px] py-2 gap-4">
+        
+        <!-- Logo (Mirrors user screenshot: GoodDeeds in mint green, s p a c e in blue underneath) -->
+        <a href="/#/" class="flex flex-col justify-center py-1 px-2 rounded-xl touch-target shrink-0 transition hover:opacity-90 select-none leading-none">
+          <span class="text-2xl sm:text-3xl font-extrabold tracking-tight text-emerald-400 font-sans">GoodDeeds</span>
+          <span class="text-xs sm:text-sm font-bold tracking-[0.45em] text-blue-400 pl-0.5 pt-1 lowercase">space</span>
+        </a>
+
+        <!-- Navigation Links -->
+        <nav class="hidden lg:flex items-center space-x-1.5" aria-label="Main Navigation">
+          <!-- Unified Groups Dropdown -->
+          <div class="relative group" id="quick-nav-container">
+            <button type="button" class="px-4 py-2 rounded-xl font-bold text-sm text-slate-700 hover:bg-slate-100 hover:text-indigo-600 transition flex items-center space-x-1.5" aria-haspopup="true" aria-expanded="false">
+              <span>👥 Groups</span>
+              <span aria-hidden="true" class="text-[10px] text-slate-400">▼</span>
+            </button>
+            
+            <div class="absolute left-0 mt-1 w-72 bg-white border border-slate-200/80 rounded-2xl shadow-xl hidden group-hover:block z-50 py-2 animate-fadeIn">
+              <a href="/#/groups" class="block px-4 py-2.5 text-sm font-bold text-indigo-600 hover:bg-indigo-50/70 transition flex items-center space-x-2">
+                <span>🌐</span><span>Browse Groups & Create New →</span>
+              </a>
+              <div class="px-4 py-1.5 mt-1 text-[11px] font-extrabold tracking-wider text-slate-400 border-t border-slate-100 uppercase">My Joined Groups</div>
+              <div id="quick-groups-list" class="max-h-64 overflow-y-auto">
+                <p class="px-4 py-3 text-slate-500 text-sm font-medium">Log in to see your joined groups</p>
+              </div>
+            </div>
+          </div>
+
+          <a href="/#/spotlight" class="nav-link px-4 py-2 rounded-xl font-bold text-sm text-amber-600 hover:bg-amber-50 transition flex items-center space-x-1.5" title="Monthly Champions Spotlight">
+            <span>🏆 Hall of Fame</span>
+          </a>
+        </nav>
+
+        <!-- Auth & Action Controls -->
+        <div class="flex items-center space-x-2 shrink-0">
+          <!-- Guest Controls -->
+          <div id="nav-auth-guest" class="flex items-center space-x-2">
+            <button onclick="openModal('modal-login')" class="px-4 py-2.5 rounded-xl font-extrabold text-base bg-slate-100 text-slate-800 hover:bg-slate-200 transition touch-target">
+              Log In
+            </button>
+            <button onclick="openModal('modal-signup')" class="px-4 py-2.5 rounded-xl font-extrabold text-base bg-amber-600 text-white hover:bg-amber-700 shadow-sm transition touch-target">
+              Sign Up Free
+            </button>
+          </div>
+
+          <!-- Logged In User Controls -->
+          <div id="nav-auth-user" class="hidden flex items-center space-x-2.5">
+            
+            <!-- Consolidated Kudos Hub Dropdown -->
+            <div class="relative group" id="kudos-hub-container">
+              <button type="button" class="px-4 py-2.5 rounded-xl font-bold text-sm bg-amber-500 text-white hover:bg-amber-600 shadow-md shadow-amber-500/20 transition flex items-center space-x-1.5" aria-haspopup="true" aria-expanded="false">
+                <span>🌟 Kudos Hub</span>
+                <span aria-hidden="true" class="text-[10px] text-amber-200">▼</span>
+              </button>
+              
+              <div class="absolute right-0 mt-1 w-64 bg-white border border-slate-200/80 rounded-2xl shadow-xl hidden group-hover:block z-50 py-2 animate-fadeIn text-left">
+                <button onclick="openModal('modal-kudos')" class="w-full text-left px-4 py-2.5 text-sm font-bold text-amber-600 hover:bg-amber-50/70 transition flex items-center space-x-2.5">
+                  <span>✨</span><span>Give Public Kudos →</span>
+                </button>
+                <div class="px-4 py-1.5 mt-1 text-[10px] font-extrabold tracking-wider text-slate-400 border-t border-slate-100 uppercase">My Gratitude History</div>
+                <button onclick="filterFeedByMyKudos('received')" class="w-full text-left px-4 py-2 text-xs font-semibold text-slate-700 hover:bg-slate-50 transition flex items-center space-x-2">
+                  <span>📥</span><span>Kudos I've Received</span>
+                </button>
+                <button onclick="filterFeedByMyKudos('given')" class="w-full text-left px-4 py-2 text-xs font-semibold text-slate-700 hover:bg-slate-50 transition flex items-center space-x-2">
+                  <span>📤</span><span>Kudos I've Given</span>
+                </button>
+              </div>
+            </div>
+
+            <!-- Consolidated Posts Hub Dropdown -->
+            <div class="relative group" id="posts-hub-container">
+              <button type="button" class="px-4 py-2.5 rounded-xl font-bold text-sm bg-indigo-600 text-white hover:bg-indigo-700 shadow-md shadow-indigo-600/20 transition flex items-center space-x-1.5" aria-haspopup="true" aria-expanded="false">
+                <span>📝 Posts Hub</span>
+                <span aria-hidden="true" class="text-[10px] text-indigo-200">▼</span>
+              </button>
+              
+              <div class="absolute right-0 mt-1 w-64 bg-white border border-slate-200/80 rounded-2xl shadow-xl hidden group-hover:block z-50 py-2 animate-fadeIn text-left">
+                <button onclick="openModal('modal-post')" class="w-full text-left px-4 py-2.5 text-sm font-bold text-indigo-600 hover:bg-indigo-50/70 transition flex items-center space-x-2.5">
+                  <span>✍️</span><span>Create New Post →</span>
+                </button>
+                <div class="px-4 py-1.5 mt-1 text-[10px] font-extrabold tracking-wider text-slate-400 border-t border-slate-100 uppercase">My Story History</div>
+                <button onclick="filterFeedByMyPosts('authored')" class="w-full text-left px-4 py-2 text-xs font-semibold text-slate-700 hover:bg-slate-50 transition flex items-center space-x-2">
+                  <span>📂</span><span>My Authored Posts</span>
+                </button>
+              </div>
+            </div>
+            
+            <a href="/#/profile" class="flex flex-col items-center justify-center px-2 py-1 rounded-xl hover:bg-slate-100 transition shrink-0 touch-target max-w-[85px]" title="My Profile">
+              <img id="nav-user-avatar" src="" alt="User Avatar" class="w-9 h-9 rounded-full border-2 border-amber-500 object-cover shadow-sm">
+              <span id="nav-user-name" class="font-bold text-[11px] text-slate-800 truncate w-full text-center mt-0.5">Member</span>
+            </a>
+
+            <button onclick="logout()" class="px-3 py-2 rounded-xl font-bold text-xs bg-slate-100 text-slate-600 hover:bg-red-100 hover:text-red-700 transition">
+              Log Out
+            </button>
+          </div>
+        </div>
+
+      </div>
+    </div>
+  </header>
+
+  <!-- Main Content Area -->
+  <main id="main-content" class="flex-1 max-w-7xl w-full mx-auto px-4 sm:px-6 lg:px-8 py-8">
+
+    <!-- ================== VIEW 1: WELCOMING LANDING PAGE ================== -->
+    <section id="view-landing" class="hidden space-y-12">
+      <div class="bg-gradient-to-br from-slate-900 via-indigo-950 to-slate-900 rounded-3xl p-8 sm:p-14 text-white shadow-2xl border border-slate-800 relative overflow-hidden flex flex-col lg:flex-row items-center justify-between gap-10">
+        <div class="space-y-6 max-w-2xl relative z-10">
+          <span class="px-4 py-1.5 rounded-full bg-indigo-500/25 font-extrabold tracking-wider text-xs border border-indigo-400/30 inline-block uppercase text-indigo-200">✨ Promoting Goodness in Our Communities</span>
+          <h1 class="text-4xl sm:text-6xl font-black tracking-tight leading-[1.15]">Become the Best Version of Yourself — One Good Deed at a Time.</h1>
+          <p class="text-lg sm:text-xl text-slate-300 font-normal leading-relaxed">
+            gooddeeds.space is a universal social platform built to enable collaboration, recognize intrinsic kindness with public Kudos, and lend or seek support across mental health, education, and community services.
+          </p>
+          <div class="flex flex-wrap gap-4 pt-2">
+            <a href="/#/feed" class="px-8 py-4 rounded-2xl font-extrabold text-lg bg-amber-500 hover:bg-amber-600 text-white shadow-lg shadow-amber-500/25 transition inline-flex items-center touch-target">
+              Explore GoodDeeds.space ↗
+            </a>
+            <button onclick="openModal('modal-signup')" class="px-8 py-4 rounded-2xl font-extrabold text-lg bg-white/10 hover:bg-white/15 border border-white/20 text-white backdrop-blur-md transition touch-target">
+              Join Free Today
+            </button>
+          </div>
+        </div>
+
+        <!-- Modern Dynamic Glassmorphism Community Ripple Card (Replaces static grey box) -->
+        <div class="bg-white/10 p-8 rounded-3xl border border-white/20 backdrop-blur-2xl max-w-md w-full shadow-2xl relative z-10 space-y-6">
+          <div class="flex items-center justify-between border-b border-white/15 pb-4">
+            <div class="flex items-center space-x-2.5">
+              <span class="relative flex h-3 w-3">
+                <span class="animate-ping absolute inline-flex h-full w-full rounded-full bg-emerald-400 opacity-75"></span>
+                <span class="relative inline-flex rounded-full h-3 w-3 bg-emerald-400"></span>
+              </span>
+              <span class="font-black text-xs uppercase tracking-widest text-indigo-200">Community Ripple</span>
+            </div>
+            <span class="text-xs font-bold bg-emerald-500/20 border border-emerald-400/30 px-3 py-1 rounded-full text-emerald-300">Active Now</span>
+          </div>
+          <div class="space-y-4">
+            <div class="bg-black/30 p-4 rounded-2xl border border-white/10 flex items-start space-x-3.5">
+              <span class="text-2xl pt-0.5" aria-hidden="true">🌟</span>
+              <div>
+                <p class="text-sm font-bold text-white leading-snug">"Massive thank you to Marcus for organizing our weekend food pantry restock!"</p>
+                <p class="text-xs text-indigo-200 mt-1.5 font-bold">— Kudos given by Maya Lin</p>
+              </div>
+            </div>
+            <div class="grid grid-cols-2 gap-3 pt-1">
+              <div class="bg-white/5 p-4 rounded-2xl border border-white/10 text-center">
+                <div class="text-3xl font-black tracking-tight text-white">1,420+</div>
+                <div class="text-[11px] font-extrabold text-indigo-200 uppercase tracking-wider mt-1">Acts of Kindness</div>
+              </div>
+              <div class="bg-white/5 p-4 rounded-2xl border border-white/10 text-center">
+                <div class="text-3xl font-black tracking-tight text-emerald-400">100%</div>
+                <div class="text-[11px] font-extrabold text-indigo-200 uppercase tracking-wider mt-1">Free & Open Space</div>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <div class="space-y-6">
+        <div class="flex justify-between items-baseline border-b-2 border-stone-200 pb-4">
+          <h2 class="text-3xl font-black text-stone-900">☀️ Live Community Highlights</h2>
+          <a href="/#/feed" class="font-black text-amber-700 hover:underline text-lg">View All Posts & Kudos →</a>
+        </div>
+        <div id="landing-preview-feed" class="grid grid-cols-1 md:grid-cols-2 gap-6">
+          <p class="text-stone-500 font-bold text-center col-span-2 py-8">Loading highlights...</p>
+        </div>
+      </div>
+    </section>
+
+    <!-- ================== VIEW 2: UNIFIED HOME FEED (KUDOS + POSTS) ================== -->
+    <section id="view-feed" class="hidden space-y-6">
+      <div id="pending-invitations-banner" class="hidden"></div>
+      <!-- Controls Filter Bar Card -->
+      <div class="bg-white p-6 sm:p-8 rounded-3xl border border-slate-200/80 shadow-sm space-y-4">
+        <!-- Filter & Search Bar -->
+        <div class="flex flex-col lg:flex-row gap-3">
+          <!-- Keyword Search -->
+          <div class="relative flex-1">
+            <span class="absolute inset-y-0 left-0 pl-4 flex items-center pointer-events-none text-slate-400 text-lg" aria-hidden="true">🔍</span>
+            <input type="search" id="feed-search-input" placeholder="Search stories by title, content, theme, or keyword..." class="w-full pl-11 pr-4 py-3 rounded-xl border border-slate-300 font-medium text-sm bg-slate-50 focus:bg-white focus:border-indigo-600 transition">
+          </div>
+
+          <!-- Group Filter Dropdown -->
+          <select id="feed-group-select" onchange="filterByGroup(this.value)" class="px-4 py-3 rounded-xl border border-slate-300 font-bold text-sm bg-white focus:border-indigo-600 cursor-pointer touch-target">
+            <option value="">All Groups</option>
+          </select>
+
+          <!-- Item Type Filter (Req: Filter only Kudos vs Posts) -->
+          <select id="feed-type-select" onchange="filterByType(this.value)" class="px-4 py-3 rounded-xl border border-slate-300 font-bold text-sm bg-white focus:border-indigo-600 cursor-pointer touch-target">
+            <option value="">All Kudos and Posts</option>
+            <option value="KUDOS">Kudos Only</option>
+            <option value="POST">Posts Only</option>
+          </select>
+
+          <!-- Sorting Selector -->
+          <select id="feed-sort-select" onchange="changeSortMode(this.value)" class="px-4 py-3 rounded-xl border border-slate-300 font-bold text-sm bg-white focus:border-indigo-600 cursor-pointer touch-target">
+            <option value="smart">⭐ By Relevance</option>
+            <option value="newest">⏱️ Newest First</option>
+          </select>
+        </div>
+
+        <!-- Theme Filter Pills -->
+        <div class="flex flex-wrap items-center gap-2 pt-2" role="group" aria-label="Theme Filter">
+          <span class="text-xs font-bold text-slate-400 uppercase tracking-wider pr-1">Filter Topic:</span>
+          <button onclick="filterByTheme('')" class="theme-pill px-3.5 py-1.5 rounded-xl font-bold text-sm bg-slate-900 text-white transition touch-target shadow-sm">All Topics</button>
+          <button onclick="filterByTheme('Mental Health')" class="theme-pill px-3.5 py-1.5 rounded-xl font-bold text-sm bg-slate-100 hover:bg-slate-200 text-slate-700 transition touch-target">🌱 Mental Health</button>
+          <button onclick="filterByTheme('Education')" class="theme-pill px-3.5 py-1.5 rounded-xl font-bold text-sm bg-slate-100 hover:bg-slate-200 text-slate-700 transition touch-target">🎓 Education</button>
+          <button onclick="filterByTheme('Community Services')" class="theme-pill px-3.5 py-1.5 rounded-xl font-bold text-sm bg-slate-100 hover:bg-slate-200 text-slate-700 transition touch-target">🤝 Community Services</button>
+          <button onclick="filterByTheme('Inspiring Stories')" class="theme-pill px-3.5 py-1.5 rounded-xl font-bold text-sm bg-slate-100 hover:bg-slate-200 text-slate-700 transition touch-target">✨ Inspiring Stories</button>
+          <button onclick="filterByTheme('Events')" class="theme-pill px-3.5 py-1.5 rounded-xl font-bold text-sm bg-slate-100 hover:bg-slate-200 text-slate-700 transition touch-target">📅 Events</button>
+          <button onclick="filterByTheme('Community Resources')" class="theme-pill px-3.5 py-1.5 rounded-xl font-bold text-sm bg-slate-100 hover:bg-slate-200 text-slate-700 transition touch-target">📎 Resources</button>
+        </div>
+      </div>
+
+      <!-- Feed Cards Stream -->
+      <div id="feed-items-container" class="space-y-6">
+        <p class="text-center font-bold text-xl text-stone-500 py-12">Loading feed...</p>
+      </div>
+    </section>
+
+    <!-- ================== VIEW 3: SINGLE ITEM DEDICATED VIEW ================== -->
+    <section id="view-single-item" class="hidden max-w-4xl mx-auto space-y-6">
+      <button onclick="navigateTo('/feed')" class="px-6 py-3 rounded-xl bg-stone-200 hover:bg-stone-300 font-black text-lg transition inline-flex items-center space-x-2 touch-target">
+        <span>← Return to Community Feed</span>
+      </button>
+      <div id="single-item-container" class="space-y-6">
+        <p class="text-center font-bold text-xl text-stone-500 py-12">Loading item details...</p>
+      </div>
+    </section>
+
+    <!-- ================== VIEW 4: GROUPS DIRECTORY ================== -->
+    <section id="view-groups" class="hidden space-y-8">
+      <div class="bg-white p-6 sm:p-8 rounded-3xl border-2 border-stone-200 shadow-sm flex flex-col md:flex-row justify-between items-start md:items-center gap-6">
+        <div>
+          <h1 class="text-3xl sm:text-4xl font-black text-stone-900">Community Groups</h1>
+          <p class="text-stone-600 font-medium text-lg pt-1">Collaborate across areas of interest, join discussions, and explore curated resource libraries.</p>
+        </div>
+        <button onclick="openModal('modal-create-group')" class="px-8 py-4 rounded-2xl font-black text-lg bg-teal-800 text-white hover:bg-teal-900 shadow transition touch-target shrink-0">
+          + Create New Group
+        </button>
+      </div>
+
+      <!-- Search & Theme Filter Bar (Req #13) -->
+      <div class="flex flex-col sm:flex-row gap-4 bg-stone-100 p-4 rounded-2xl border border-stone-200">
+        <input type="search" id="group-search-input" placeholder="Search groups by name or description..." class="flex-1 px-4 py-3.5 rounded-xl border-2 border-stone-300 font-bold text-base bg-white">
+        <select id="group-theme-filter" onchange="filterGroupsTheme(this.value)" class="px-5 py-3.5 rounded-xl border-2 border-stone-300 font-black text-base bg-white cursor-pointer touch-target">
+          <option value="">All Group Themes</option>
+          <option value="Mental Health">Mental Health</option>
+          <option value="Education">Education</option>
+          <option value="Community Services">Community Services</option>
+          <option value="Events">Events</option>
+          <option value="Community Resources">Community Resources</option>
+          <option value="Inspiring Stories">Inspiring Stories</option>
+        </select>
+      </div>
+
+      <div id="groups-grid" class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+        <p class="text-stone-500 font-bold text-xl col-span-3 text-center py-12">Loading spaces...</p>
+      </div>
+    </section>
+
+    <!-- ================== VIEW 5: GROUP DETAIL PAGE ================== -->
+    <section id="view-group-detail" class="hidden space-y-8">
+      <button onclick="navigateTo('/groups')" class="px-6 py-3 rounded-xl bg-stone-200 hover:bg-stone-300 font-black text-base transition inline-flex items-center touch-target">
+        ← Back to All Groups
+      </button>
+      
+      <div id="group-detail-header" class="bg-white p-8 sm:p-10 rounded-3xl border-2 border-stone-200 shadow-sm flex flex-col md:flex-row items-start md:items-center justify-between gap-6">
+        <!-- Renders dynamically -->
+      </div>
+
+      <!-- Navigation Tabs (Chat Board vs Curated Resources vs Roster) -->
+      <div class="flex border-b-2 border-stone-200 gap-2 overflow-x-auto" role="tablist">
+        <button onclick="switchGroupTab('chat')" id="gtab-chat" class="gtab-btn px-8 py-4 font-black text-xl border-b-4 border-amber-600 text-amber-800 transition touch-target shrink-0">
+          💬 Common Chat Board
+        </button>
+        <button onclick="switchGroupTab('resources')" id="gtab-resources" class="gtab-btn px-8 py-4 font-black text-xl border-b-4 border-transparent text-stone-500 hover:text-stone-800 transition touch-target shrink-0">
+          📚 Curated Resources
+        </button>
+        <button onclick="switchGroupTab('roster')" id="gtab-roster" class="gtab-btn px-8 py-4 font-black text-xl border-b-4 border-transparent text-stone-500 hover:text-stone-800 transition touch-target shrink-0">
+          👥 Public Member Roster
+        </button>
+      </div>
+
+      <!-- Tab Content 1: Common Chat Board -->
+      <div id="gcontent-chat" class="space-y-6 animate-fadeIn">
+        <div class="bg-white p-6 sm:p-8 rounded-3xl border border-slate-200 shadow-sm space-y-4">
+          <h3 class="text-xl font-extrabold text-slate-900 tracking-tight">💬 Common Chat Board</h3>
+          <div class="flex flex-col sm:flex-row gap-3">
+            <input type="text" id="group-chat-input" placeholder="Type a message for everyone in this space..." class="flex-1 px-4 py-3.5 rounded-xl border border-slate-300 font-medium text-base bg-slate-50 text-slate-900 placeholder:text-slate-400 focus:bg-white focus:border-indigo-600 transition">
+            <button onclick="sendGroupChat()" class="px-6 py-3.5 bg-indigo-600 hover:bg-indigo-700 text-white font-bold text-base rounded-xl shadow-sm transition touch-target shrink-0">
+              Send Message
+            </button>
+          </div>
+        </div>
+        <div id="group-chat-list" class="space-y-3"></div>
+      </div>
+
+      <!-- Tab Content 2: Curated Resources (Req #9) -->
+      <div id="gcontent-resources" class="hidden space-y-6">
+        <div id="admin-curate-box" class="hidden max-w-2xl mx-auto bg-white p-8 sm:p-12 rounded-3xl border border-slate-200 shadow-xl space-y-8 animate-fadeIn">
+          <div class="text-center space-y-1.5 border-b border-slate-100 pb-5">
+            <h3 class="text-3xl font-extrabold text-slate-800 tracking-tight">Add Group Resources</h3>
+            <p class="text-slate-500 font-medium text-sm">Curate helpful web links and downloadable files for your group members.</p>
+          </div>
+
+          <form onsubmit="submitBatchGroupResources(event)" class="space-y-6">
+            <!-- Field 1: Title / Description -->
+            <div>
+              <label class="block font-bold text-slate-700 text-sm mb-1.5">Title <span class="text-slate-400 font-normal text-xs">*(Acts as resource description)*</span> <span class="text-red-500">*</span></label>
+              <input type="text" id="curate-title" required placeholder="e.g. Comprehensive Mutual Aid & Wellness Handbook" class="w-full px-4 py-3 rounded-xl border border-slate-300 font-semibold text-base bg-slate-50 focus:bg-white focus:border-indigo-600 transition">
+            </div>
+
+            <!-- Field 2: Description -->
+            <div>
+              <label class="block font-bold text-slate-700 text-sm mb-1.5">Description <span class="text-slate-400 font-normal text-xs">*(Detailed overview)*</span></label>
+              <textarea id="curate-desc" rows="3" placeholder="Provide additional details about what this resource contains..." class="w-full px-4 py-3 rounded-xl border border-slate-300 font-medium text-sm bg-slate-50 focus:bg-white focus:border-indigo-600 transition"></textarea>
+            </div>
+
+            <!-- Field 3: Category Theme Purpose -->
+            <div>
+              <label class="block font-bold text-slate-700 text-sm mb-1">Category Theme Selection Purpose <span class="text-red-500">*</span></label>
+              <p class="text-xs text-slate-400 font-medium mb-2">Explicitly categorizes these resources to help group members search, filter, and discover them.</p>
+              <select id="res-theme" required class="w-full px-4 py-3 rounded-xl border border-slate-300 font-bold text-base bg-white focus:border-indigo-600 transition cursor-pointer touch-target">
+                <option value="Community Resources">📎 General Community Resources (Guides, manuals & directories)</option>
+                <option value="Mental Health">🌱 Mental Health & Wellness (Support articles & audio tools)</option>
+                <option value="Education">🎓 Education & Skill Building (Tutoring & learning materials)</option>
+                <option value="Community Services">🤝 Community Services (Mutual aid networks & food pantries)</option>
+                <option value="Events">📅 Upcoming Events (Schedules, flyers & meetup details)</option>
+                <option value="Inspiring Stories">✨ Inspiring Stories & Member Wisdom</option>
+              </select>
+            </div>
+
+            <!-- Field 4: Links (Multi-URL List) -->
+            <div class="space-y-3">
+              <label class="block font-bold text-slate-700 text-sm">Links <span class="text-slate-400 font-normal text-xs">*(Add one or more web URLs)*</span></label>
+              <div id="curate-links-list" class="space-y-2.5">
+                <div class="flex gap-2">
+                  <input type="url" placeholder="https://example.com/useful-article" class="curate-link-input flex-1 px-4 py-3 rounded-xl border border-slate-300 font-medium text-sm bg-slate-50 focus:bg-white focus:border-indigo-600 transition">
+                </div>
+              </div>
+              <button type="button" onclick="addCurateLinkField()" class="px-4 py-2 bg-indigo-50 hover:bg-indigo-100 text-indigo-700 font-bold text-xs rounded-lg transition flex items-center space-x-1">
+                <span>+ Add More Links</span>
+              </button>
+            </div>
+
+            <!-- Field 5: File Uploads -->
+            <div class="space-y-3">
+              <label class="block font-bold text-slate-700 text-sm">File <span class="text-slate-400 font-normal text-xs">*(Upload PDFs, guides or images)*</span></label>
+              <div class="border-2 border-dashed border-slate-300 hover:border-indigo-500 rounded-2xl p-6 bg-slate-50 transition text-center cursor-pointer relative">
+                <input type="file" id="curate-file-input" multiple onchange="handleCurateFilesSelect(event)" class="absolute inset-0 opacity-0 cursor-pointer w-full h-full">
+                <div class="space-y-1 pointer-events-none">
+                  <span class="text-2xl block">📁</span>
+                  <span class="font-bold text-sm text-slate-700">Choose Files or Drag & Drop Here</span>
+                  <span class="text-xs text-slate-400 block font-medium">Supports PDF, DOCX, TXT, PNG, JPG (Multiple files allowed)</span>
+                </div>
+              </div>
+              <div id="curate-files-preview" class="space-y-2 pt-1"></div>
+            </div>
+
+            <!-- Field 6: Submit Button -->
+            <div class="pt-4 text-center">
+              <button type="submit" class="w-full sm:w-auto min-w-[240px] px-8 py-3.5 bg-indigo-600 hover:bg-indigo-700 text-white font-extrabold text-lg rounded-xl shadow-lg shadow-indigo-600/25 transition touch-target">
+                Create
+              </button>
+            </div>
+          </form>
+        </div>
+        <div id="group-resources-list" class="grid grid-cols-1 md:grid-cols-2 gap-6"></div>
+      </div>
+
+      <!-- Tab Content 3: Public Member Roster (Req #17) -->
+      <div id="gcontent-roster" class="hidden">
+        <div id="group-roster-list" class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-6"></div>
+      </div>
+    </section>
+
+    <!-- ================== VIEW 6: USER PROFILE PAGE (Req #20 Segregated) ================== -->
+    <section id="view-profile" class="hidden space-y-8">
+      <div class="bg-white p-8 sm:p-12 rounded-3xl border-2 border-stone-200 shadow-sm flex flex-col md:flex-row items-center justify-between gap-8">
+        <div class="flex flex-col sm:flex-row items-center sm:items-start text-center sm:text-left space-y-4 sm:space-y-0 sm:space-x-6">
+          <img id="prof-avatar" src="" alt="Profile Picture" class="w-32 h-32 rounded-full border-4 border-amber-500 object-cover shadow-md">
+          <div class="space-y-2">
+            <h1 id="prof-username" class="text-4xl font-black text-stone-900">Username</h1>
+            <p id="prof-email" class="text-base font-bold text-stone-400">Member details</p>
+            <p id="prof-bio" class="text-xl text-stone-700 font-medium max-w-2xl pt-2">Bio</p>
+          </div>
+        </div>
+        <div id="prof-edit-btn-box" class="hidden shrink-0">
+          <button onclick="openEditProfileModal()" class="px-8 py-4 bg-stone-800 hover:bg-black text-white font-black text-lg rounded-2xl shadow transition touch-target">
+            ✏️ Edit Profile Details
+          </button>
+        </div>
+      </div>
+
+      <!-- Clean Hubs Guidance Card (Replaces legacy profile feeds per user request) -->
+      <div class="bg-gradient-to-r from-amber-50 via-slate-50 to-indigo-50 p-8 rounded-3xl border border-slate-200 shadow-sm text-center space-y-4 max-w-3xl mx-auto">
+        <div class="text-4xl">🌟 📝</div>
+        <h2 class="text-2xl font-black text-slate-900 tracking-tight">Looking for your Kudos or Stories?</h2>
+        <p class="text-slate-600 font-medium text-base leading-relaxed">
+          To keep your profile page clean and clutter-free, all gratitude Kudos history and authored community posts are now consolidated directly into the **Kudos Hub** and **Posts Hub** in the top navigation bar!
+        </p>
+        <div class="flex flex-wrap justify-center gap-4 pt-2">
+          <button onclick="filterFeedByMyKudos('received')" class="px-6 py-3 bg-amber-500 hover:bg-amber-600 text-white font-bold rounded-xl shadow-sm transition touch-target">
+            🌟 Open Kudos Hub
+          </button>
+          <button onclick="filterFeedByMyPosts('authored')" class="px-6 py-3 bg-indigo-600 hover:bg-indigo-700 text-white font-bold rounded-xl shadow-sm transition touch-target">
+            📝 Open Posts Hub
+          </button>
+        </div>
+      </div>
+    </section>
+
+    <!-- ================== VIEW 7: EMAIL OUTBOX INSPECTOR (Req #19) ================== -->
+    <section id="view-outbox" class="hidden space-y-8">
+      <div class="bg-amber-50 p-8 rounded-3xl border-2 border-amber-300 flex flex-col md:flex-row justify-between items-start md:items-center gap-6">
+        <div class="space-y-2">
+          <span class="px-3 py-1 bg-amber-500 text-white font-black text-xs rounded-full uppercase tracking-wider">Verification Audit Log</span>
+          <h1 class="text-3xl sm:text-4xl font-black text-amber-950">Simulated Email Outbox</h1>
+          <p class="text-amber-900 font-medium text-lg">Inspect all real-time email notifications triggered by Kudos celebrations and Customer Service inquiries.</p>
+        </div>
+        <button onclick="loadOutbox()" class="px-6 py-3 bg-amber-600 hover:bg-amber-700 text-white font-black text-base rounded-xl shadow touch-target">
+          🔄 Refresh Logs
+        </button>
+      </div>
+
+      <div id="outbox-list" class="space-y-6"></div>
+    </section>
+
+    <!-- ================== VIEW 8: INTERACTIVE SOURCE CODE BROWSER ================== -->
+    <section id="view-code" class="hidden space-y-8">
+      <div class="bg-slate-900 text-white p-8 rounded-3xl border border-slate-800 flex flex-col md:flex-row justify-between items-start md:items-center gap-6 shadow-2xl">
+        <div class="space-y-2">
+          <span class="px-3 py-1 bg-indigo-500 text-white font-black text-xs rounded-full uppercase tracking-wider">Architecture Showcase</span>
+          <h1 class="text-3xl sm:text-4xl font-black">💻 Interactive Source Code Browser</h1>
+          <p class="text-slate-300 font-normal text-base max-w-3xl">Explore the zero-dependency Python 3.13 backend and responsive ES6 Vanilla SPA codebase directly in your web browser.</p>
+        </div>
+      </div>
+
+      <div class="grid grid-cols-1 lg:grid-cols-4 gap-6 items-start">
+        <!-- File Tree Pane -->
+        <div class="bg-white p-4 rounded-2xl border border-slate-200 shadow-sm space-y-1 lg:sticky lg:top-24">
+          <div class="px-3 py-2 text-xs font-black tracking-wider text-slate-400 uppercase">PROJECT FILES</div>
+          <button onclick="browseSourceFile('server.py')" class="cfile-btn w-full text-left px-3.5 py-2.5 rounded-xl font-bold text-sm text-slate-700 hover:bg-slate-100 transition flex items-center space-x-2"><span>🐍</span><span>server.py</span></button>
+          <button onclick="browseSourceFile('handlers.py')" class="cfile-btn w-full text-left px-3.5 py-2.5 rounded-xl font-bold text-sm text-slate-700 hover:bg-slate-100 transition flex items-center space-x-2"><span>⚡</span><span>handlers.py</span></button>
+          <button onclick="browseSourceFile('database.py')" class="cfile-btn w-full text-left px-3.5 py-2.5 rounded-xl font-bold text-sm text-slate-700 hover:bg-slate-100 transition flex items-center space-x-2"><span>🗄️</span><span>database.py</span></button>
+          <button onclick="browseSourceFile('static/index.html')" class="cfile-btn w-full text-left px-3.5 py-2.5 rounded-xl font-bold text-sm text-slate-700 hover:bg-slate-100 transition flex items-center space-x-2"><span>🌐</span><span>index.html</span></button>
+          <button onclick="browseSourceFile('static/app.js')" class="cfile-btn w-full text-left px-3.5 py-2.5 rounded-xl font-bold text-sm text-slate-700 hover:bg-slate-100 transition flex items-center space-x-2"><span>📜</span><span>app.js</span></button>
+          <button onclick="browseSourceFile('static/style.css')" class="cfile-btn w-full text-left px-3.5 py-2.5 rounded-xl font-bold text-sm text-slate-700 hover:bg-slate-100 transition flex items-center space-x-2"><span>🎨</span><span>style.css</span></button>
+        </div>
+
+        <!-- Source Code Display Pane -->
+        <div class="lg:col-span-3 bg-slate-950 text-emerald-300 p-6 sm:p-8 rounded-2xl border border-slate-800 shadow-2xl overflow-x-auto min-h-[500px]">
+          <div class="flex justify-between items-center border-b border-slate-800 pb-4 mb-4 text-slate-400 text-sm font-mono font-bold">
+            <span id="code-viewer-title">📄 Select a file to view code</span>
+            <span id="code-viewer-lines"></span>
+          </div>
+          <pre id="code-viewer-pre" class="font-mono text-sm leading-relaxed overflow-x-auto whitespace-pre"><code>← Click any project file on the left to browse its source code.</code></pre>
+        </div>
+      </div>
+    </section>
+
+    <!-- ================== VIEW 8: GAMIFICATION / MONTHLY HALL OF FAME ================== -->
+    <section id="view-spotlight" class="hidden space-y-12 animate-fadeIn max-w-7xl mx-auto">
+      <!-- Hero Banner -->
+      <div class="bg-gradient-to-r from-amber-500 via-yellow-500 to-amber-600 rounded-3xl p-8 sm:p-14 text-white shadow-2xl relative overflow-hidden text-center space-y-4">
+        <div class="inline-flex items-center space-x-2 px-4 py-1.5 rounded-full bg-white/20 backdrop-blur-md font-extrabold text-xs uppercase tracking-wider shadow-sm">
+          <span>👑 Monthly Hall of Fame</span>
+        </div>
+        <h1 class="text-3xl sm:text-5xl font-black tracking-tight">June 2026 Community Champions</h1>
+        <p class="text-amber-100 font-medium text-base sm:text-lg max-w-2xl mx-auto">Highlighting our members with the most recognition Kudos, most engaging stories, and most valuable curated resources across topics.</p>
+      </div>
+
+      <!-- Archive Month Selector (Req: View previous months winners) -->
+      <div class="flex flex-wrap items-center justify-center gap-2.5 py-4 border-b border-slate-200/80">
+        <span class="text-xs font-black text-slate-400 uppercase tracking-wider pr-1">Select Archive Month:</span>
+        <button onclick="loadSpotlightView('June 2026')" class="smonth-btn px-4 py-2 rounded-xl font-bold text-sm bg-amber-500 text-white shadow-sm transition touch-target">☀️ June 2026 (Active)</button>
+        <button onclick="loadSpotlightView('May 2026')" class="smonth-btn px-4 py-2 rounded-xl font-bold text-sm bg-slate-100 hover:bg-slate-200 text-slate-700 transition touch-target">🗓️ May 2026</button>
+        <button onclick="loadSpotlightView('April 2026')" class="smonth-btn px-4 py-2 rounded-xl font-bold text-sm bg-slate-100 hover:bg-slate-200 text-slate-700 transition touch-target">🗓️ April 2026</button>
+        <button onclick="loadSpotlightView('March 2026')" class="smonth-btn px-4 py-2 rounded-xl font-bold text-sm bg-slate-100 hover:bg-slate-200 text-slate-700 transition touch-target">🗓️ March 2026</button>
+      </div>
+
+      <!-- Section 1: Most Recognition Kudos -->
+      <div class="space-y-6">
+        <div class="flex items-center justify-between border-b border-slate-200 pb-4 text-left">
+          <div>
+            <h2 class="text-2xl font-extrabold text-slate-900 tracking-tight flex items-center space-x-2"><span>🏆</span><span>Top Recognition Champions</span></h2>
+            <p class="text-slate-500 text-sm font-medium">Members who received the highest monthly volume of community gratitude Kudos.</p>
+          </div>
+        </div>
+        <div id="spotlight-kudos-grid" class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-6"></div>
+      </div>
+
+      <!-- Section 2: Most Story Likes -->
+      <div class="space-y-6">
+        <div class="flex items-center justify-between border-b border-slate-200 pb-4 text-left">
+          <div>
+            <h2 class="text-2xl font-extrabold text-slate-900 tracking-tight flex items-center space-x-2"><span>🔥</span><span>Most Engaging Storytellers</span></h2>
+            <p class="text-slate-500 text-sm font-medium">Authors whose posts sparked the most emoji reactions and positivity.</p>
+          </div>
+        </div>
+        <div id="spotlight-posts-grid" class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-6"></div>
+      </div>
+
+      <!-- Section 3: Most Valuable Curated Resources -->
+      <div class="space-y-6">
+        <div class="flex items-center justify-between border-b border-slate-200 pb-4 text-left">
+          <div>
+            <h2 class="text-2xl font-extrabold text-slate-900 tracking-tight flex items-center space-x-2"><span>📚</span><span>Most Valuable Group Resources</span></h2>
+            <p class="text-slate-500 text-sm font-medium">Essential handbooks, guides, and directories highlighted by community saves.</p>
+          </div>
+        </div>
+        <div id="spotlight-res-container" class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6 text-left"></div>
+      </div>
+    </section>
+
+  </main>
+
+  <!-- Footer Area -->
+  <footer class="bg-stone-900 text-stone-400 py-12 border-t-4 border-amber-600 mt-16">
+    <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 flex flex-col sm:flex-row justify-between items-center gap-6 text-center sm:text-left">
+      <div>
+        <a href="/#/" class="inline-flex flex-col justify-center transition hover:opacity-90 select-none leading-none text-center sm:text-left mb-2">
+          <span class="text-3xl font-extrabold tracking-tight text-emerald-400 font-sans">GoodDeeds</span>
+          <span class="text-sm font-bold tracking-[0.45em] text-blue-400 pl-0.5 pt-1 lowercase">space</span>
+        </a>
+        <p class="text-sm font-semibold pt-1">Promote goodness and become the best version of yourself — one good deed at a time.</p>
+      </div>
+      <div class="flex items-center space-x-6">
+        <button onclick="openModal('modal-support')" class="text-amber-400 font-bold text-base hover:underline transition touch-target">
+          Contact Us
+        </button>
+        <span class="text-stone-600">|</span>
+        <button onclick="openModal('modal-tos')" class="text-stone-300 font-bold text-base hover:text-white transition touch-target">
+          📜 Terms of Service
+        </button>
+      </div>
+    </div>
+  </footer>
+
+  <!-- ====================================================================== -->
+  <!-- ======================== INTERACTIVE DIALOGS ========================= -->
+  <!-- ====================================================================== -->
+
+  <!-- MODAL 1: LOG IN (With One-Click Evaluator Demo Presets) -->
+  <dialog id="modal-login" class="p-0 rounded-3xl max-w-lg w-full shadow-2xl border-2 border-stone-200 m-auto">
+    <div class="p-8 sm:p-10 space-y-6 bg-white">
+      <div class="flex justify-between items-center border-b pb-4">
+        <h3 class="text-3xl font-black text-stone-900">Welcome Back</h3>
+        <button onclick="closeModal('modal-login')" class="text-stone-400 hover:text-stone-700 text-3xl font-black p-2 touch-target" aria-label="Close modal">×</button>
+      </div>
+
+      <!-- Instant Demo Account Selector for Quick Testing -->
+      <div class="bg-amber-50 p-4 rounded-2xl border border-amber-200 space-y-2">
+        <div class="text-xs font-black text-amber-800 uppercase tracking-wider">⚡ Instant Demo Login (Diverse Members):</div>
+        <div class="grid grid-cols-2 sm:grid-cols-4 gap-2">
+          <button type="button" onclick="presetLogin('maya@gooddeeds.space')" class="px-2 py-2 bg-white hover:bg-amber-100 border border-amber-300 font-black text-xs rounded-xl truncate text-amber-900">👩‍💻 Maya (28)</button>
+          <button type="button" onclick="presetLogin('marcus@gooddeeds.space')" class="px-2 py-2 bg-white hover:bg-amber-100 border border-amber-300 font-black text-xs rounded-xl truncate text-amber-900">👨‍👧‍👦 Marcus (42)</button>
+          <button type="button" onclick="presetLogin('elena@gooddeeds.space')" class="px-2 py-2 bg-white hover:bg-amber-100 border border-amber-300 font-black text-xs rounded-xl truncate text-amber-900">🌱 Elena (35)</button>
+          <button type="button" onclick="presetLogin('arthur@gooddeeds.space')" class="px-2 py-2 bg-white hover:bg-amber-100 border border-amber-300 font-black text-xs rounded-xl truncate text-amber-900">👴 Arthur (74)</button>
+        </div>
+      </div>
+
+      <form onsubmit="handleLogin(event)" class="space-y-4">
+        <div>
+          <label class="block font-black text-stone-700 mb-1">Email Address</label>
+          <input type="text" id="login-email" required placeholder="maya@gooddeeds.space" class="w-full px-5 py-4 rounded-xl border-2 border-stone-300 font-bold text-lg bg-stone-50 focus:bg-white focus:border-amber-600">
+        </div>
+        <div>
+          <label class="block font-black text-stone-700 mb-1">Password</label>
+          <input type="password" id="login-pw" required placeholder="••••••••" class="w-full px-5 py-4 rounded-xl border-2 border-stone-300 font-bold text-lg bg-stone-50 focus:bg-white focus:border-amber-600">
+        </div>
+        <button type="submit" class="w-full py-4 bg-amber-600 hover:bg-amber-700 text-white font-black text-xl rounded-2xl shadow-lg transition touch-target">
+          Log In ↗
+        </button>
+      </form>
+      <p class="text-center font-bold text-stone-500 text-sm">
+        New here? <button onclick="switchModal('modal-login', 'modal-signup')" class="text-amber-700 font-black underline">Create a free account</button>
+      </p>
+    </div>
+  </dialog>
+
+  <!-- MODAL 2: SIGN UP FREE -->
+  <dialog id="modal-signup" class="p-0 rounded-3xl max-w-lg w-full shadow-2xl border-2 border-stone-200 m-auto">
+    <div class="p-8 sm:p-10 space-y-6 bg-white max-h-[90vh] overflow-y-auto">
+      <div class="flex justify-between items-center border-b pb-4">
+        <h3 class="text-3xl font-black text-stone-900">Join Community</h3>
+        <button onclick="closeModal('modal-signup')" class="text-stone-400 hover:text-stone-700 text-3xl font-black p-2 touch-target" aria-label="Close modal">×</button>
+      </div>
+
+      <form onsubmit="handleSignup(event)" class="space-y-4">
+        <div>
+          <label class="block font-black text-stone-700 mb-1">Email Address <span class="text-red-600">*</span></label>
+          <input type="email" id="sup-email" required placeholder="alex@gooddeeds.space" class="w-full px-5 py-3.5 rounded-xl border-2 border-stone-300 font-bold bg-stone-50">
+        </div>
+        <div>
+          <label class="block font-black text-stone-700 mb-1">Username <span class="text-red-600">*</span></label>
+          <input type="text" id="sup-username" required placeholder="Alex_Kindness" class="w-full px-5 py-3.5 rounded-xl border-2 border-stone-300 font-bold bg-stone-50">
+        </div>
+        <div>
+          <label class="block font-black text-stone-700 mb-1">Password <span class="text-red-600">*</span></label>
+          <input type="password" id="sup-pw" required placeholder="••••••••" class="w-full px-5 py-3.5 rounded-xl border-2 border-stone-300 font-bold bg-stone-50">
+        </div>
+        <div>
+          <label class="block font-black text-stone-700 mb-1">Phone Number (Optional)</label>
+          <input type="tel" id="sup-phone" placeholder="555-0199" class="w-full px-5 py-3.5 rounded-xl border-2 border-stone-300 font-bold bg-stone-50">
+        </div>
+        <div>
+          <label class="block font-black text-stone-700 mb-1">Choose Preset Avatar or Paste Image URL</label>
+          <div class="flex gap-2 pb-2">
+            <button type="button" onclick="selectAvatar('https://images.unsplash.com/photo-1534528741775-53994a69daeb?auto=format&fit=crop&w=200&q=80')" class="p-1 rounded-full border-2 border-stone-300 hover:border-amber-600"><img src="https://images.unsplash.com/photo-1534528741775-53994a69daeb?auto=format&fit=crop&w=200&q=80" class="w-10 h-10 rounded-full"></button>
+            <button type="button" onclick="selectAvatar('https://images.unsplash.com/photo-1507003211169-0a1dd7228f2d?auto=format&fit=crop&w=200&q=80')" class="p-1 rounded-full border-2 border-stone-300 hover:border-amber-600"><img src="https://images.unsplash.com/photo-1507003211169-0a1dd7228f2d?auto=format&fit=crop&w=200&q=80" class="w-10 h-10 rounded-full"></button>
+            <button type="button" onclick="selectAvatar('https://images.unsplash.com/photo-1573496359142-b8d87734a5a2?auto=format&fit=crop&w=200&q=80')" class="p-1 rounded-full border-2 border-stone-300 hover:border-amber-600"><img src="https://images.unsplash.com/photo-1573496359142-b8d87734a5a2?auto=format&fit=crop&w=200&q=80" class="w-10 h-10 rounded-full"></button>
+          </div>
+          <input type="url" id="sup-avatar" placeholder="https://images.unsplash.com/..." class="w-full px-5 py-3 rounded-xl border-2 border-stone-300 font-semibold text-sm">
+        </div>
+        <div>
+          <label class="block font-black text-stone-700 mb-1">Short Warm Bio (Optional)</label>
+          <textarea id="sup-bio" rows="2" placeholder="Tell us what brings you fulfillment..." class="w-full px-5 py-3 rounded-xl border-2 border-stone-300 font-semibold"></textarea>
+        </div>
+        <button type="submit" class="w-full py-4 bg-teal-800 hover:bg-teal-900 text-white font-black text-xl rounded-2xl shadow-lg transition touch-target">
+          Create Account ↗
+        </button>
+        <p class="text-xs font-semibold text-slate-500 text-center pt-1 leading-normal">
+          By joining, you agree to our <button type="button" onclick="openModal('modal-tos')" class="text-teal-700 font-bold hover:underline">Terms of Service & Community Standards</button>.
+        </p>
+      </form>
+    </div>
+  </dialog>
+
+  <!-- MODAL 3: GIVE PUBLIC KUDOS -->
+  <dialog id="modal-kudos" class="p-0 rounded-3xl max-w-lg w-full shadow-2xl border border-slate-200 bg-white m-auto">
+    <div class="p-8 sm:p-10 space-y-6 bg-white">
+      <div class="text-center space-y-1 border-b border-slate-100 pb-5 relative">
+        <h3 class="text-2xl font-extrabold text-slate-800 tracking-tight">Give Public Kudos</h3>
+        <p class="text-slate-500 font-medium text-xs">Recognize intrinsic kindness and community impact.</p>
+        <button onclick="closeModal('modal-kudos')" class="absolute right-0 top-0 text-slate-400 hover:text-slate-700 text-3xl font-bold p-2 touch-target">×</button>
+      </div>
+
+      <form onsubmit="handleGiveKudos(event)" class="space-y-5">
+        <div>
+          <label class="block font-bold text-slate-700 text-sm mb-1">Recipient <span class="text-red-500">*</span></label>
+          <select id="kudos-recipient" required class="w-full px-4 py-3 rounded-xl border border-slate-300 font-semibold text-base bg-white focus:border-indigo-600 transition">
+            <option value="">-- Choose Member --</option>
+          </select>
+        </div>
+        <div>
+          <label class="block font-bold text-slate-700 text-sm mb-1">Gratitude Message <span class="text-red-500">*</span></label>
+          <textarea id="kudos-content" required rows="4" placeholder="Thank you so much for lending your support and collaboration..." class="w-full px-4 py-3 rounded-xl border border-slate-300 font-medium text-base bg-slate-50 focus:bg-white focus:border-indigo-600 transition"></textarea>
+        </div>
+        <div>
+          <label class="block font-bold text-slate-700 text-sm mb-1.5">Tag Associated Spaces / Groups (Optional)</label>
+          <div id="kudos-groups-list" class="flex flex-wrap gap-2 max-h-32 overflow-y-auto p-2 bg-slate-50 rounded-xl border border-slate-200"></div>
+        </div>
+        <div class="pt-2 text-center">
+          <button type="submit" class="w-full py-3.5 bg-amber-500 hover:bg-amber-600 text-white font-extrabold text-lg rounded-xl shadow-md shadow-amber-500/20 transition touch-target">
+            🎉 Send Public Kudos
+          </button>
+        </div>
+      </form>
+    </div>
+  </dialog>
+
+  <!-- MODAL 4: SHARE POST (2-Step Publish Confirmation & Immutability Req #21) -->
+  <dialog id="modal-post" class="p-0 rounded-3xl max-w-2xl w-full shadow-2xl border border-slate-200 bg-white m-auto">
+    <div class="p-8 sm:p-12 space-y-8 bg-white">
+      <div class="text-center space-y-1.5 border-b border-slate-100 pb-5 relative">
+        <h3 class="text-3xl font-extrabold text-slate-800 tracking-tight">Share Story, Event or Resource</h3>
+        <p class="text-slate-500 font-medium text-sm">Publish public announcements, inspiring experiences, and community guides.</p>
+        <button onclick="closeModal('modal-post')" class="absolute right-0 top-0 text-slate-400 hover:text-slate-700 text-3xl font-bold p-2 touch-target">×</button>
+      </div>
+
+      <!-- STEP 1: Authoring Form -->
+      <div id="post-step-1" class="space-y-6">
+        <!-- Field 1: Title -->
+        <div>
+          <label class="block font-bold text-slate-700 text-sm mb-1.5">Title <span class="text-red-500">*</span></label>
+          <input type="text" id="post-input-title" required placeholder="e.g. Free Online Mental Health Workshop This Saturday" class="w-full px-4 py-3 rounded-xl border border-slate-300 font-semibold text-base bg-slate-50 focus:bg-white focus:border-indigo-600 transition">
+        </div>
+
+        <!-- Field 2: Description / Story -->
+        <div>
+          <label class="block font-bold text-slate-700 text-sm mb-1.5">Description <span class="text-slate-400 font-normal text-xs">*(Your story or announcement)*</span> <span class="text-red-500">*</span></label>
+          <textarea id="post-input-content" required rows="4" placeholder="Share your experience, wisdom, or detailed announcements..." class="w-full px-4 py-3 rounded-xl border border-slate-300 font-medium text-base bg-slate-50 focus:bg-white focus:border-indigo-600 transition"></textarea>
+        </div>
+
+        <!-- Field 3: Category Theme Selection Purpose -->
+        <div>
+          <label class="block font-bold text-slate-700 text-sm mb-1">Category Theme Selection Purpose <span class="text-red-500">*</span></label>
+          <p class="text-xs text-slate-400 font-medium mb-2">Explicitly categorizes this post to help community members search, filter, and discover it.</p>
+          <select id="post-input-theme" required class="w-full px-4 py-3 rounded-xl border border-slate-300 font-bold text-base bg-white focus:border-indigo-600 transition cursor-pointer touch-target">
+            <option value="Inspiring Stories">✨ Inspiring Stories & Wisdom</option>
+            <option value="Mental Health">🌱 Mental Health & Peer Listening</option>
+            <option value="Education">🎓 Education & Skill Building</option>
+            <option value="Community Services">🤝 Community Services & Mutual Aid</option>
+            <option value="Events">📅 Upcoming Community Events</option>
+            <option value="Community Resources">📎 General Community Resources</option>
+          </select>
+        </div>
+
+        <!-- Field 4: Links (Multi-URL List) -->
+        <div class="space-y-3">
+          <label class="block font-bold text-slate-700 text-sm">Links <span class="text-slate-400 font-normal text-xs">*(Attach one or more web URLs)*</span></label>
+          <div id="post-links-list" class="space-y-2.5">
+            <div class="flex gap-2">
+              <input type="url" id="post-input-url" placeholder="https://example.com/resource-link" class="post-link-input flex-1 px-4 py-3 rounded-xl border border-slate-300 font-medium text-sm bg-slate-50 focus:bg-white focus:border-indigo-600 transition">
+            </div>
+          </div>
+          <button type="button" onclick="addPostLinkField()" class="px-4 py-2 bg-indigo-50 hover:bg-indigo-100 text-indigo-700 font-bold text-xs rounded-lg transition flex items-center space-x-1">
+            <span>+ Add More Links</span>
+          </button>
+        </div>
+
+        <!-- Field 5: File Uploads -->
+        <div class="space-y-3">
+          <label class="block font-bold text-slate-700 text-sm">File <span class="text-slate-400 font-normal text-xs">*(Attach downloadable guides, flyers, or images)*</span></label>
+          <div class="border-2 border-dashed border-slate-300 hover:border-indigo-500 rounded-2xl p-6 bg-slate-50 transition text-center cursor-pointer relative">
+            <input type="file" id="post-file-input" multiple onchange="handlePostFilesSelect(event)" class="absolute inset-0 opacity-0 cursor-pointer w-full h-full">
+            <div class="space-y-1 pointer-events-none">
+              <span class="text-2xl block">📁</span>
+              <span class="font-bold text-sm text-slate-700">Choose Files or Drag & Drop Here</span>
+              <span class="text-xs text-slate-400 block font-medium">Supports PDF, DOCX, PNG, JPG (Multiple files allowed)</span>
+            </div>
+          </div>
+          <div id="post-files-preview" class="space-y-2 pt-1"></div>
+        </div>
+
+        <!-- Field 6: Tag Associated Spaces -->
+        <div>
+          <label class="block font-bold text-slate-700 text-sm mb-1.5">Tag Associated Spaces / Groups (Optional)</label>
+          <div id="post-groups-list" class="flex flex-wrap gap-2 max-h-32 overflow-y-auto p-3 bg-slate-50 rounded-xl border border-slate-200"></div>
+        </div>
+
+        <div class="pt-4 text-center">
+          <button type="button" onclick="reviewPostStep(event)" class="w-full sm:w-auto min-w-[280px] px-8 py-3.5 bg-indigo-600 hover:bg-indigo-700 text-white font-extrabold text-lg rounded-xl shadow-lg shadow-indigo-600/25 transition touch-target">
+            Preview & Verify Before Publishing →
+          </button>
+        </div>
+      </div>
+
+      <!-- STEP 2: Review / Confirmation Step -->
+      <div id="post-step-2" class="hidden space-y-6">
+        <div class="bg-amber-50 p-5 rounded-2xl border border-amber-200 space-y-2">
+          <div class="font-black text-amber-950 text-base flex items-center space-x-1.5">
+            <span>⚠️</span><span>Step 2 of 2: Please Review Carefully Before Publishing</span>
+          </div>
+          <p class="text-amber-900/90 text-sm font-medium">
+            To ensure a dignified, reliable community record, posts cannot be edited or deleted once published. Please confirm your details below are correct.
+          </p>
+        </div>
+
+        <div id="post-preview-card" class="bg-slate-50 p-6 rounded-2xl border border-slate-200 space-y-4 shadow-sm">
+          <!-- Populated dynamically -->
+        </div>
+
+        <div class="flex gap-4">
+          <button type="button" onclick="backToPostStep1()" class="flex-1 py-3.5 bg-slate-100 hover:bg-slate-200 text-slate-700 font-bold text-base rounded-xl transition touch-target">
+            ← Edit Details
+          </button>
+          <button type="button" onclick="confirmPublishPost()" class="flex-1 py-3.5 bg-indigo-600 hover:bg-indigo-700 text-white font-extrabold text-lg rounded-xl shadow-md shadow-indigo-600/20 transition touch-target">
+            ✅ Confirm & Publish Permanently ↗
+          </button>
+        </div>
+      </div>
+    </div>
+  </dialog>
+
+  <!-- MODAL 5: CREATE NEW GROUP -->
+  <dialog id="modal-create-group" class="p-0 rounded-3xl max-w-lg w-full shadow-2xl border-2 border-stone-200 m-auto">
+    <div class="p-8 sm:p-10 space-y-6 bg-white">
+      <div class="flex justify-between items-center border-b pb-4">
+        <h3 class="text-3xl font-black text-stone-900">Create Community Space / Group</h3>
+        <button onclick="closeModal('modal-create-group')" class="text-stone-400 hover:text-stone-700 text-3xl font-black p-2 touch-target">×</button>
+      </div>
+
+      <form onsubmit="handleCreateGroup(event)" class="space-y-4">
+        <div>
+          <label class="block font-black text-stone-700 mb-1">Group Name</label>
+          <input type="text" id="cgrp-name" required placeholder="e.g. Mindful Growth & Wellness" class="w-full px-5 py-4 rounded-xl border-2 border-stone-300 font-bold text-lg bg-stone-50">
+        </div>
+        <div>
+          <label class="block font-black text-stone-700 mb-1">Group Icon Image URL (Optional)</label>
+          <input type="url" id="cgrp-icon" placeholder="https://images.unsplash.com/..." class="w-full px-5 py-3 rounded-xl border-2 border-stone-300 font-semibold text-sm">
+        </div>
+        <div>
+          <label class="block font-black text-stone-700 mb-1">Description & Mission</label>
+          <textarea id="cgrp-desc" required rows="3" placeholder="Explain what collaboration, mutual aid, and companionship this group provides..." class="w-full px-5 py-3 rounded-xl border-2 border-stone-300 font-medium"></textarea>
+        </div>
+        <div>
+          <label class="block font-black text-stone-700 mb-1 text-sm">Primary Themes</label>
+          <div class="grid grid-cols-2 gap-2 pt-1 font-bold text-sm">
+            <label class="flex items-center space-x-2"><input type="checkbox" name="cgrp-theme" value="Mental Health" checked class="w-4 h-4 text-amber-600"><span>Mental Health</span></label>
+            <label class="flex items-center space-x-2"><input type="checkbox" name="cgrp-theme" value="Education" checked class="w-4 h-4 text-amber-600"><span>Education</span></label>
+            <label class="flex items-center space-x-2"><input type="checkbox" name="cgrp-theme" value="Community Services" checked class="w-4 h-4 text-amber-600"><span>Community Services</span></label>
+            <label class="flex items-center space-x-2"><input type="checkbox" name="cgrp-theme" value="Events" class="w-4 h-4 text-amber-600"><span>Events</span></label>
+          </div>
+        </div>
+        <button type="submit" class="w-full py-4 bg-teal-800 hover:bg-teal-900 text-white font-black text-xl rounded-2xl shadow transition touch-target">
+          Launch Community Group ↗
+        </button>
+      </form>
+    </div>
+  </dialog>
+
+  <!-- MODAL 6: EDIT PROFILE -->
+  <dialog id="modal-edit-profile" class="p-0 rounded-3xl max-w-lg w-full shadow-2xl border-2 border-stone-200 m-auto">
+    <div class="p-8 sm:p-10 space-y-6 bg-white">
+      <div class="flex justify-between items-center border-b pb-4">
+        <h3 class="text-3xl font-black text-stone-900">Update Profile</h3>
+        <button onclick="closeModal('modal-edit-profile')" class="text-stone-400 hover:text-stone-700 text-3xl font-black p-2 touch-target">×</button>
+      </div>
+
+      <form onsubmit="handleProfileUpdate(event)" class="space-y-4">
+        <div>
+          <label class="block font-black text-stone-700 mb-1">Avatar Image URL</label>
+          <input type="url" id="eprof-avatar" required class="w-full px-5 py-3.5 rounded-xl border-2 border-stone-300 font-semibold bg-stone-50">
+        </div>
+        <div>
+          <label class="block font-black text-stone-700 mb-1">Heartfelt Bio</label>
+          <textarea id="eprof-bio" rows="3" class="w-full px-5 py-3.5 rounded-xl border-2 border-stone-300 font-medium bg-stone-50"></textarea>
+        </div>
+        <div>
+          <label class="block font-black text-stone-700 mb-1">New Password (leave blank to keep current)</label>
+          <input type="password" id="eprof-pw" placeholder="••••••••" class="w-full px-5 py-3.5 rounded-xl border-2 border-stone-300 font-bold bg-stone-50">
+        </div>
+        <button type="submit" class="w-full py-4 bg-stone-800 hover:bg-black text-white font-black text-xl rounded-2xl shadow transition touch-target">
+          Save Changes ↗
+        </button>
+      </form>
+    </div>
+  </dialog>
+
+  <!-- MODAL 7: CUSTOMER SERVICE PORTAL (Req #22) -->
+  <dialog id="modal-support" class="p-0 rounded-3xl max-w-lg w-full shadow-2xl border-2 border-amber-400 m-auto">
+    <div class="p-8 sm:p-10 space-y-6 bg-white">
+      <div class="flex justify-between items-center border-b pb-4">
+        <div class="flex items-center space-x-2">
+          <span class="text-3xl" aria-hidden="true">🙋‍♀️</span>
+          <h3 class="text-2xl sm:text-3xl font-black text-stone-900">Customer Service</h3>
+        </div>
+        <button onclick="closeModal('modal-support')" class="text-stone-400 hover:text-stone-700 text-3xl font-black p-2 touch-target">×</button>
+      </div>
+
+      <p class="text-stone-600 font-medium text-base">
+        Need assistance navigating gooddeeds.space or connecting with mutual aid networks? Submit an inquiry below. Submitting triggers an auto-response confirmation receipt to your email and logs an alert to <strong>roht_kgupta@yahoo.com</strong>.
+      </p>
+
+      <form onsubmit="handleSupportSubmit(event)" class="space-y-4">
+        <div>
+          <label class="block font-black text-stone-700 mb-1">Inquiry Subject</label>
+          <input type="text" id="supp-subject" required placeholder="e.g. Help finding local mutual aid group" class="w-full px-5 py-3.5 rounded-xl border-2 border-stone-300 font-bold bg-stone-50">
+        </div>
+        <div>
+          <label class="block font-black text-stone-700 mb-1">Your Question or Request</label>
+          <textarea id="supp-message" required rows="4" placeholder="Please describe how our volunteer support team can assist you..." class="w-full px-5 py-3.5 rounded-xl border-2 border-stone-300 font-medium bg-stone-50"></textarea>
+        </div>
+        <button type="submit" class="w-full py-4 bg-amber-600 hover:bg-amber-700 text-white font-black text-xl rounded-2xl shadow transition touch-target">
+          Submit Assistance Request ↗
+        </button>
+      </form>
+    </div>
+  </dialog>
+
+  <!-- MODAL 6: TERMS OF SERVICE & COMMUNITY STANDARDS -->
+  <dialog id="modal-tos" class="p-0 rounded-3xl max-w-2xl w-full shadow-2xl border border-slate-200 bg-white m-auto">
+    <div class="p-8 sm:p-12 space-y-6 bg-white max-h-[85vh] overflow-y-auto text-left">
+      <div class="flex justify-between items-center border-b border-slate-100 pb-4 sticky top-0 bg-white z-10">
+        <div>
+          <h3 class="text-2xl font-extrabold text-slate-900 tracking-tight">📜 Terms of Service & Standards</h3>
+          <p class="text-xs font-semibold text-slate-400">Effective Date: June 2026</p>
+        </div>
+        <button onclick="closeModal('modal-tos')" class="text-slate-400 hover:text-slate-700 text-3xl font-black p-2 touch-target" aria-label="Close modal">×</button>
+      </div>
+
+      <div class="space-y-5 text-sm font-medium text-slate-700 leading-relaxed">
+        <div class="bg-amber-50 p-5 rounded-2xl border border-amber-200/80 text-amber-900 space-y-1.5">
+          <strong class="block font-bold text-amber-950 text-base">☀️ Our Core Community Mission</strong>
+          <p class="text-xs leading-relaxed">gooddeeds.space is built to promote goodness, combat loneliness, and help everyone become the best possible version of themselves—one good deed at a time.</p>
+        </div>
+
+        <div class="space-y-2">
+          <h4 class="font-extrabold text-slate-900 text-base">1. Acceptance of Agreement</h4>
+          <p>By creating a profile, browsing stories, or participating in space chat boards, you agree to abide by these Terms of Service. If you do not agree with our uplifting mission or safety policies, please refrain from using the platform.</p>
+        </div>
+
+        <div class="space-y-2">
+          <h4 class="font-extrabold text-slate-900 text-base">2. Community Code of Conduct & Dignity</h4>
+          <p>We maintain zero tolerance for discrimination, harassment, hate speech, spam, exploitation, or fraudulent solicitation. Whether seeking support in mental health listening circles, offering educational tutoring, or organizing local mutual aid, all interactions must reflect mutual respect, empathy, and dignity.</p>
+        </div>
+
+        <div class="space-y-2">
+          <h4 class="font-extrabold text-slate-900 text-base">3. User Content & Permanent Recognition</h4>
+          <p>You retain ownership of experiences and resources you share. However, to preserve the integrity of community recognition, published celebration Kudos and Posts pass through confirmation steps and become permanent public records of goodness.</p>
+        </div>
+
+        <div class="space-y-2">
+          <h4 class="font-extrabold text-slate-900 text-base">4. Safety & Senior Accessibility</h4>
+          <p>Our pilot community prioritizes accessible, safe spaces for individuals of all ages, including seniors. Users are prohibited from sharing misleading medical advice or exploiting vulnerable members. Account administrators reserve the right to remove non-compliant accounts.</p>
+        </div>
+
+        <div class="space-y-2">
+          <h4 class="font-extrabold text-slate-900 text-base">5. Disclaimer & Support Portal</h4>
+          <p>gooddeeds.space provides peer collaboration "as is" and does not substitute for professional licensed medical, psychiatric, or emergency services. For platform assistance, please use our built-in Contact portal.</p>
+        </div>
+      </div>
+
+      <div class="pt-4 border-t border-slate-100 flex justify-end">
+        <button onclick="closeModal('modal-tos')" class="px-8 py-3.5 bg-slate-900 hover:bg-slate-800 text-white font-bold text-sm rounded-xl shadow transition touch-target">
+          I Understand & Agree
+        </button>
+      </div>
+    </div>
+  </dialog>
+
+  <!-- MODAL: INVITE OTHERS TO JOIN GROUP -->
+  <dialog id="modal-invite-group" class="p-0 rounded-3xl max-w-lg w-full shadow-2xl border-2 border-slate-200 m-auto">
+    <div class="p-8 sm:p-10 space-y-6 bg-white">
+      <div class="flex justify-between items-center border-b pb-4">
+        <h3 class="text-2xl font-black text-slate-900">💌 Invite Others to Join</h3>
+        <button onclick="closeModal('modal-invite-group')" class="text-slate-400 hover:text-slate-600 font-black text-xl touch-target">✕</button>
+      </div>
+      <form onsubmit="handleGroupInviteSubmit(event)" class="space-y-5 text-left font-sans">
+        <div class="relative">
+          <label class="block text-sm font-bold text-slate-700 mb-2">Recipient Email Address(es) or Username <span class="text-red-500">*</span></label>
+          <input type="text" id="ginvite-email" oninput="handleInviteAutocomplete(this.value)" onfocus="handleInviteAutocomplete(this.value)" placeholder="Type Martha, Arthur, or friend@example.com..." required autocomplete="off" class="w-full px-4 py-3 rounded-xl border-2 border-slate-300 font-medium text-base text-slate-900 focus:border-indigo-600 focus:outline-none transition">
+          <div id="ginvite-suggestions" class="absolute left-0 right-0 mt-1 bg-white border-2 border-indigo-200 rounded-2xl shadow-xl max-h-52 overflow-y-auto hidden z-50 divide-y divide-slate-100"></div>
+          <p class="text-xs text-slate-500 mt-1">Separate multiple recipients with commas. Click any suggestion below to pick them!</p>
+        </div>
+        <div>
+          <label class="block text-sm font-bold text-slate-700 mb-2">Personal Message (Optional)</label>
+          <textarea id="ginvite-message" rows="3" placeholder="I thought you'd love joining this uplifting community space on gooddeeds.space!" class="w-full px-4 py-3 rounded-xl border-2 border-slate-300 font-medium text-base text-slate-900 focus:border-indigo-600 focus:outline-none"></textarea>
+        </div>
+        <div class="bg-indigo-50 p-4 rounded-2xl border border-indigo-100 text-xs text-slate-700 leading-relaxed">
+          💡 **Note**: Sending this invitation triggers a welcome email containing a direct link to join **<span id="ginvite-group-name" class="font-bold text-indigo-900">this space</span>**, and logs the notification in the simulated Email Outbox!
+        </div>
+        <div class="flex justify-end space-x-3 pt-3">
+          <button type="button" onclick="closeModal('modal-invite-group')" class="px-6 py-3 bg-slate-100 hover:bg-slate-200 text-slate-700 font-bold rounded-xl transition">Cancel</button>
+          <button type="submit" class="px-8 py-3 bg-indigo-600 hover:bg-indigo-700 text-white font-bold rounded-xl transition shadow-sm touch-target">Send Invitation ↗</button>
+        </div>
+      </form>
+    </div>
+  </dialog>
+
+  <!-- Toast Notification Popup -->
+  <div id="toast-popup" class="fixed bottom-6 right-6 z-50 hidden bg-stone-900 text-white font-black px-6 py-4 rounded-2xl shadow-2xl border-2 border-amber-500 max-w-md transition duration-300"></div>
+
+  <!-- Vanilla JS Application Logic -->
+  <script src="/app.js"></script>
+</body>
+</html>
