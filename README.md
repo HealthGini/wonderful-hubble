@@ -75,7 +75,7 @@ You can configure the server using the following environment variables:
 | `SMTP_USER` | SMTP username for authentication | *None* |
 | `SMTP_PASSWORD`| SMTP password for authentication | *None* |
 | `SMTP_FROM_EMAIL`| Sender email address | `notifications@gooddeeds.space`|
-| `SMTP_FROM_NAME` | Sender display name | `GoodDeeds Community` |
+| `SMTP_FROM_NAME`| Sender display name | `GoodDeeds Community` |
 
 ### Running the Server
 Start the server by executing:
@@ -135,7 +135,7 @@ Authenticates a user and returns a session token. Supports login via email or us
     ```
 
 #### `POST /api/auth/logout`
-Termates the current session. Requires authentication.
+Terminates the current session. Requires authentication.
 *   **Response (200 OK)**: `{"success": true}`
 
 #### `GET /api/auth/me`
@@ -359,3 +359,514 @@ Or run via unittest discovery:
 ```bash
 python3 -m unittest discover -s tests -p "test_*.py" -v
 ```
+
+---
+
+## Going Live & Production Deployment
+
+This guide outlines the steps required to transition GoodDeeds.space from a local development environment to a production-ready, high-concurrency cloud deployment.
+
+### 1. Migrating from SQLite to MySQL
+
+For production environments, migrating from SQLite to a robust relational database like MySQL is essential to support high concurrency, better performance, and scalability.
+
+#### Database Drivers & Code Changes
+To connect to MySQL, you will need a Python MySQL driver. Recommended options:
+*   `mysql-connector-python`: Official Oracle driver.
+*   `PyMySQL`: A pure-Python MySQL client.
+
+Since the application uses standard Python database API (DB-API) compatibility, changes in `database.py` and `handlers.py` will involve replacing `sqlite3` imports and connections with the chosen MySQL driver.
+
+Example using `mysql-connector-python`:
+```python
+import mysql.connector
+import os
+
+def get_db_connection():
+    return mysql.connector.connect(
+        host=os.environ.get('DB_HOST', 'localhost'),
+        user=os.environ.get('DB_USER'),
+        password=os.environ.get('DB_PASSWORD'),
+        database=os.environ.get('DB_NAME', 'gooddeeds'),
+        port=int(os.environ.get('DB_PORT', 3306))
+    )
+```
+
+#### Schema Datatype Differences
+When migrating the schema from SQLite to MySQL, note the following differences:
+
+| Feature | SQLite | MySQL |
+| :--- | :--- | :--- |
+| **Auto-Increment** | `INTEGER PRIMARY KEY AUTOINCREMENT` | `INT AUTO_INCREMENT PRIMARY KEY` |
+| **Default Timestamp** | `DATETIME DEFAULT CURRENT_TIMESTAMP` | `TIMESTAMP DEFAULT CURRENT_TIMESTAMP` |
+| **Foreign Keys** | Enabled via `PRAGMA foreign_keys = ON;` | Supported natively (ensure InnoDB engine is used) |
+| **Boolean** | Represented as `INTEGER` (0 or 1) | `TINYINT(1)` or `BOOLEAN` |
+| **Strings/Text** | Dynamic length `TEXT` | Requires defined limits for indexed columns. Use `VARCHAR(255)` for keys/emails, `TEXT` for content. |
+
+#### MySQL Production Schema (DDL)
+
+Execute the following DDL script on your MySQL instance to initialize the database:
+
+```sql
+CREATE TABLE users (
+    id INT AUTO_INCREMENT PRIMARY KEY,
+    email VARCHAR(255) UNIQUE NOT NULL,
+    username VARCHAR(255) UNIQUE NOT NULL,
+    password_hash VARCHAR(255) NOT NULL,
+    phone VARCHAR(50),
+    avatar_url VARCHAR(512),
+    bio TEXT,
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
+
+CREATE TABLE sessions (
+    token VARCHAR(255) PRIMARY KEY,
+    user_id INT NOT NULL,
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
+
+CREATE TABLE groups (
+    id INT AUTO_INCREMENT PRIMARY KEY,
+    name VARCHAR(255) UNIQUE NOT NULL,
+    description TEXT,
+    themes TEXT, -- Stores JSON array as string (MySQL JSON type can also be used)
+    icon_url VARCHAR(512),
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
+
+CREATE TABLE group_members (
+    group_id INT NOT NULL,
+    user_id INT NOT NULL,
+    is_admin TINYINT DEFAULT 0,
+    joined_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    PRIMARY KEY (group_id, user_id),
+    FOREIGN KEY (group_id) REFERENCES groups(id) ON DELETE CASCADE,
+    FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
+
+CREATE TABLE group_resources (
+    id INT AUTO_INCREMENT PRIMARY KEY,
+    group_id INT NOT NULL,
+    title VARCHAR(255) NOT NULL,
+    url VARCHAR(512) NOT NULL,
+    resource_type VARCHAR(50) DEFAULT 'URL',
+    theme VARCHAR(100) DEFAULT 'Community Resources',
+    added_by INT,
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    FOREIGN KEY (group_id) REFERENCES groups(id) ON DELETE CASCADE,
+    FOREIGN KEY (added_by) REFERENCES users(id) ON DELETE SET NULL
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
+
+CREATE TABLE group_messages (
+    id INT AUTO_INCREMENT PRIMARY KEY,
+    group_id INT NOT NULL,
+    user_id INT NOT NULL,
+    message TEXT NOT NULL,
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    FOREIGN KEY (group_id) REFERENCES groups(id) ON DELETE CASCADE,
+    FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
+
+CREATE TABLE feed_items (
+    id INT AUTO_INCREMENT PRIMARY KEY,
+    item_type VARCHAR(50) NOT NULL, -- 'KUDOS' or 'POST'
+    author_id INT NOT NULL,
+    recipient_id INT, -- For KUDOS
+    title VARCHAR(255), -- For POST
+    content TEXT NOT NULL,
+    theme VARCHAR(100), -- For POST
+    resource_url VARCHAR(512), -- Link/PDF URL for POST
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    FOREIGN KEY (author_id) REFERENCES users(id) ON DELETE CASCADE,
+    FOREIGN KEY (recipient_id) REFERENCES users(id) ON DELETE CASCADE
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
+
+CREATE TABLE item_groups (
+    item_id INT NOT NULL,
+    group_id INT NOT NULL,
+    PRIMARY KEY (item_id, group_id),
+    FOREIGN KEY (item_id) REFERENCES feed_items(id) ON DELETE CASCADE,
+    FOREIGN KEY (group_id) REFERENCES groups(id) ON DELETE CASCADE
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
+
+CREATE TABLE reactions (
+    id INT AUTO_INCREMENT PRIMARY KEY,
+    item_id INT NOT NULL,
+    user_id INT NOT NULL,
+    emoji VARCHAR(50) CHARACTER SET utf8mb4 COLLATE utf8mb4_bin NOT NULL,
+    UNIQUE KEY unique_reaction (item_id, user_id, emoji),
+    FOREIGN KEY (item_id) REFERENCES feed_items(id) ON DELETE CASCADE,
+    FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
+
+CREATE TABLE comments (
+    id INT AUTO_INCREMENT PRIMARY KEY,
+    item_id INT NOT NULL,
+    user_id INT NOT NULL,
+    content TEXT NOT NULL,
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    FOREIGN KEY (item_id) REFERENCES feed_items(id) ON DELETE CASCADE,
+    FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
+
+CREATE TABLE email_outbox (
+    id INT AUTO_INCREMENT PRIMARY KEY,
+    recipient_email VARCHAR(255) NOT NULL,
+    subject VARCHAR(255) NOT NULL,
+    body TEXT NOT NULL,
+    sent_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    status VARCHAR(50) DEFAULT 'SENT'
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
+
+CREATE TABLE customer_service_inquiries (
+    id INT AUTO_INCREMENT PRIMARY KEY,
+    user_id INT NOT NULL,
+    subject VARCHAR(255) NOT NULL,
+    message TEXT NOT NULL,
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
+
+CREATE TABLE group_invitations (
+    id INT AUTO_INCREMENT PRIMARY KEY,
+    group_id INT NOT NULL,
+    sender_id INT NOT NULL,
+    recipient_username VARCHAR(255) NOT NULL,
+    message TEXT,
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    status VARCHAR(50) DEFAULT 'PENDING',
+    FOREIGN KEY (group_id) REFERENCES groups(id) ON DELETE CASCADE,
+    FOREIGN KEY (sender_id) REFERENCES users(id) ON DELETE CASCADE
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
+```
+
+#### Connection Pooling
+In high-concurrency environments, opening and closing a database connection for every request is expensive. Implement connection pooling to reuse connections.
+
+Example using `mysql.connector.pooling`:
+
+```python
+import os
+import mysql.connector.pooling
+
+# Read MySQL configuration from environment variables
+db_config = {
+    "host": os.environ.get("DB_HOST", "localhost"),
+    "user": os.environ.get("DB_USER", "gooddeeds_user"),
+    "password": os.environ.get("DB_PASSWORD", "secure_password"),
+    "database": os.environ.get("DB_NAME", "gooddeeds"),
+    "port": int(os.environ.get("DB_PORT", 3306))
+}
+
+# Initialize connection pool
+connection_pool = mysql.connector.pooling.MySQLConnectionPool(
+    pool_name="gooddeeds_pool",
+    pool_size=10,  # Adjust based on expected concurrency and server limits
+    pool_reset_session=True,
+    **db_config
+)
+
+def get_db():
+    """Retrieves a connection from the pool."""
+    return connection_pool.get_connection()
+```
+
+In `handlers.py`, ensure connections are obtained from the pool at the start of a request handler and explicitly closed (returned to the pool) in a `finally` block to prevent leaks:
+
+```python
+def handle_some_request(request):
+    conn = None
+    cursor = None
+    try:
+        conn = get_db()
+        cursor = conn.cursor(dictionary=True) # Return rows as dicts
+        # Perform DB operations
+        conn.commit()
+    except Exception as e:
+        if conn:
+            conn.rollback()
+        raise e
+    finally:
+        if cursor:
+            cursor.close()
+        if conn:
+            conn.close() # Returns connection to the pool
+```
+
+#### Data Migration Script
+
+Use the following Python script to migrate your existing development data from `gooddeeds.db` to your MySQL instance. Run this script *after* creating the MySQL schema.
+
+```python
+import sqlite3
+import mysql.connector
+import os
+
+# Source SQLite Configuration
+SQLITE_DB = os.environ.get("DB_PATH", "gooddeeds.db")
+
+# Target MySQL Configuration
+MYSQL_CONFIG = {
+    "host": os.environ.get("DB_HOST", "localhost"),
+    "user": os.environ.get("DB_USER", "gooddeeds_user"),
+    "password": os.environ.get("DB_PASSWORD", "secure_password"),
+    "database": os.environ.get("DB_NAME", "gooddeeds"),
+    "port": int(os.environ.get("DB_PORT", 3306))
+}
+
+def migrate():
+    sqlite_conn = sqlite3.connect(SQLITE_DB)
+    sqlite_conn.row_factory = sqlite3.Row
+    sqlite_cursor = sqlite_conn.cursor()
+
+    mysql_conn = mysql.connector.connect(**MYSQL_CONFIG)
+    mysql_cursor = mysql_conn.cursor()
+
+    # Tables in order of migration to respect foreign key constraints
+    tables = [
+        "users", "groups", "sessions", "group_members", "group_resources",
+        "group_messages", "feed_items", "item_groups", "reactions", "comments",
+        "email_outbox", "customer_service_inquiries", "group_invitations"
+    ]
+
+    print("Starting migration...")
+
+    # Temporarily disable foreign keys in MySQL to avoid ordering issues during bulk load
+    mysql_cursor.execute("SET FOREIGN_KEY_CHECKS = 0;")
+
+    for table in tables:
+        print(f"Migrating table: {table}...")
+        
+        # Fetch all rows from SQLite
+        sqlite_cursor.execute(f"SELECT * FROM {table}")
+        rows = sqlite_cursor.fetchall()
+        
+        if not rows:
+            print(f"  No data in {table}, skipping.")
+            continue
+
+        columns = rows[0].keys()
+        
+        # Prepare MySQL Insert statement
+        placeholders = ", ".join(["%s"] * len(columns))
+        col_names = ", ".join(columns)
+        insert_sql = f"INSERT INTO {table} ({col_names}) VALUES ({placeholders})"
+
+        # Convert row data to tuple list
+        data_to_insert = [tuple(row) for row in rows]
+
+        # Execute bulk insert
+        mysql_cursor.executemany(insert_sql, data_to_insert)
+        print(f"  Successfully migrated {len(rows)} rows.")
+
+    mysql_conn.commit()
+    
+    # Re-enable foreign key checks
+    mysql_cursor.execute("SET FOREIGN_KEY_CHECKS = 1;")
+    
+    sqlite_conn.close()
+    mysql_conn.close()
+    print("Migration completed successfully!")
+
+if __name__ == "__main__":
+    migrate()
+```
+
+---
+
+### 2. Production Email Integration Setup
+
+In production, relying on simulated outboxes is insufficient. You must configure a reliable SMTP delivery mechanism or use dedicated transactional email APIs.
+
+#### SMTP Configuration
+
+Configure the application to connect to your production SMTP server (e.g., Mailgun, SendGrid, Amazon SES) using the following environment variables:
+
+```bash
+export SMTP_HOST="smtp.sendgrid.net"
+export SMTP_PORT=587
+export SMTP_USER="apikey"
+export SMTP_PASSWORD="your_sendgrid_api_key"
+export SMTP_FROM_EMAIL="notifications@gooddeeds.space"
+export SMTP_FROM_NAME="GoodDeeds Community"
+```
+
+#### Domain Verification (DNS Records)
+
+To ensure notifications aren't marked as spam, configure the following DNS records for your sending domain (e.g., `gooddeeds.space`):
+
+*   **SPF (Sender Policy Framework)**: Authorizes specific mail servers to send emails on behalf of your domain.
+    *   *Example TXT Record*:
+        *   **Host**: `@`
+        *   **Value**: `v=spf1 include:sendgrid.net ~all` (Replace `sendgrid.net` with your provider's SPF include).
+*   **DKIM (DomainKeys Identified Mail)**: Adds a cryptographic signature to emails, verifying they were sent by the domain owner.
+    *   Your email provider will supply a unique TXT record name (selector) and value (public key) to add to your DNS.
+*   **DMARC (Domain-based Message Authentication, Reporting, and Conformance)**: Instructs receiving servers how to handle emails that fail SPF/DKIM checks.
+    *   *Example TXT Record*:
+        *   **Host**: `_dmarc`
+        *   **Value**: `v=DMARC1; p=quarantine; pct=100; rua=mailto:dmarc-reports@gooddeeds.space`
+
+#### Transitioning to Transactional Email APIs
+
+If email volume exceeds standard SMTP relay limits, transition from Python's standard `smtplib` to a dedicated API SDK.
+
+**Example: Transitioning to AWS SES (using `boto3`)**
+
+1.  Install the AWS SDK: `pip install boto3`.
+2.  Refactor email sending logic to use the SDK instead of SMTP:
+
+```python
+import os
+import boto3
+from botocore.exceptions import ClientError
+
+def send_email_via_ses(recipient, subject, text_body, html_body=None):
+    """
+    Sends an email using AWS SES.
+    Reads sender email and AWS region from environment variables.
+    """
+    sender = os.environ.get("SMTP_FROM_EMAIL", "notifications@gooddeeds.space")
+    sender_name = os.environ.get("SMTP_FROM_NAME", "GoodDeeds Community")
+    aws_region = os.environ.get("AWS_REGION", "us-east-1")
+
+    client = boto3.client('ses', region_name=aws_region)
+    
+    destination = {'ToAddresses': [recipient]}
+    message = {
+        'Subject': {'Data': subject, 'Charset': 'UTF-8'},
+        'Body': {
+            'Text': {'Data': text_body, 'Charset': 'UTF-8'}
+        }
+    }
+    if html_body:
+        message['Body']['Html'] = {'Data': html_body, 'Charset': 'UTF-8'}
+        
+    try:
+        response = client.send_email(
+            Source=f"{sender_name} <{sender}>",
+            Destination=destination,
+            Message=message
+        )
+        return True
+    except ClientError as e:
+        print(f"SES Error: {e.response['Error']['Message']}")
+        return False
+```
+
+---
+
+### 3. Cloud Deployment Guides
+
+#### AWS (Amazon Web Services)
+
+##### Backend Deployment (Elastic Beanstalk or EC2)
+
+*   **Option A: Elastic Beanstalk (Recommended for ease of use)**:
+    1.  Create a `requirements.txt` listing any external dependencies (e.g., `mysql-connector-python`).
+    2.  Create a `Procfile` in the root directory to specify the startup command:
+        ```text
+        web: python3 server.py
+        ```
+    3.  Zip the application contents (excluding database files and virtual environments).
+    4.  Create a new Elastic Beanstalk Application, choose the **Python** platform, upload the ZIP, and configure the environment variables under Configuration -> Software.
+*   **Option B: EC2 (Virtual Machine)**:
+    1.  Launch an Ubuntu EC2 instance.
+    2.  Install Python 3 and git.
+    3.  Clone the repository and set up environment variables in `/etc/environment` or via a `.env` file.
+    4.  Configure `systemd` to run the application as a background service. Create `/etc/systemd/system/gooddeeds.service`:
+        ```ini
+        [Unit]
+        Description=GoodDeeds Backend Service
+        After=network.target
+
+        [Service]
+        User=ubuntu
+        WorkingDirectory=/home/ubuntu/gooddeeds
+        ExecStart=/usr/bin/python3 server.py
+        Restart=always
+        EnvironmentFile=/home/ubuntu/gooddeeds/.env
+
+        [Install]
+        WantedBy=multi-user.target
+        ```
+    5.  Enable and start the service:
+        ```bash
+        sudo systemctl enable gooddeeds
+        sudo systemctl start gooddeeds
+        ```
+
+##### AWS RDS MySQL Setup
+1.  Navigate to RDS Dashboard -> Create Database.
+2.  Choose **MySQL**, select the Free Tier templates (if applicable), and configure DB instance identifier, master username, and password.
+3.  Ensure "Public Access" is set to **No**.
+4.  Place it in the same VPC as your EC2/Beanstalk instances.
+
+##### Security Group Configuration
+Configure Security Groups to isolate the database:
+1.  **Web Security Group** (Attached to EC2/Beanstalk):
+    *   **Inbound**: Allow Port 80 (HTTP) and Port 443 (HTTPS) from source `0.0.0.0/0`.
+2.  **Database Security Group** (Attached to RDS):
+    *   **Inbound**: Allow Port 3306 (MySQL) *only* from the Web Security Group ID.
+
+##### Load Balancing & SSL (ACM)
+1.  Request a public SSL certificate in **AWS Certificate Manager** (ACM) for your domain.
+2.  Create an **Application Load Balancer** (ALB).
+3.  Add listeners:
+    *   Port 80 (Configure to redirect to Port 443).
+    *   Port 443 (Forward to Target Group containing your backend instances, with ACM SSL certificate attached).
+
+---
+
+#### GCP (Google Cloud Platform)
+
+##### Containerization & Cloud Run
+Cloud Run is the recommended serverless option for deploying containerized applications.
+
+1.  Create a `Dockerfile` in the root of the project:
+    ```dockerfile
+    FROM python:3.13-slim
+    WORKDIR /app
+    RUN pip install --no-cache-dir mysql-connector-python
+    COPY . .
+    EXPOSE 8080
+    ENV PORT=8080
+    CMD ["python", "server.py"]
+    ```
+2.  Build and push the image to **Artifact Registry**:
+    ```bash
+    gcloud builds submit --tag gcr.io/your-project-id/gooddeeds-backend
+    ```
+3.  Deploy to **Cloud Run**:
+    ```bash
+    gcloud run deploy gooddeeds-backend \
+        --image gcr.io/your-project-id/gooddeeds-backend \
+        --platform managed \
+        --allow-unauthenticated \
+        --port 8080
+    ```
+
+##### Google Cloud SQL (MySQL) Setup
+1.  Go to Cloud SQL Instances -> Create Instance -> Choose **MySQL**.
+2.  Configure Instance ID, root password, and database version (MySQL 8.0 recommended).
+3.  Under **Connections**, disable Public IP and enable **Private IP** (requires configuring a VPC network) for maximum security.
+
+##### Secure Connections (Cloud SQL Auth Proxy)
+If using Cloud Run, connect securely using the Cloud SQL connection name.
+1.  In Cloud Run configuration, add a **Cloud SQL Connection** pointing to your database instance.
+2.  Use the Unix socket path provided by Cloud Run to connect:
+    ```python
+    # Connection configuration for Cloud Run to Cloud SQL MySQL
+    db_config = {
+        "unix_socket": "/cloudsql/your-project-id:region:instance-name",
+        "user": "gooddeeds_user",
+        "password": "secure_password",
+        "database": "gooddeeds"
+    }
+    conn = mysql.connector.connect(**db_config)
+    ```
+
+##### Load Balancing & Google-managed SSL
+1.  Set up an **HTTPS External Load Balancer**.
+2.  Configure the backend service pointing to the Cloud Run Network Endpoint Group (NEG).
+3.  Configure the frontend map to use a **Google-managed certificate**. Provide your domain name, and GCP will provision and renew the SSL certificate automatically.
