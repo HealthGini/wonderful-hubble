@@ -35,7 +35,7 @@ def get_user_from_token(headers):
     conn = get_db()
     cursor = conn.cursor()
     cursor.execute("""
-        SELECT u.id, u.email, u.username, u.phone, u.avatar_url, u.bio
+        SELECT u.id, u.email, u.username, u.phone, u.avatar_url, u.bio, u.is_site_admin
         FROM sessions s
         JOIN users u ON s.user_id = u.id
         WHERE s.token = ?
@@ -265,7 +265,7 @@ def handle_api_request(method, path, headers, body_bytes):
             token = str(uuid.uuid4())
             cursor.execute("INSERT INTO sessions (token, user_id) VALUES (?, ?)", (token, user_id))
             conn.commit()
-            cursor.execute("SELECT id, email, username, phone, avatar_url, bio FROM users WHERE id = ?", (user_id,))
+            cursor.execute("SELECT id, email, username, phone, avatar_url, bio, is_site_admin FROM users WHERE id = ?", (user_id,))
             new_user = dict(cursor.fetchone())
             conn.close()
             return json_response({"token": token, "user": new_user}, 201)
@@ -290,7 +290,7 @@ def handle_api_request(method, path, headers, body_bytes):
         conn = get_db()
         cursor = conn.cursor()
         cursor.execute("""
-            SELECT id, email, username, phone, avatar_url, bio
+            SELECT id, email, username, phone, avatar_url, bio, is_site_admin
             FROM users
             WHERE (email = ? OR username = ?) AND password_hash = ?
         """, (email, email, pw_hash))
@@ -336,7 +336,7 @@ def handle_api_request(method, path, headers, body_bytes):
         else:
             cursor.execute("UPDATE users SET avatar_url = ?, bio = ? WHERE id = ?", (avatar_url, bio, user["id"]))
         conn.commit()
-        cursor.execute("SELECT id, email, username, phone, avatar_url, bio FROM users WHERE id = ?", (user["id"],))
+        cursor.execute("SELECT id, email, username, phone, avatar_url, bio, is_site_admin FROM users WHERE id = ?", (user["id"],))
         updated_user = dict(cursor.fetchone())
         conn.close()
         return json_response({"user": updated_user, "success": True})
@@ -903,6 +903,68 @@ def handle_api_request(method, path, headers, body_bytes):
 
         conn.close()
         return json_response({"group": g_data})
+
+    # UPDATE GROUP MEMBER ROLE (PROMOTE / DEMOTE ADMIN)
+    if (path_only == "/api/admin/moderation/group-member-role" or (path_only.startswith("/api/groups/") and path_only.endswith("/members/role"))) and method == "POST":
+        if not user:
+            return error_response("Login required", 401)
+        
+        gid = body.get("group_id")
+        if gid is None and path_only.startswith("/api/groups/"):
+            parts = path_only.split("/")
+            if len(parts) >= 4:
+                try:
+                    gid = int(parts[3])
+                except ValueError:
+                    pass
+        
+        target_uid = body.get("user_id") if body.get("user_id") is not None else body.get("target_user_id")
+        is_admin_val = body.get("is_admin")
+
+        if gid is None or target_uid is None or is_admin_val is None:
+            return error_response("group_id, user_id (or target_user_id), and is_admin are required.")
+
+        try:
+            gid = int(gid)
+            target_uid = int(target_uid)
+            is_admin_val = 1 if int(is_admin_val) == 1 else 0
+        except ValueError:
+            return error_response("Invalid parameter format.")
+
+        conn = get_db()
+        cursor = conn.cursor()
+
+        # Authorization check: site super admin (is_site_admin == 1) OR group admin for specific group
+        is_super_admin = (user.get("is_site_admin") == 1)
+        is_group_admin = False
+
+        if not is_super_admin:
+            cursor.execute("SELECT is_admin FROM group_members WHERE group_id = ? AND user_id = ?", (gid, user["id"]))
+            row = cursor.fetchone()
+            if row and row["is_admin"] == 1:
+                is_group_admin = True
+
+        if not (is_super_admin or is_group_admin):
+            conn.close()
+            return error_response("Forbidden: Requires site super admin or group admin status.", 403)
+
+        # Check target user exists
+        cursor.execute("SELECT id FROM users WHERE id = ?", (target_uid,))
+        if not cursor.fetchone():
+            conn.close()
+            return error_response("Target user not found.", 404)
+
+        # Update or insert into group_members
+        cursor.execute("SELECT * FROM group_members WHERE group_id = ? AND user_id = ?", (gid, target_uid))
+        member_row = cursor.fetchone()
+        if member_row:
+            cursor.execute("UPDATE group_members SET is_admin = ? WHERE group_id = ? AND user_id = ?", (is_admin_val, gid, target_uid))
+        else:
+            cursor.execute("INSERT INTO group_members (group_id, user_id, is_admin) VALUES (?, ?, ?)", (gid, target_uid, is_admin_val))
+
+        conn.commit()
+        conn.close()
+        return json_response({"success": True, "group_id": gid, "user_id": target_uid, "is_admin": is_admin_val})
 
     # JOIN / LEAVE GROUP
     if path_only.startswith("/api/groups/") and (path_only.endswith("/join") or path_only.endswith("/leave")) and method == "POST":

@@ -62,9 +62,14 @@ def init_db():
         phone TEXT,
         avatar_url TEXT,
         bio TEXT,
+        is_site_admin INTEGER DEFAULT 0,
         created_at DATETIME DEFAULT CURRENT_TIMESTAMP
     )
     """)
+    try:
+        cursor.execute("ALTER TABLE users ADD COLUMN is_site_admin INTEGER DEFAULT 0")
+    except Exception:
+        pass
 
     # 2. Sessions
     cursor.execute("""
@@ -244,13 +249,14 @@ def seed_data(cursor):
     pw_hash = hash_password("password123")
 
     # Diverse Sample Users across age groups and backgrounds
+    # Maya (user 1) is seeded as a site super admin (is_site_admin = 1)
     users = [
-        ("maya@gooddeeds.space", "Maya_Lin", pw_hash, "555-0101", "https://images.unsplash.com/photo-1534528741775-53994a69daeb?auto=format&fit=crop&w=200&q=80", "Youth mentor & software engineer (28). Passionate about closing the STEM education gap and promoting community mental health wellness."),
-        ("marcus@gooddeeds.space", "Marcus_Vance", pw_hash, "555-0102", "https://images.unsplash.com/photo-1507003211169-0a1dd7228f2d?auto=format&fit=crop&w=200&q=80", "Neighborhood organizer and father of 3 (42). Organizing local weekend cleanups, community food pantries, and mutual aid networks."),
-        ("elena@gooddeeds.space", "Elena_Wellness", pw_hash, "555-0103", "https://images.unsplash.com/photo-1573496359142-b8d87734a5a2?auto=format&fit=crop&w=200&q=80", "Licensed mental health counselor (35). Hosting free weekly grounding circles and destigmatizing emotional support for all ages."),
-        ("arthur@gooddeeds.space", "Arthur_74", pw_hash, "", "https://images.unsplash.com/photo-1500648767791-00dcc994a43e?auto=format&fit=crop&w=200&q=80", "Retired history teacher (74) leading our senior center bootstrap pilot. Partnering with young volunteers for intergenerational friendship.")
+        ("maya@gooddeeds.space", "Maya_Lin", pw_hash, "555-0101", "https://images.unsplash.com/photo-1534528741775-53994a69daeb?auto=format&fit=crop&w=200&q=80", "Youth mentor & software engineer (28). Passionate about closing the STEM education gap and promoting community mental health wellness.", 1),
+        ("marcus@gooddeeds.space", "Marcus_Vance", pw_hash, "555-0102", "https://images.unsplash.com/photo-1507003211169-0a1dd7228f2d?auto=format&fit=crop&w=200&q=80", "Neighborhood organizer and father of 3 (42). Organizing local weekend cleanups, community food pantries, and mutual aid networks.", 0),
+        ("elena@gooddeeds.space", "Elena_Wellness", pw_hash, "555-0103", "https://images.unsplash.com/photo-1573496359142-b8d87734a5a2?auto=format&fit=crop&w=200&q=80", "Licensed mental health counselor (35). Hosting free weekly grounding circles and destigmatizing emotional support for all ages.", 0),
+        ("arthur@gooddeeds.space", "Arthur_74", pw_hash, "", "https://images.unsplash.com/photo-1500648767791-00dcc994a43e?auto=format&fit=crop&w=200&q=80", "Retired history teacher (74) leading our senior center bootstrap pilot. Partnering with young volunteers for intergenerational friendship.", 0)
     ]
-    cursor.executemany("INSERT INTO users (email, username, password_hash, phone, avatar_url, bio) VALUES (?, ?, ?, ?, ?, ?)", users)
+    cursor.executemany("INSERT INTO users (email, username, password_hash, phone, avatar_url, bio, is_site_admin) VALUES (?, ?, ?, ?, ?, ?, ?)", users)
 
     # Generic & Inclusive Sample Groups
     groups = [

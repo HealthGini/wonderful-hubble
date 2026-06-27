@@ -964,7 +964,9 @@ async function loadGroupDetail(gid) {
     activeGroupData = data.group;
 
     const isMember = activeGroupData.is_joined;
-    const isAdmin = activeGroupData.is_admin;
+    const isGroupAdmin = activeGroupData.is_admin;
+    const isSiteAdmin = currentUser && currentUser.is_site_admin === 1;
+    const isAdmin = isGroupAdmin || isSiteAdmin;
 
     const isInviteFlow = window.location.hash.includes("invite=yes") || window.location.hash.includes("invite=1");
     const inviteBannerHtml = (isInviteFlow && !isMember) ? `
@@ -990,7 +992,7 @@ async function loadGroupDetail(gid) {
         <div class="space-y-2">
           <div class="flex items-center space-x-3">
             <h1 class="text-3xl sm:text-4xl font-black text-stone-900">${activeGroupData.name}</h1>
-            ${isAdmin ? `<span class="px-3 py-1 bg-amber-500 text-white font-black text-xs rounded-full">You are Admin</span>` : ""}
+            ${isGroupAdmin ? `<span class="px-3 py-1 bg-amber-500 text-white font-black text-xs rounded-full">Group Admin</span>` : isSiteAdmin ? `<span class="px-3 py-1 bg-indigo-600 text-white font-black text-xs rounded-full">Site Admin</span>` : ""}
           </div>
           <p class="text-stone-700 font-medium text-lg max-w-2xl">${activeGroupData.description}</p>
           <div class="flex flex-wrap gap-2 pt-1">
@@ -1234,19 +1236,34 @@ function renderGroupRoster() {
   if (!container || !activeGroupData) return;
   const roster = activeGroupData.roster || [];
   const invites = activeGroupData.invitations || [];
+  const canManageRoles = currentUser && (currentUser.is_site_admin === 1 || activeGroupData.is_admin);
 
-  const membersHtml = roster.map(m => `
-    <a href="/#/user/${m.id}" class="bg-white p-6 rounded-2xl border-2 border-stone-200 shadow-sm flex items-center space-x-4 hover:border-amber-500 transition touch-target">
-      <img src="${m.avatar_url}" alt="${m.username}" class="w-16 h-16 rounded-full object-cover border-2 ${m.is_admin ? "border-amber-500" : "border-stone-300"} shrink-0">
-      <div class="truncate text-left flex-1">
-        <div class="font-black text-xl text-stone-900 flex items-center space-x-2">
-          <span>${m.username}</span>
-          ${m.is_admin ? `<span class="text-xs bg-amber-100 text-amber-800 px-2.5 py-0.5 rounded-full font-black shrink-0">Admin</span>` : `<span class="text-xs bg-teal-100 text-teal-800 px-2.5 py-0.5 rounded-full font-black shrink-0">Member</span>`}
+  const membersHtml = roster.map(m => {
+    let adminToggleBtn = "";
+    if (canManageRoles) {
+      if (m.is_admin) {
+        adminToggleBtn = `<button onclick="event.preventDefault(); event.stopPropagation(); toggleMemberRole(${activeGroupData.id}, ${m.id}, 0)" class="mt-2 px-3 py-1.5 bg-red-100 hover:bg-red-200 text-red-800 font-bold text-xs rounded-xl transition">Demote from Admin</button>`;
+      } else {
+        adminToggleBtn = `<button onclick="event.preventDefault(); event.stopPropagation(); toggleMemberRole(${activeGroupData.id}, ${m.id}, 1)" class="mt-2 px-3 py-1.5 bg-amber-100 hover:bg-amber-200 text-amber-900 font-bold text-xs rounded-xl transition">Promote to Admin</button>`;
+      }
+    }
+
+    return `
+    <div class="bg-white p-6 rounded-2xl border-2 border-stone-200 shadow-sm flex items-center justify-between space-x-4 hover:border-amber-500 transition">
+      <a href="/#/user/${m.id}" class="flex items-center space-x-4 truncate flex-1 min-w-0">
+        <img src="${m.avatar_url}" alt="${m.username}" class="w-16 h-16 rounded-full object-cover border-2 ${m.is_admin ? "border-amber-500" : "border-stone-300"} shrink-0">
+        <div class="truncate text-left flex-1">
+          <div class="font-black text-xl text-stone-900 flex items-center space-x-2">
+            <span>${m.username}</span>
+            ${m.is_admin ? `<span class="text-xs bg-amber-100 text-amber-800 px-2.5 py-0.5 rounded-full font-black shrink-0">Admin</span>` : `<span class="text-xs bg-teal-100 text-teal-800 px-2.5 py-0.5 rounded-full font-black shrink-0">Member</span>`}
+          </div>
+          <p class="text-sm font-medium text-stone-500 truncate pt-1">${m.bio || "Community member"}</p>
         </div>
-        <p class="text-sm font-medium text-stone-500 truncate pt-1">${m.bio || "Community member"}</p>
-      </div>
-    </a>
-  `).join("");
+      </a>
+      ${adminToggleBtn ? `<div class="shrink-0">${adminToggleBtn}</div>` : ""}
+    </div>
+    `;
+  }).join("");
 
   let invitesHtml = "";
   if (invites.length > 0) {
@@ -1757,5 +1774,19 @@ function toggleCommentsStream(itemId) {
   } else {
     box.classList.add("hidden");
     icon.textContent = isReplyFlow ? "▼ Write Reply" : "▼ Show Thread";
+  }
+}
+
+async function toggleMemberRole(gid, uid, isAdmin) {
+  try {
+    await apiFetch(`/groups/${gid}/members/role`, {
+      method: "POST",
+      body: JSON.stringify({ group_id: gid, user_id: uid, is_admin: isAdmin })
+    });
+    showToast(isAdmin ? "✅ User promoted to group admin!" : "ℹ️ User demoted from group admin.");
+    await loadGroupDetail(gid);
+    switchGroupTab("roster");
+  } catch (err) {
+    showToast("❌ " + (err.message || "Could not update member role."));
   }
 }
