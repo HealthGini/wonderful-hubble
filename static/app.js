@@ -26,6 +26,12 @@ let feedHasMore = false;
 let isLoadingMoreFeed = false;
 let displayedFeedLimit = 4;
 
+// Landing preview pagination state
+let landingPreviewLimit = 4;
+let landingPreviewOffset = 0;
+let landingPreviewHasMore = false;
+let isLoadingMoreLandingPreview = false;
+
 // Wizard temporary draft storage (Feature 21)
 let draftPost = null;
 
@@ -461,7 +467,7 @@ function renderFeedCard(item, isProfileView = false) {
               <a href="/#/user/${item.author_id}" class="hover:text-indigo-600 transition">${item.author_name}</a>
               ${["Maya_Lin", "Marcus_Vance", "Elena_Wellness", "Arthur_Pendleton"].includes(item.author_name) ? `<a href="/#/spotlight" class="inline-flex items-center space-x-1 px-2.5 py-0.5 bg-gradient-to-r from-amber-500 to-yellow-500 text-white font-black text-[10px] rounded-full uppercase tracking-wider shadow-sm hover:opacity-90 transition" title="June 2026 Hall of Fame Winner"><span>👑</span><span>Monthly Winner</span></a>` : ""}
               ${isKudos ? `
-                <span class="text-amber-600 font-semibold text-base">celebrated</span>
+                <span class="text-amber-600 font-semibold text-base">gave Kudos to</span>
                 <a href="/#/user/${item.recipient_id}" class="hover:underline font-extrabold text-amber-900 bg-amber-50 border border-amber-200 px-3 py-0.5 rounded-full text-sm">${item.recipient_name}</a>
               ` : `
                 <span class="px-2.5 py-0.5 bg-indigo-50 text-indigo-700 border border-indigo-100 rounded-full text-xs font-bold">🏷️ ${item.theme}</span>
@@ -535,15 +541,80 @@ function renderFeedCard(item, isProfileView = false) {
 
 /* ================= FEED CARDS LOADING & FILTERING ================= */
 
-async function loadLandingPreview() {
+async function loadLandingPreview(isLoadMore = false) {
   await sessionPromise;
-  const container = document.getElementById("landing-preview-feed");
+  const container = document.getElementById("landing-public-feed-preview") || document.getElementById("landing-preview-feed");
+  const loadMoreContainer = document.getElementById("landing-load-more-container");
   if (!container) return;
+
+  if (!isLoadMore) {
+    landingPreviewOffset = 0;
+    container.innerHTML = `<p class="text-stone-500 font-bold text-center col-span-2 py-8">Loading highlights...</p>`;
+    if (loadMoreContainer) loadMoreContainer.innerHTML = "";
+  }
+
+  let reqLimit = landingPreviewLimit;
+  let reqOffset = landingPreviewOffset;
+
+  let url = `/feed?sort=smart&limit=${reqLimit}&offset=${reqOffset}`;
+
   try {
-    const data = await apiFetch("/feed");
-    const items = (data.feed || []).slice(0, 2);
-    container.innerHTML = items.map(it => renderFeedCard(it, false)).join("");
-  } catch (err) {}
+    const data = await apiFetch(url);
+    const feed = data.feed || [];
+    landingPreviewHasMore = (data.has_more !== undefined) ? data.has_more : (feed.length === reqLimit);
+
+    if (!isLoadMore) {
+      if (feed.length === 0) {
+        container.innerHTML = `<p class="text-stone-500 font-bold text-center col-span-2 py-8">No community posts or kudos yet.</p>`;
+        if (loadMoreContainer) loadMoreContainer.innerHTML = "";
+      } else {
+        container.innerHTML = feed.map(item => renderFeedCard(item, false)).join("");
+        renderLandingLoadMoreControls();
+      }
+    } else {
+      if (feed.length > 0) {
+        container.insertAdjacentHTML("beforeend", feed.map(item => renderFeedCard(item, false)).join(""));
+      }
+      renderLandingLoadMoreControls();
+    }
+  } catch (err) {
+    if (!isLoadMore) {
+      container.innerHTML = `<p class="text-center font-bold text-red-600 col-span-2 py-8">Failed to load highlights: ${err.message}</p>`;
+    }
+  }
+}
+
+function renderLandingLoadMoreControls() {
+  const loadMoreContainer = document.getElementById("landing-load-more-container");
+  if (!loadMoreContainer) return;
+
+  if (landingPreviewHasMore) {
+    loadMoreContainer.innerHTML = `
+      <button id="landing-load-more-btn" onclick="loadMoreLandingPreview()" class="px-8 py-3.5 bg-indigo-600 hover:bg-indigo-700 text-white font-black text-base rounded-2xl shadow-sm hover:shadow transition duration-200 inline-flex items-center space-x-2 touch-target">
+        <span>Load More Stories & Kudos</span>
+        <span>👇</span>
+      </button>
+    `;
+  } else {
+    loadMoreContainer.innerHTML = `
+      <div class="py-4 text-center">
+        <p class="text-slate-500 font-bold text-sm bg-slate-100 inline-block px-6 py-2.5 rounded-full border border-slate-200">You're all caught up! 🎉</p>
+      </div>
+    `;
+  }
+}
+
+async function loadMoreLandingPreview() {
+  if (isLoadingMoreLandingPreview || !landingPreviewHasMore) return;
+  isLoadingMoreLandingPreview = true;
+  const loadMoreBtn = document.getElementById("landing-load-more-btn");
+  if (loadMoreBtn) {
+    loadMoreBtn.disabled = true;
+    loadMoreBtn.innerHTML = `<span>Loading...</span> <span class="animate-spin inline-block">⏳</span>`;
+  }
+  landingPreviewOffset += landingPreviewLimit;
+  await loadLandingPreview(true);
+  isLoadingMoreLandingPreview = false;
 }
 
 async function loadFeed(isLoadMore = false, isReload = false) {
@@ -582,7 +653,7 @@ async function loadFeed(isLoadMore = false, isReload = false) {
         container.innerHTML = `
           <div class="bg-white p-12 rounded-3xl border border-slate-200 text-center space-y-3">
             <div class="text-5xl">🕊️</div>
-            <h3 class="text-2xl font-bold text-slate-800">No Stories Found</h3>
+            <h3 class="text-2xl font-bold text-slate-800">No Stories or Kudos Found</h3>
             <p class="text-base text-slate-500 font-medium">No posts or kudos match your active filter selection.</p>
             <button onclick="clearAllFilters()" class="px-6 py-3 bg-amber-500 hover:bg-amber-600 text-white font-bold rounded-xl shadow-sm transition">Reset All Filters</button>
           </div>
@@ -613,7 +684,7 @@ function renderLoadMoreControls() {
   if (feedHasMore) {
     loadMoreContainer.innerHTML = `
       <button id="load-more-btn" onclick="loadMoreFeed()" class="px-8 py-3.5 bg-indigo-600 hover:bg-indigo-700 text-white font-black text-base rounded-2xl shadow-sm hover:shadow transition duration-200 inline-flex items-center space-x-2 touch-target">
-        <span>Load More Stories</span>
+        <span>Load More Stories & Kudos</span>
         <span>👇</span>
       </button>
     `;

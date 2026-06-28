@@ -187,5 +187,28 @@ class TestFeed(BaseTestCase):
         self.assertEqual(len(feed_page2), 1)
         self.assertFalse(body.get("has_more"))
 
+    def test_landing_preview_pagination_unauthenticated(self):
+        """Verifies that landing page public preview queries support incremental pagination and return sliced metadata."""
+        # Initial landing page load (first 4 public items)
+        status, _, body = self.make_request("GET", "/api/feed?sort=smart&limit=4&offset=0")
+        self.assertEqual(status, 200)
+        feed_page1 = body.get("feed", [])
+        self.assertEqual(len(feed_page1), 4)
+        self.assertEqual(body.get("total_count"), 5)
+        self.assertTrue(body.get("has_more"))
+
+        # Verify items contain required fields for rendering and direct links
+        for item in feed_page1:
+            self.assertIn("id", item)
+            self.assertIn("item_type", item)
+            self.assertIn("content", item)
+
+        # Append next batch on clicking Load More (offset=4, limit=4)
+        status, _, body = self.make_request("GET", "/api/feed?sort=smart&limit=4&offset=4")
+        self.assertEqual(status, 200)
+        feed_page2 = body.get("feed", [])
+        self.assertEqual(len(feed_page2), 1)
+        self.assertFalse(body.get("has_more"))
+
 if __name__ == "__main__":
     unittest.main()
