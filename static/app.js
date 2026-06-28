@@ -4,6 +4,12 @@ const API_BASE = "/api";
 let currentUser = null;
 let currentToken = localStorage.getItem("gd_token") || null;
 
+// Discussion thread state persistence (Req #3)
+const expandedThreads = new Set();
+
+// Synchronized startup sequence promise (Req #2)
+let sessionPromise = null;
+
 // Feed filters state
 let currentTheme = "";
 let currentGroupFilter = "";
@@ -26,15 +32,17 @@ let currentProfileTab = "posts";
 
 /* ================= INITIALIZATION & ROUTING ================= */
 
+sessionPromise = checkSession();
+
 window.addEventListener("DOMContentLoaded", async () => {
   setupEventListeners();
-  await checkSession();
+  await sessionPromise;
   await loadQuickNavGroups();
-  handleRoute();
+  await handleRoute();
 });
 
-window.addEventListener("hashchange", () => {
-  handleRoute();
+window.addEventListener("hashchange", async () => {
+  await handleRoute();
 });
 
 function setupEventListeners() {
@@ -80,7 +88,8 @@ function setupEventListeners() {
   }
 }
 
-function handleRoute() {
+async function handleRoute() {
+  await sessionPromise;
   const hash = window.location.hash || "#/";
   const path = hash.replace("#", "").split("?")[0];
 
@@ -423,6 +432,14 @@ function renderFeedCard(item, isProfileView = false) {
     </div>
   `).join("");
 
+  const isExpanded = expandedThreads.has(item.id);
+  const commentsBoxClass = isExpanded 
+    ? "space-y-3.5 pt-2.5 border-t border-stone-200/40" 
+    : "space-y-3.5 hidden pt-2.5 border-t border-stone-200/40";
+  const toggleIconText = isExpanded 
+    ? (item.comments.length > 0 ? "▲ Hide Thread" : "▲ Hide Reply")
+    : (item.comments.length > 0 ? "▼ Show Thread" : "▼ Write Reply");
+
   return `
     <article class="bg-white rounded-3xl border border-slate-200/80 shadow-sm hover:shadow-md hover:-translate-y-0.5 transition-all duration-200 p-6 sm:p-8 space-y-6 ${cardClass}">
       
@@ -487,11 +504,11 @@ function renderFeedCard(item, isProfileView = false) {
             <span class="bg-stone-200 text-stone-700 px-2 py-0.5 rounded-full text-xs font-extrabold">${item.comments.length}</span>
           </span>
           <span id="comments-toggle-icon-${item.id}" class="text-xs text-amber-700 hover:underline">
-            ${item.comments.length > 0 ? "▼ Show Thread" : "▼ Write Reply"}
+            ${toggleIconText}
           </span>
         </button>
 
-        <div id="comments-stream-box-${item.id}" class="space-y-3.5 hidden pt-2.5 border-t border-stone-200/40">
+        <div id="comments-stream-box-${item.id}" class="${commentsBoxClass}">
           ${item.comments.length > 0 ? `
             <div class="space-y-2.5">${commentsHtml}</div>
           ` : `
@@ -512,6 +529,7 @@ function renderFeedCard(item, isProfileView = false) {
 /* ================= FEED CARDS LOADING & FILTERING ================= */
 
 async function loadLandingPreview() {
+  await sessionPromise;
   const container = document.getElementById("landing-preview-feed");
   if (!container) return;
   try {
@@ -522,6 +540,7 @@ async function loadLandingPreview() {
 }
 
 async function loadFeed() {
+  await sessionPromise;
   checkPendingInvitations();
   const container = document.getElementById("feed-items-container");
   if (!container) return;
@@ -666,6 +685,7 @@ async function populateGroupFilterDropdown() {
 /* ================= SINGLE ITEM VIEW (DIRECT URL) ================= */
 
 async function loadSingleItemView(id) {
+  await sessionPromise;
   const container = document.getElementById("single-item-container");
   if (!container) return;
   container.innerHTML = `<p class="text-center font-bold text-xl text-stone-500 py-12">Loading celebration...</p>`;
@@ -1500,7 +1520,7 @@ async function loadSpotlightView(reqMonth = "June 2026") {
   if (bannerTitle) bannerTitle.textContent = `${reqMonth} Community Champions`;
 
   kGrid.innerHTML = `<p class="col-span-4 text-center text-slate-400 py-6">Loading champions...</p>`;
-  pGrid.innerHTML = `<p class="col-span-4 text-center text-slate-400 py-6">Loading storytellers...</p>`;
+  pGrid.innerHTML = `<p class="col-span-4 text-center text-slate-400 py-6">Loading storyteller...</p>`;
   rBox.innerHTML = `<p class="col-span-3 text-center text-slate-400 py-6">Loading valuable resources...</p>`;
 
   try {
@@ -1771,9 +1791,11 @@ function toggleCommentsStream(itemId) {
   if (isCollapsed) {
     box.classList.remove("hidden");
     icon.textContent = isReplyFlow ? "▲ Hide Reply" : "▲ Hide Thread";
+    expandedThreads.add(itemId);
   } else {
     box.classList.add("hidden");
     icon.textContent = isReplyFlow ? "▼ Write Reply" : "▼ Show Thread";
+    expandedThreads.delete(itemId);
   }
 }
 
@@ -1790,3 +1812,19 @@ async function toggleMemberRole(gid, uid, isAdmin) {
     showToast("❌ " + (err.message || "Could not update member role."));
   }
 }
+
+/* Global scope attachments for DOM event handlers */
+window.toggleCommentsStream = toggleCommentsStream;
+window.toggleReaction = toggleReaction;
+window.handleCommentSubmit = handleCommentSubmit;
+window.filterByTheme = filterByTheme;
+window.filterByGroup = filterByGroup;
+window.filterByType = filterByType;
+window.filterFeedByMyKudos = filterFeedByMyKudos;
+window.filterFeedByMyPosts = filterFeedByMyPosts;
+window.changeSortMode = changeSortMode;
+window.clearAllFilters = clearAllFilters;
+window.navigateTo = navigateTo;
+window.openModal = openModal;
+window.closeModal = closeModal;
+window.switchModal = switchModal;
