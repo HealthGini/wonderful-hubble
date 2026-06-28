@@ -529,6 +529,8 @@ def handle_api_request(method, path, headers, body_bytes):
         filter_type = query.get("filter_type", [""])[0].strip().upper()
         author_id = query.get("author_id", [""])[0].strip()
         recipient_id = query.get("recipient_id", [""])[0].strip()
+        limit_param = query.get("limit", [""])[0].strip()
+        offset_param = query.get("offset", [""])[0].strip()
 
         if filter_type in ("KUDOS", "POST"):
             where_parts.append(f"f.item_type = '{filter_type}'")
@@ -564,11 +566,29 @@ def handle_api_request(method, path, headers, body_bytes):
 
         uid = user["id"] if user else None
         feed_items = fetch_enriched_items(where_clause, params, uid, sort_mode)
+        total_count = len(feed_items)
+
+        if limit_param.isdigit():
+            limit = int(limit_param)
+            offset = int(offset_param) if offset_param.isdigit() else 0
+            paged_items = feed_items[offset : offset + limit]
+            has_more = (offset + limit) < total_count
+        else:
+            paged_items = feed_items
+            has_more = False
+
+        res_dict = {
+            "feed": paged_items,
+            "items": paged_items,
+            "total_count": total_count,
+            "has_more": has_more
+        }
         if path_only == "/api/kudos":
-            return json_response({"kudos": feed_items, "feed": feed_items, "items": feed_items})
+            res_dict["kudos"] = paged_items
         elif path_only == "/api/posts":
-            return json_response({"posts": feed_items, "feed": feed_items, "items": feed_items})
-        return json_response({"feed": feed_items, "items": feed_items})
+            res_dict["posts"] = paged_items
+
+        return json_response(res_dict)
 
     # ================== CREATE KUDOS ==================
     if path_only == "/api/kudos" and method == "POST":

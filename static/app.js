@@ -19,6 +19,13 @@ let currentTypeFilter = "";
 let currentMyKudosMode = "";
 let currentMyPostsMode = "";
 
+// Feed pagination state
+let feedLimit = 4;
+let feedOffset = 0;
+let feedHasMore = false;
+let isLoadingMoreFeed = false;
+let displayedFeedLimit = 4;
+
 // Wizard temporary draft storage (Feature 21)
 let draftPost = null;
 
@@ -539,14 +546,24 @@ async function loadLandingPreview() {
   } catch (err) {}
 }
 
-async function loadFeed() {
+async function loadFeed(isLoadMore = false, isReload = false) {
   await sessionPromise;
   checkPendingInvitations();
   const container = document.getElementById("feed-items-container");
+  const loadMoreContainer = document.getElementById("feed-load-more-container");
   if (!container) return;
-  container.innerHTML = `<p class="text-center font-bold text-xl text-stone-500 py-12">Loading feed...</p>`;
 
-  let url = `/feed?sort=${currentSortMode}&`;
+  if (!isLoadMore && !isReload) {
+    feedOffset = 0;
+    displayedFeedLimit = 4;
+    container.innerHTML = `<p class="text-center font-bold text-xl text-stone-500 py-12">Loading feed...</p>`;
+    if (loadMoreContainer) loadMoreContainer.innerHTML = "";
+  }
+
+  let reqLimit = isLoadMore ? feedLimit : (isReload ? displayedFeedLimit : feedLimit);
+  let reqOffset = isLoadMore ? feedOffset : 0;
+
+  let url = `/feed?sort=${currentSortMode}&limit=${reqLimit}&offset=${reqOffset}&`;
   if (currentTheme) url += `theme=${encodeURIComponent(currentTheme)}&`;
   if (currentGroupFilter) url += `group_id=${encodeURIComponent(currentGroupFilter)}&`;
   if (currentSearch) url += `search=${encodeURIComponent(currentSearch)}&`;
@@ -558,21 +575,68 @@ async function loadFeed() {
   try {
     const data = await apiFetch(url);
     const feed = data.feed || [];
-    if (feed.length === 0) {
-      container.innerHTML = `
-        <div class="bg-white p-12 rounded-3xl border border-slate-200 text-center space-y-3">
-          <div class="text-5xl">🕊️</div>
-          <h3 class="text-2xl font-bold text-slate-800">No Stories Found</h3>
-          <p class="text-base text-slate-500 font-medium">No posts or kudos match your active filter selection.</p>
-          <button onclick="clearAllFilters()" class="px-6 py-3 bg-amber-500 hover:bg-amber-600 text-white font-bold rounded-xl shadow-sm transition">Reset All Filters</button>
-        </div>
-      `;
+    feedHasMore = (data.has_more !== undefined) ? data.has_more : (feed.length === reqLimit);
+
+    if (!isLoadMore) {
+      if (feed.length === 0) {
+        container.innerHTML = `
+          <div class="bg-white p-12 rounded-3xl border border-slate-200 text-center space-y-3">
+            <div class="text-5xl">🕊️</div>
+            <h3 class="text-2xl font-bold text-slate-800">No Stories Found</h3>
+            <p class="text-base text-slate-500 font-medium">No posts or kudos match your active filter selection.</p>
+            <button onclick="clearAllFilters()" class="px-6 py-3 bg-amber-500 hover:bg-amber-600 text-white font-bold rounded-xl shadow-sm transition">Reset All Filters</button>
+          </div>
+        `;
+        if (loadMoreContainer) loadMoreContainer.innerHTML = "";
+      } else {
+        container.innerHTML = feed.map(item => renderFeedCard(item, false)).join("");
+        renderLoadMoreControls();
+      }
     } else {
-      container.innerHTML = feed.map(item => renderFeedCard(item, false)).join("");
+      if (feed.length > 0) {
+        container.insertAdjacentHTML("beforeend", feed.map(item => renderFeedCard(item, false)).join(""));
+        displayedFeedLimit = feedOffset + feed.length;
+      }
+      renderLoadMoreControls();
     }
   } catch (err) {
-    container.innerHTML = `<p class="text-center font-bold text-red-600 py-12">Failed to load feed: ${err.message}</p>`;
+    if (!isLoadMore) {
+      container.innerHTML = `<p class="text-center font-bold text-red-600 py-12">Failed to load feed: ${err.message}</p>`;
+    }
   }
+}
+
+function renderLoadMoreControls() {
+  const loadMoreContainer = document.getElementById("feed-load-more-container");
+  if (!loadMoreContainer) return;
+
+  if (feedHasMore) {
+    loadMoreContainer.innerHTML = `
+      <button id="load-more-btn" onclick="loadMoreFeed()" class="px-8 py-3.5 bg-indigo-600 hover:bg-indigo-700 text-white font-black text-base rounded-2xl shadow-sm hover:shadow transition duration-200 inline-flex items-center space-x-2 touch-target">
+        <span>Load More Stories</span>
+        <span>👇</span>
+      </button>
+    `;
+  } else {
+    loadMoreContainer.innerHTML = `
+      <div class="py-4 text-center">
+        <p class="text-slate-500 font-bold text-sm bg-slate-100 inline-block px-6 py-2.5 rounded-full border border-slate-200">You're all caught up! 🎉</p>
+      </div>
+    `;
+  }
+}
+
+async function loadMoreFeed() {
+  if (isLoadingMoreFeed || !feedHasMore) return;
+  isLoadingMoreFeed = true;
+  const loadMoreBtn = document.getElementById("load-more-btn");
+  if (loadMoreBtn) {
+    loadMoreBtn.disabled = true;
+    loadMoreBtn.innerHTML = `<span>Loading...</span> <span class="animate-spin inline-block">⏳</span>`;
+  }
+  feedOffset += feedLimit;
+  await loadFeed(true, false);
+  isLoadingMoreFeed = false;
 }
 
 function filterByTheme(th) {
@@ -879,7 +943,7 @@ async function toggleReaction(itemId, emoji) {
     } else if (window.location.hash.includes("/profile") || window.location.hash.includes("/user/")) {
       renderProfileTabContent();
     } else {
-      loadFeed();
+      loadFeed(false, true);
     }
   } catch (err) {
     showToast("❌ " + err.message);
@@ -911,7 +975,7 @@ async function handleCommentSubmit(e, itemId) {
       const uId = activeProfileData ? activeProfileData.user.id : currentUser.id;
       await loadUserProfile(uId);
     } else {
-      loadFeed();
+      loadFeed(false, true);
     }
   } catch (err) {
     showToast("❌ " + err.message);

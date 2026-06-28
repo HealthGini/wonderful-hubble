@@ -156,5 +156,36 @@ class TestFeed(BaseTestCase):
         self.assertEqual(len(feed), 2)
         self.assertEqual({item["id"] for item in feed}, {1, 2})
 
+    def test_feed_pagination_default_limit_and_offset(self):
+        """Tests pagination with limit and offset query parameters."""
+        status, _, body = self.make_request("GET", "/api/feed?limit=4&offset=0")
+        self.assertEqual(status, 200)
+        feed = body.get("feed", [])
+        self.assertEqual(len(feed), 4)
+        self.assertEqual(body.get("total_count"), 5)
+        self.assertTrue(body.get("has_more"))
+
+        # Fetch next page
+        status, _, body = self.make_request("GET", "/api/feed?limit=4&offset=4")
+        self.assertEqual(status, 200)
+        feed_page2 = body.get("feed", [])
+        self.assertEqual(len(feed_page2), 1)
+        self.assertFalse(body.get("has_more"))
+
+    def test_feed_pagination_with_filters(self):
+        """Tests pagination while maintaining item type filters."""
+        status, _, body = self.make_request("GET", "/api/feed?filter_type=POST&limit=2&offset=0")
+        self.assertEqual(status, 200)
+        feed = body.get("feed", [])
+        self.assertEqual(len(feed), 2)
+        self.assertEqual(body.get("total_count"), 3)
+        self.assertTrue(body.get("has_more"))
+
+        status, _, body = self.make_request("GET", "/api/feed?filter_type=POST&limit=2&offset=2")
+        self.assertEqual(status, 200)
+        feed_page2 = body.get("feed", [])
+        self.assertEqual(len(feed_page2), 1)
+        self.assertFalse(body.get("has_more"))
+
 if __name__ == "__main__":
     unittest.main()
