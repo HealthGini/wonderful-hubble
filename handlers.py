@@ -609,6 +609,19 @@ def handle_api_request(method, path, headers, body_bytes):
             conn.close()
             return error_response("Recipient user not found.")
 
+        if group_ids:
+            cursor.execute("""
+                SELECT gm1.group_id
+                FROM group_members gm1
+                JOIN group_members gm2 ON gm1.group_id = gm2.group_id
+                WHERE gm1.user_id = ? AND gm2.user_id = ?
+            """, (user["id"], recipient_id))
+            mutual_gids = {r["group_id"] for r in cursor.fetchall()}
+            for gid in group_ids:
+                if int(gid) not in mutual_gids:
+                    conn.close()
+                    return error_response("Tagged groups must be shared between sender and recipient.")
+
         cursor.execute("""
             INSERT INTO feed_items (item_type, author_id, recipient_id, content)
             VALUES ('KUDOS', ?, ?, ?)
@@ -764,18 +777,30 @@ def handle_api_request(method, path, headers, body_bytes):
         conn.close()
         return json_response({"groups": filtered_groups})
 
-    if path_only == "/api/groups/joined" and method == "GET":
+    if path_only in ("/api/groups/joined", "/api/groups/common") and method == "GET":
         if not user:
             return json_response({"groups": []})
+        target_id_str = query.get("target_user_id", [""])[0] or query.get("user_id", [""])[0]
         conn = get_db()
         cursor = conn.cursor()
-        cursor.execute("""
-            SELECT g.id, g.name, g.icon_url
-            FROM group_members gm
-            JOIN groups g ON gm.group_id = g.id
-            WHERE gm.user_id = ?
-            ORDER BY g.name
-        """, (user["id"],))
+        if target_id_str.isdigit():
+            target_id = int(target_id_str)
+            cursor.execute("""
+                SELECT g.id, g.name, g.icon_url
+                FROM group_members gm1
+                JOIN group_members gm2 ON gm1.group_id = gm2.group_id
+                JOIN groups g ON gm1.group_id = g.id
+                WHERE gm1.user_id = ? AND gm2.user_id = ?
+                ORDER BY g.name
+            """, (user["id"], target_id))
+        else:
+            cursor.execute("""
+                SELECT g.id, g.name, g.icon_url
+                FROM group_members gm
+                JOIN groups g ON gm.group_id = g.id
+                WHERE gm.user_id = ?
+                ORDER BY g.name
+            """, (user["id"],))
         rows = [dict(r) for r in cursor.fetchall()]
         conn.close()
         return json_response({"groups": rows})

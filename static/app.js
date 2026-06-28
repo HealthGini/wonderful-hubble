@@ -459,26 +459,41 @@ function renderFeedCard(item, isProfileView = false) {
       <!-- Author & Recipient Banner -->
       <div class="flex flex-wrap justify-between items-center gap-4">
         <div class="flex items-center space-x-3.5">
-          <a href="/#/user/${item.author_id}">
-            <img src="${item.author_avatar}" alt="${item.author_name}" class="w-12 h-12 rounded-full object-cover border border-slate-200 shadow-sm">
-          </a>
-          <div>
-            <div class="text-lg font-bold text-slate-900 flex items-center flex-wrap gap-1.5">
-              <a href="/#/user/${item.author_id}" class="hover:text-indigo-600 transition">${item.author_name}</a>
-              ${["Maya_Lin", "Marcus_Vance", "Elena_Wellness", "Arthur_Pendleton"].includes(item.author_name) ? `<a href="/#/spotlight" class="inline-flex items-center space-x-1 px-2.5 py-0.5 bg-gradient-to-r from-amber-500 to-yellow-500 text-white font-black text-[10px] rounded-full uppercase tracking-wider shadow-sm hover:opacity-90 transition" title="June 2026 Hall of Fame Winner"><span>👑</span><span>Monthly Winner</span></a>` : ""}
-              ${isKudos ? `
-                <span class="text-amber-600 font-semibold text-base">gave Kudos to</span>
-                <a href="/#/user/${item.recipient_id}" class="hover:underline font-extrabold text-amber-900 bg-amber-50 border border-amber-200 px-3 py-0.5 rounded-full text-sm">${item.recipient_name}</a>
-              ` : `
+          ${isKudos ? `
+            <a href="/#/user/${item.recipient_id}">
+              <img src="${item.recipient_avatar || item.author_avatar}" alt="${item.recipient_name}" class="w-12 h-12 rounded-full object-cover border-2 border-amber-400 shadow-sm">
+            </a>
+            <div>
+              <div class="text-lg font-bold text-slate-900 flex items-center flex-wrap gap-1.5">
+                <a href="/#/user/${item.recipient_id}" class="hover:text-amber-700 transition font-extrabold text-slate-900">${item.recipient_name}</a>
+                ${["Maya_Lin", "Marcus_Vance", "Elena_Wellness", "Arthur_Pendleton"].includes(item.recipient_name) ? `<a href="/#/spotlight" class="inline-flex items-center space-x-1 px-2.5 py-0.5 bg-gradient-to-r from-amber-500 to-yellow-500 text-white font-black text-[10px] rounded-full uppercase tracking-wider shadow-sm hover:opacity-90 transition" title="June 2026 Hall of Fame Winner"><span>👑</span><span>Monthly Winner</span></a>` : ""}
+                <span class="text-amber-600 font-semibold text-base">received Kudos from</span>
+                <a href="/#/user/${item.author_id}" class="hover:underline font-bold text-slate-700 bg-stone-100 border border-stone-200 px-3 py-0.5 rounded-full text-sm">${item.author_name}</a>
+                ${["Maya_Lin", "Marcus_Vance", "Elena_Wellness", "Arthur_Pendleton"].includes(item.author_name) && !["Maya_Lin", "Marcus_Vance", "Elena_Wellness", "Arthur_Pendleton"].includes(item.recipient_name) ? `<a href="/#/spotlight" class="inline-flex items-center space-x-1 px-2.5 py-0.5 bg-gradient-to-r from-amber-500 to-yellow-500 text-white font-black text-[10px] rounded-full uppercase tracking-wider shadow-sm hover:opacity-90 transition" title="June 2026 Hall of Fame Winner"><span>👑</span><span>Monthly Winner</span></a>` : ""}
+              </div>
+              <div class="text-xs text-slate-400 font-medium pt-0.5">
+                <span>⏱️ ${item.created_at}</span>
+                <span class="px-2">•</span>
+                <a href="${itemLink}" class="text-slate-400 hover:text-indigo-600 transition">Direct Share Link ↗</a>
+              </div>
+            </div>
+          ` : `
+            <a href="/#/user/${item.author_id}">
+              <img src="${item.author_avatar}" alt="${item.author_name}" class="w-12 h-12 rounded-full object-cover border border-slate-200 shadow-sm">
+            </a>
+            <div>
+              <div class="text-lg font-bold text-slate-900 flex items-center flex-wrap gap-1.5">
+                <a href="/#/user/${item.author_id}" class="hover:text-indigo-600 transition">${item.author_name}</a>
+                ${["Maya_Lin", "Marcus_Vance", "Elena_Wellness", "Arthur_Pendleton"].includes(item.author_name) ? `<a href="/#/spotlight" class="inline-flex items-center space-x-1 px-2.5 py-0.5 bg-gradient-to-r from-amber-500 to-yellow-500 text-white font-black text-[10px] rounded-full uppercase tracking-wider shadow-sm hover:opacity-90 transition" title="June 2026 Hall of Fame Winner"><span>👑</span><span>Monthly Winner</span></a>` : ""}
                 <span class="px-2.5 py-0.5 bg-indigo-50 text-indigo-700 border border-indigo-100 rounded-full text-xs font-bold">🏷️ ${item.theme}</span>
-              `}
+              </div>
+              <div class="text-xs text-slate-400 font-medium pt-0.5">
+                <span>⏱️ ${item.created_at}</span>
+                <span class="px-2">•</span>
+                <a href="${itemLink}" class="text-slate-400 hover:text-indigo-600 transition">Direct Share Link ↗</a>
+              </div>
             </div>
-            <div class="text-xs text-slate-400 font-medium pt-0.5">
-              <span>⏱️ ${item.created_at}</span>
-              <span class="px-2">•</span>
-              <a href="${itemLink}" class="text-slate-400 hover:text-indigo-600 transition">Direct Share Link ↗</a>
-            </div>
-          </div>
+          `}
         </div>
         <div>${groupBadges}</div>
       </div>
@@ -841,6 +856,33 @@ async function loadSingleItemView(id) {
 
 /* ================= CONTENT CREATION WIZARDS ================= */
 
+async function updateKudosGroupCheckboxes() {
+  const container = document.getElementById("kudos-groups-list");
+  const recipSelect = document.getElementById("kudos-recipient");
+  if (!container || !recipSelect) return;
+  const targetId = recipSelect.value;
+  if (!targetId) {
+    container.innerHTML = `<p class="text-stone-500 font-medium text-sm p-2">Select a recipient to see shared groups.</p>`;
+    return;
+  }
+  try {
+    const data = await apiFetch(`/groups/joined?target_user_id=${targetId}`);
+    const groups = data.groups || [];
+    if (groups.length === 0) {
+      container.innerHTML = `<p class="text-stone-500 font-medium text-sm p-2">You and this member do not share any common groups yet.</p>`;
+    } else {
+      container.innerHTML = groups.map(g => `
+        <label class="inline-flex items-center space-x-2 px-3 py-2 rounded-xl bg-white border-2 border-stone-200 font-bold text-sm cursor-pointer hover:bg-amber-50 hover:border-amber-400 transition touch-target">
+          <input type="checkbox" name="kudos-group" value="${g.id}" class="w-5 h-5 text-amber-600 rounded">
+          <span>${g.name}</span>
+        </label>
+      `).join("");
+    }
+  } catch (err) {
+    container.innerHTML = `<p class="text-stone-500 font-medium text-sm p-2">Failed to load common groups.</p>`;
+  }
+}
+
 async function populateKudosModal() {
   const recipSelect = document.getElementById("kudos-recipient");
   if (!recipSelect) return;
@@ -849,7 +891,11 @@ async function populateKudosModal() {
     const otherUsers = (data.users || []).filter(u => currentUser && u.id !== currentUser.id);
     recipSelect.innerHTML = `<option value="">-- Choose Member --</option>` + 
       otherUsers.map(u => `<option value="${u.id}">${u.username}</option>`).join("");
-    populateGroupCheckboxes("kudos-groups-list", "kudos-group");
+    if (!recipSelect.dataset.listenerAttached) {
+      recipSelect.addEventListener("change", updateKudosGroupCheckboxes);
+      recipSelect.dataset.listenerAttached = "true";
+    }
+    updateKudosGroupCheckboxes();
   } catch (err) {}
 }
 
