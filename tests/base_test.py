@@ -85,3 +85,5 @@ class BaseTestCase(unittest.TestCase):
     def get_auth_headers(self, token):
         """Helper to generate auth headers."""
         return {"Authorization": f"Bearer {token}"}
+
+GoodDeedsTestCase = BaseTestCase

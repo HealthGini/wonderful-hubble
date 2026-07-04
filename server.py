@@ -51,7 +51,9 @@ class GoodDeedsServerHandler(BaseHTTPRequestHandler):
             for k, v in headers.items():
                 self.send_header(k, v)
             self.end_headers()
-            self.wfile.write(resp_body.encode("utf-8"))
+            if isinstance(resp_body, str):
+                resp_body = resp_body.encode("utf-8")
+            self.wfile.write(resp_body)
         else:
             if method != "GET":
                 self.send_response(405)

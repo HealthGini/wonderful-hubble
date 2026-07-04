@@ -115,12 +115,17 @@ def init_db():
         url TEXT NOT NULL,
         resource_type TEXT DEFAULT 'URL',
         theme TEXT DEFAULT 'Community Resources',
+        event_date TEXT,
         added_by INTEGER,
         created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
         FOREIGN KEY (group_id) REFERENCES groups(id) ON DELETE CASCADE,
         FOREIGN KEY (added_by) REFERENCES users(id) ON DELETE SET NULL
     )
     """)
+    try:
+        cursor.execute("ALTER TABLE group_resources ADD COLUMN event_date TEXT")
+    except Exception:
+        pass
 
     # 6. Group Messages (Chat Board)
     cursor.execute("""
@@ -146,11 +151,21 @@ def init_db():
         content TEXT NOT NULL,
         theme TEXT, -- For POST
         resource_url TEXT, -- Link/PDF URL for POST
+        post_subtype TEXT,
+        event_date TEXT,
         created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
         FOREIGN KEY (author_id) REFERENCES users(id) ON DELETE CASCADE,
         FOREIGN KEY (recipient_id) REFERENCES users(id) ON DELETE CASCADE
     )
     """)
+    try:
+        cursor.execute("ALTER TABLE feed_items ADD COLUMN post_subtype TEXT")
+    except Exception:
+        pass
+    try:
+        cursor.execute("ALTER TABLE feed_items ADD COLUMN event_date TEXT")
+    except Exception:
+        pass
 
     # 8. Item Groups (Tagging Kudos/Posts to Groups)
     cursor.execute("""
@@ -303,13 +318,13 @@ def seed_data(cursor):
 
     # Primary Feed Items (Kudos & Posts)
     items = [
-        ("KUDOS", 1, 2, None, "Massive thank you to Marcus for organizing our neighborhood food pantry restock! Your dedication brings connection, positivity, and goodness to our block every single day.", None, None),
-        ("POST", 3, None, "Promoting Goodness: Breaking the Cycle of Negativity", "Far too often we are inundated with news of division, stress, and hardship. It makes it easy to forget the intrinsic kindness inside every human being. By choosing to do one good deed today—whether listening to a friend, tutoring a student, or helping a neighbor—we ripple positivity outward. Let's promote goodness and help everyone become the best possible version of themselves.", "Mental Health", "https://example.com/kindness_guide.pdf"),
-        ("KUDOS", 4, 3, None, "Heartfelt kudos to Elena for hosting free weekly mental health listening circles. Your empathy and practical grounding tips have helped people of all ages find peace and resilience!", None, None),
-        ("POST", 1, None, "Free Online Tutoring & Mentorship Fair This Saturday", "Join us this Saturday at 2 PM for our intergenerational skill share! Whether you need academic tutoring, career advice, or want to volunteer your expertise across education and tech, there is a welcoming place for you.", "Events", "https://example.com/mentorship_fair.pdf"),
-        ("POST", 2, None, "How Small Acts of Mutual Aid Transformed Our Neighborhood", "Last month, a few neighbors set up a shared tool library and community pantry. What started as a simple shelf has turned into daily collaboration between college students, busy parents, and retired neighbors. Promote goodness—one good deed at a time!", "Inspiring Stories", "")
+        ("KUDOS", 1, 2, None, "Massive thank you to Marcus for organizing our neighborhood food pantry restock! Your dedication brings connection, positivity, and goodness to our block every single day.", None, None, "GENERAL", None),
+        ("POST", 3, None, "Promoting Goodness: Breaking the Cycle of Negativity", "Far too often we are inundated with news of division, stress, and hardship. It makes it easy to forget the intrinsic kindness inside every human being. By choosing to do one good deed today—whether listening to a friend, tutoring a student, or helping a neighbor—we ripple positivity outward. Let's promote goodness and help everyone become the best possible version of themselves.", "Mental Health", "https://example.com/kindness_guide.pdf", "GENERAL", None),
+        ("KUDOS", 4, 3, None, "Heartfelt kudos to Elena for hosting free weekly mental health listening circles. Your empathy and practical grounding tips have helped people of all ages find peace and resilience!", None, None, "GENERAL", None),
+        ("POST", 1, None, "Free Online Tutoring & Mentorship Fair This Saturday", "Join us this Saturday at 2 PM for our intergenerational skill share! Whether you need academic tutoring, career advice, or want to volunteer your expertise across education and tech, there is a welcoming place for you.", "Educational", "https://example.com/mentorship_fair.pdf", "EVENT", "2026-07-15"),
+        ("POST", 2, None, "How Small Acts of Mutual Aid Transformed Our Neighborhood", "Last month, a few neighbors set up a shared tool library and community pantry. What started as a simple shelf has turned into daily collaboration between college students, busy parents, and retired neighbors. Promote goodness—one good deed at a time!", "Inspiring Story", "", "GENERAL", None)
     ]
-    cursor.executemany("INSERT INTO feed_items (item_type, author_id, recipient_id, title, content, theme, resource_url) VALUES (?, ?, ?, ?, ?, ?, ?)", items)
+    cursor.executemany("INSERT INTO feed_items (item_type, author_id, recipient_id, title, content, theme, resource_url, post_subtype, event_date) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)", items)
 
     # Item Groups Tagging
     item_groups = [

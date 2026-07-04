@@ -4,10 +4,10 @@ const API_BASE = "/api";
 let currentUser = null;
 let currentToken = localStorage.getItem("gd_token") || null;
 
-// Discussion thread state persistence (Req #3)
+// Discussion thread state persistence
 const expandedThreads = new Set();
 
-// Synchronized startup sequence promise (Req #2)
+// Synchronized startup sequence promise
 let sessionPromise = null;
 
 // Feed filters state
@@ -32,8 +32,9 @@ let landingPreviewOffset = 0;
 let landingPreviewHasMore = false;
 let isLoadingMoreLandingPreview = false;
 
-// Wizard temporary draft storage (Feature 21)
+// Wizard temporary draft storage
 let draftPost = null;
+let draftCurateResources = null;
 
 // Active Group Detail State
 let activeGroupId = null;
@@ -42,6 +43,9 @@ let activeGroupData = null;
 // Active Profile User State
 let activeProfileData = null;
 let currentProfileTab = "posts";
+
+// Autocomplete Users Cache
+let allUsersCache = [];
 
 /* ================= INITIALIZATION & ROUTING ================= */
 
@@ -377,13 +381,13 @@ async function logout() {
   navigateTo("/");
 }
 
-/* ================= QUICK NAVIGATION (JOINED GROUPS Req #23) ================= */
+/* ================= QUICK NAVIGATION (JOINED SPACES Req #1) ================= */
 
 async function loadQuickNavGroups() {
   const container = document.getElementById("quick-groups-list");
   if (!container) return;
   if (!currentUser) {
-    container.innerHTML = `<p class="px-4 py-3 text-stone-500 text-sm font-medium">Log in to see your joined groups</p>`;
+    container.innerHTML = `<p class="px-4 py-3 text-slate-500 text-sm font-medium">Log in to see your joined spaces</p>`;
     return;
   }
 
@@ -391,7 +395,7 @@ async function loadQuickNavGroups() {
     const data = await apiFetch("/groups/joined");
     const groups = data.groups || [];
     if (groups.length === 0) {
-      container.innerHTML = `<p class="px-4 py-3 text-stone-500 text-sm font-medium">You haven't joined any groups yet. Explore above!</p>`;
+      container.innerHTML = `<p class="px-4 py-3 text-slate-500 text-sm font-medium">You haven't joined any spaces yet. Explore above!</p>`;
     } else {
       container.innerHTML = groups.map(g => `
         <a href="/#/group/${g.id}" class="flex items-center space-x-3 px-4 py-3 hover:bg-teal-50 transition touch-target border-b border-stone-100 last:border-0">
@@ -518,13 +522,13 @@ function renderFeedCard(item, isProfileView = false) {
         })()}
       </div>
 
-      <!-- Emoji Reactions Bar (Req #4) -->
+      <!-- Emoji Reactions Bar -->
       <div class="flex flex-wrap items-center gap-2 pt-2 border-t border-stone-100">
         <span class="text-xs font-black text-stone-400 uppercase tracking-wider pr-1">Celebrate:</span>
         ${reactionsHtml}
       </div>
 
-      <!-- Comments Stream & Authoring Input (Req #4) -->
+      <!-- Comments Stream & Authoring Input -->
       <div class="bg-stone-100/70 !mt-2 py-1 px-3 sm:py-1.5 sm:px-4 rounded-xl border border-stone-200 space-y-3">
         <button type="button" onclick="toggleCommentsStream(${item.id})" class="w-full flex justify-between items-center text-sm font-black text-stone-500 uppercase tracking-wider hover:text-stone-850 transition touch-target">
           <span class="flex items-center space-x-1.5">
@@ -728,9 +732,10 @@ async function loadMoreFeed() {
 function filterByTheme(th) {
   currentTheme = th;
   document.querySelectorAll(".theme-pill").forEach(el => {
-    if (th !== "" && el.textContent.includes(th)) {
+    const onclickAttr = el.getAttribute("onclick") || "";
+    if (th !== "" && onclickAttr.includes(`'${th}'`)) {
       el.className = "theme-pill px-3.5 py-1.5 rounded-xl font-bold text-sm bg-amber-500 text-white shadow-sm transition touch-target";
-    } else if (th === "" && el.textContent.includes("All Topics")) {
+    } else if (th === "" && onclickAttr.includes("''")) {
       el.className = "theme-pill px-3.5 py-1.5 rounded-xl font-bold text-sm bg-slate-900 text-white transition touch-target shadow-sm";
     } else {
       el.className = "theme-pill px-3.5 py-1.5 rounded-xl font-bold text-sm bg-slate-100 hover:bg-slate-200 text-slate-700 transition touch-target";
@@ -856,11 +861,76 @@ async function loadSingleItemView(id) {
 
 /* ================= CONTENT CREATION WIZARDS ================= */
 
+/* Give Kudos Modal Autocomplete (Req #4) */
+async function populateKudosModal() {
+  const recipInput = document.getElementById("kudos-recipient-input");
+  const recipIdHidden = document.getElementById("kudos-recipient-id");
+  if (recipInput) recipInput.value = "";
+  if (recipIdHidden) recipIdHidden.value = "";
+  const container = document.getElementById("kudos-groups-list");
+  if (container) container.innerHTML = `<p class="text-stone-500 font-medium text-sm p-2">Select a recipient to see shared groups.</p>`;
+
+  try {
+    const data = await apiFetch("/users");
+    allUsersCache = data.users || [];
+  } catch (err) {}
+}
+
+function handleKudosRecipientSearch(query) {
+  const sugBox = document.getElementById("kudos-recipient-suggestions");
+  if (!sugBox) return;
+  const term = query.trim().toLowerCase();
+  if (!term || !allUsersCache.length) {
+    sugBox.classList.add("hidden");
+    return;
+  }
+
+  const matches = allUsersCache.filter(u => 
+    (!currentUser || u.id !== currentUser.id) &&
+    ((u.username && u.username.toLowerCase().includes(term)) ||
+     (u.email && u.email.toLowerCase().includes(term)))
+  ).slice(0, 6);
+
+  if (matches.length === 0) {
+    sugBox.classList.add("hidden");
+    return;
+  }
+
+  sugBox.innerHTML = matches.map(u => `
+    <div onclick="selectKudosRecipient(${u.id}, '${u.username.replace(/'/g, "\\'")}', '${(u.email || '').replace(/'/g, "\\'")}')" class="px-4 py-3 hover:bg-amber-50 cursor-pointer flex items-center space-x-3 transition">
+      <img src="${u.avatar_url}" alt="${u.username}" class="w-8 h-8 rounded-full object-cover border border-slate-200 shrink-0">
+      <div class="truncate text-left flex-1">
+        <strong class="text-sm font-black text-slate-900 block truncate">${u.username}</strong>
+        <span class="text-xs font-semibold text-amber-700 block truncate">${u.email || ''}</span>
+      </div>
+    </div>
+  `).join("");
+  sugBox.classList.remove("hidden");
+}
+
+function selectKudosRecipient(id, username, email) {
+  const recipInput = document.getElementById("kudos-recipient-input");
+  const recipIdHidden = document.getElementById("kudos-recipient-id");
+  const sugBox = document.getElementById("kudos-recipient-suggestions");
+  if (recipInput) recipInput.value = username;
+  if (recipIdHidden) recipIdHidden.value = id;
+  if (sugBox) sugBox.classList.add("hidden");
+  updateKudosGroupCheckboxes();
+}
+
+document.addEventListener("click", e => {
+  const sugBox = document.getElementById("kudos-recipient-suggestions");
+  const input = document.getElementById("kudos-recipient-input");
+  if (sugBox && !sugBox.classList.contains("hidden") && e.target !== input && !sugBox.contains(e.target)) {
+    sugBox.classList.add("hidden");
+  }
+});
+
 async function updateKudosGroupCheckboxes() {
   const container = document.getElementById("kudos-groups-list");
-  const recipSelect = document.getElementById("kudos-recipient");
-  if (!container || !recipSelect) return;
-  const targetId = recipSelect.value;
+  const recipIdHidden = document.getElementById("kudos-recipient-id");
+  if (!container || !recipIdHidden) return;
+  const targetId = recipIdHidden.value;
   if (!targetId) {
     container.innerHTML = `<p class="text-stone-500 font-medium text-sm p-2">Select a recipient to see shared groups.</p>`;
     return;
@@ -883,24 +953,59 @@ async function updateKudosGroupCheckboxes() {
   }
 }
 
-async function populateKudosModal() {
-  const recipSelect = document.getElementById("kudos-recipient");
-  if (!recipSelect) return;
+async function handleGiveKudos(e) {
+  e.preventDefault();
+  const recipient_id = parseInt(document.getElementById("kudos-recipient-id").value);
+  const content = document.getElementById("kudos-content").value.trim();
+  const group_ids = Array.from(document.querySelectorAll("#kudos-groups-list input:checked")).map(el => parseInt(el.value));
+
+  if (!recipient_id) {
+    showToast("⚠️ Please select a valid member from the recipient list.");
+    return;
+  }
+
   try {
-    const data = await apiFetch("/users");
-    const otherUsers = (data.users || []).filter(u => currentUser && u.id !== currentUser.id);
-    recipSelect.innerHTML = `<option value="">-- Choose Member --</option>` + 
-      otherUsers.map(u => `<option value="${u.id}">${u.username}</option>`).join("");
-    if (!recipSelect.dataset.listenerAttached) {
-      recipSelect.addEventListener("change", updateKudosGroupCheckboxes);
-      recipSelect.dataset.listenerAttached = "true";
+    const data = await apiFetch("/kudos", {
+      method: "POST",
+      body: JSON.stringify({ recipient_id, content, group_ids })
+    });
+    closeModal("modal-kudos");
+    document.getElementById("kudos-content").value = "";
+    document.getElementById("kudos-recipient-input").value = "";
+    document.getElementById("kudos-recipient-id").value = "";
+    showToast("🌟 Public Kudos sent & email alert triggered!");
+    if (window.location.hash.includes("/feed") || window.location.hash === "#/") loadFeed();
+    else navigateTo("/feed");
+  } catch (err) {
+    showToast("❌ " + err.message);
+  }
+}
+
+/* Create Post Subtype & Event Date Logic (Req #3) */
+function togglePostSubtype(subtype) {
+  const container = document.getElementById("post-event-date-container");
+  const dateInput = document.getElementById("post-event-date");
+  if (!container) return;
+
+  if (subtype === "Community Event") {
+    container.classList.remove("hidden");
+    const today = new Date().toISOString().split("T")[0];
+    if (dateInput) {
+      dateInput.setAttribute("min", today);
+      if (!dateInput.value) dateInput.value = today;
     }
-    updateKudosGroupCheckboxes();
-  } catch (err) {}
+  } else {
+    container.classList.add("hidden");
+  }
 }
 
 async function populatePostModal() {
   populateGroupCheckboxes("post-groups-list", "post-group");
+  const defaultSubtypeRadio = document.querySelector("input[name='post-subtype'][value='General Post']");
+  if (defaultSubtypeRadio) {
+    defaultSubtypeRadio.checked = true;
+    togglePostSubtype("General Post");
+  }
 }
 
 async function populateGroupCheckboxes(containerId, inputName) {
@@ -917,40 +1022,27 @@ async function populateGroupCheckboxes(containerId, inputName) {
   } catch (err) {}
 }
 
-async function handleGiveKudos(e) {
-  e.preventDefault();
-  const recipient_id = parseInt(document.getElementById("kudos-recipient").value);
-  const content = document.getElementById("kudos-content").value.trim();
-  const group_ids = Array.from(document.querySelectorAll("#kudos-groups-list input:checked")).map(el => parseInt(el.value));
-
-  try {
-    const data = await apiFetch("/kudos", {
-      method: "POST",
-      body: JSON.stringify({ recipient_id, content, group_ids })
-    });
-    closeModal("modal-kudos");
-    document.getElementById("kudos-content").value = "";
-    showToast("🌟 Public Kudos sent & email alert triggered!");
-    if (window.location.hash.includes("/feed") || window.location.hash === "#/") loadFeed();
-    else navigateTo("/feed");
-  } catch (err) {
-    showToast("❌ " + err.message);
-  }
-}
-
 async function reviewPostStep(e) {
   if (e) e.preventDefault();
   const title = document.getElementById("post-input-title").value.trim();
   const theme = document.getElementById("post-input-theme").value;
-  const content = document.getElementById("post-input-content").value.trim();
-  const linkInputs = document.querySelectorAll(".post-link-input");
-  const fileInput = document.getElementById("post-file-input");
-  const group_ids = Array.from(document.querySelectorAll("#post-groups-list input:checked")).map(el => parseInt(el.value));
+  let content = document.getElementById("post-input-content").value.trim();
+  const subtypeRadio = document.querySelector("input[name='post-subtype']:checked");
+  const subtype = subtypeRadio ? subtypeRadio.value : "General Post";
+  const eventDate = document.getElementById("post-event-date") ? document.getElementById("post-event-date").value : "";
 
   if (!title || !content) {
     showToast("Please provide both a title and description/story content.");
     return;
   }
+
+  if (subtype === "Community Event" && eventDate) {
+    content = `📅 Event Date: ${eventDate}\n\n${content}`;
+  }
+
+  const linkInputs = document.querySelectorAll(".post-link-input");
+  const fileInput = document.getElementById("post-file-input");
+  const group_ids = Array.from(document.querySelectorAll("#post-groups-list input:checked")).map(el => parseInt(el.value));
 
   const attachments = [];
   linkInputs.forEach(inp => {
@@ -981,7 +1073,10 @@ async function reviewPostStep(e) {
   const previewBox = document.getElementById("post-preview-card");
   previewBox.innerHTML = `
     <div class="font-extrabold text-2xl text-slate-900 tracking-tight">${title}</div>
-    <div class="flex gap-2 pt-1"><span class="px-3 py-1 bg-indigo-50 text-indigo-700 border border-indigo-200 rounded-full text-xs font-bold">🏷️ ${theme}</span></div>
+    <div class="flex flex-wrap gap-2 pt-1">
+      <span class="px-3 py-1 bg-indigo-50 text-indigo-700 border border-indigo-200 rounded-full text-xs font-bold">🏷️ ${theme}</span>
+      <span class="px-3 py-1 bg-emerald-50 text-emerald-800 border border-emerald-200 rounded-full text-xs font-bold">${subtype === "Community Event" ? "📅 Event" : subtype === "Community Resource" ? "📚 Resource" : "📝 Post"}</span>
+    </div>
     <p class="text-base text-slate-700 pt-3 whitespace-pre-line font-medium leading-relaxed">${content}</p>
     ${attachments.length > 0 ? `<div class="pt-3 font-bold text-indigo-600 text-sm">📎 ${attachments.length} Link(s) / File(s) Attached</div>` : ""}
   `;
@@ -1039,6 +1134,140 @@ async function confirmPublishPost() {
   } catch (err) {
     showToast("❌ " + err.message);
   }
+}
+
+/* Add Space Resources 2-Step Wizard (Req #5) */
+function toggleCurateSubtype(subtype) {
+  const container = document.getElementById("curate-event-date-container");
+  const dateInput = document.getElementById("curate-event-date");
+  if (!container) return;
+
+  if (subtype === "Community Event") {
+    container.classList.remove("hidden");
+    const today = new Date().toISOString().split("T")[0];
+    if (dateInput) {
+      dateInput.setAttribute("min", today);
+      if (!dateInput.value) dateInput.value = today;
+    }
+  } else {
+    container.classList.add("hidden");
+  }
+}
+
+async function reviewCurateStep(e) {
+  if (e) e.preventDefault();
+  const title = document.getElementById("curate-title").value.trim();
+  let desc = document.getElementById("curate-desc").value.trim();
+  const theme = document.getElementById("res-theme").value;
+  const subtypeRadio = document.querySelector("input[name='curate-subtype']:checked");
+  const subtype = subtypeRadio ? subtypeRadio.value : "General Post";
+  const eventDate = document.getElementById("curate-event-date") ? document.getElementById("curate-event-date").value : "";
+
+  if (!title || !desc) {
+    showToast("Please provide both a title and description.");
+    return;
+  }
+
+  if (subtype === "Community Event" && eventDate) {
+    desc = `📅 Event Date: ${eventDate}\n\n${desc}`;
+  }
+
+  const linkInputs = document.querySelectorAll(".curate-link-input");
+  const fileInput = document.getElementById("curate-file-input");
+
+  const resources = [];
+  linkInputs.forEach((inp, idx) => {
+    const u = inp.value.trim();
+    if (u) {
+      resources.push({
+        title: linkInputs.length > 1 ? `${title} (Link ${idx+1})` : title,
+        description: desc,
+        url: u,
+        resource_type: "URL",
+        theme: theme
+      });
+    }
+  });
+
+  const files = fileInput && fileInput.files ? Array.from(fileInput.files) : [];
+  for (const file of files) {
+    try {
+      const dataUrl = await new Promise((resolve, reject) => {
+        const reader = new FileReader();
+        reader.onload = () => resolve(reader.result);
+        reader.onerror = () => reject("");
+        reader.readAsDataURL(file);
+      });
+      if (dataUrl) {
+        resources.push({
+          title: file.name,
+          description: desc ? `${file.name} - ${desc}` : file.name,
+          url: dataUrl,
+          resource_type: file.name.toLowerCase().endsWith(".pdf") ? "PDF" : "FILE",
+          theme: theme
+        });
+      }
+    } catch(err) {}
+  }
+
+  if (resources.length === 0) {
+    showToast("Please add at least one web link or select a file to upload.");
+    return;
+  }
+
+  draftCurateResources = resources;
+
+  document.getElementById("curate-step-1").classList.add("hidden");
+  document.getElementById("curate-step-2").classList.remove("hidden");
+
+  const previewBox = document.getElementById("curate-preview-card");
+  previewBox.innerHTML = `
+    <div class="font-extrabold text-2xl text-slate-900 tracking-tight">${title}</div>
+    <div class="flex flex-wrap gap-2 pt-1">
+      <span class="px-3 py-1 bg-indigo-50 text-indigo-700 border border-indigo-200 rounded-full text-xs font-bold">🏷️ ${theme}</span>
+      <span class="px-3 py-1 bg-emerald-50 text-emerald-800 border border-emerald-200 rounded-full text-xs font-bold">${subtype === "Community Event" ? "📅 Event" : subtype === "Community Resource" ? "📚 Resource" : "📝 Post"}</span>
+    </div>
+    <p class="text-base text-slate-700 pt-3 whitespace-pre-line font-medium leading-relaxed">${desc}</p>
+    <div class="pt-3 font-bold text-indigo-600 text-sm">📎 ${resources.length} Resource Item(s) Ready to Add</div>
+  `;
+}
+
+function backToCurateStep1() {
+  document.getElementById("curate-step-1").classList.remove("hidden");
+  document.getElementById("curate-step-2").classList.add("hidden");
+}
+
+async function confirmSubmitCurateResources() {
+  if (!draftCurateResources || !activeGroupId) return;
+  try {
+    await apiFetch(`/groups/${activeGroupId}/resources`, {
+      method: "POST",
+      body: JSON.stringify({ resources: draftCurateResources })
+    });
+    showToast(`✅ Successfully attached ${draftCurateResources.length} resource(s) to space library!`);
+
+    draftCurateResources = null;
+    document.getElementById("curate-title").value = "";
+    document.getElementById("curate-desc").value = "";
+    document.querySelectorAll(".curate-link-input").forEach((inp, idx) => {
+      if (idx === 0) inp.value = "";
+      else inp.closest(".flex").remove();
+    });
+    const fileInput = document.getElementById("curate-file-input");
+    if (fileInput) fileInput.value = "";
+    const preview = document.getElementById("curate-files-preview");
+    if (preview) preview.innerHTML = "";
+
+    backToCurateStep1();
+    await loadGroupDetail(activeGroupId);
+    switchGroupTab("resources");
+  } catch (err) {
+    showToast("❌ " + (err.message || "Upload failed."));
+  }
+}
+
+async function submitBatchGroupResources(e) {
+  reviewCurateStep(e);
 }
 
 /* ================= REACTIONS & COMMENTS ACTIONS ================= */
@@ -1104,7 +1333,7 @@ async function handleCommentSubmit(e, itemId) {
 async function loadGroups(searchQuery = "") {
   const container = document.getElementById("groups-grid");
   if (!container) return;
-  container.innerHTML = `<p class="text-stone-500 font-bold text-xl col-span-3 text-center py-12">Loading centers...</p>`;
+  container.innerHTML = `<p class="text-stone-500 font-bold text-xl col-span-3 text-center py-12">Loading spaces...</p>`;
 
   const themeFilter = document.getElementById("group-theme-filter") ? document.getElementById("group-theme-filter").value : "";
 
@@ -1117,7 +1346,7 @@ async function loadGroups(searchQuery = "") {
     const groups = data.groups || [];
 
     if (groups.length === 0) {
-      container.innerHTML = `<p class="text-stone-500 font-bold text-xl col-span-3 text-center py-12">No community groups match your filters.</p>`;
+      container.innerHTML = `<p class="text-stone-500 font-bold text-xl col-span-3 text-center py-12">No community spaces match your filters.</p>`;
       return;
     }
 
@@ -1139,7 +1368,7 @@ async function loadGroups(searchQuery = "") {
 
         <div class="pt-2 flex items-center justify-between gap-3">
           <a href="/#/group/${g.id}" class="flex-1 py-3.5 bg-teal-800 hover:bg-teal-900 text-white font-black text-center rounded-xl shadow transition touch-target block">
-            Enter Hub ↗
+            Enter Space ↗
           </a>
           ${g.is_joined ? `
             <span class="px-4 py-3.5 bg-teal-50 text-teal-800 font-black text-xs rounded-xl border border-teal-200 flex items-center">Joined ✅</span>
@@ -1193,7 +1422,7 @@ async function loadGroupDetail(gid) {
         <div class="space-y-2">
           <div class="flex items-center space-x-3">
             <h1 class="text-3xl sm:text-4xl font-black text-stone-900">${activeGroupData.name}</h1>
-            ${isGroupAdmin ? `<span class="px-3 py-1 bg-amber-500 text-white font-black text-xs rounded-full">Group Admin</span>` : isSiteAdmin ? `<span class="px-3 py-1 bg-indigo-600 text-white font-black text-xs rounded-full">Site Admin</span>` : ""}
+            ${isGroupAdmin ? `<span class="px-3 py-1 bg-amber-500 text-white font-black text-xs rounded-full">Space Admin</span>` : isSiteAdmin ? `<span class="px-3 py-1 bg-indigo-600 text-white font-black text-xs rounded-full">Site Admin</span>` : ""}
           </div>
           <p class="text-stone-700 font-medium text-lg max-w-2xl">${activeGroupData.description}</p>
           <div class="flex flex-wrap gap-2 pt-1">
@@ -1207,9 +1436,9 @@ async function loadGroupDetail(gid) {
           <button onclick="openModal('modal-login')" class="px-8 py-4 bg-amber-600 hover:bg-amber-700 text-white font-black text-lg rounded-2xl shadow transition touch-target">Log In to Join</button>
         ` : isMember ? `
           <button onclick="openGroupInviteModal()" class="px-6 py-4 bg-indigo-600 hover:bg-indigo-700 text-white font-bold text-base rounded-2xl shadow transition touch-target flex items-center space-x-2"><span>💌</span><span>Invite Others to Join</span></button>
-          <button onclick="toggleGroupMembership(${gid}, 'leave')" class="px-6 py-4 bg-stone-200 hover:bg-red-100 hover:text-red-700 text-stone-700 font-black text-base rounded-2xl transition touch-target">Leave Group</button>
+          <button onclick="toggleGroupMembership(${gid}, 'leave')" class="px-6 py-4 bg-stone-200 hover:bg-red-100 hover:text-red-700 text-stone-700 font-black text-base rounded-2xl transition touch-target">Leave Space</button>
         ` : `
-          <button onclick="toggleGroupMembership(${gid}, 'join')" class="px-8 py-4 bg-teal-800 hover:bg-teal-900 text-white font-black text-xl rounded-2xl shadow-lg transition touch-target">+ Join Group Free</button>
+          <button onclick="toggleGroupMembership(${gid}, 'join')" class="px-8 py-4 bg-teal-800 hover:bg-teal-900 text-white font-black text-xl rounded-2xl shadow-lg transition touch-target">+ Join Space Free</button>
         `}
       </div>
     `;
@@ -1223,7 +1452,7 @@ async function loadGroupDetail(gid) {
 
     switchGroupTab("chat");
   } catch (err) {
-    showToast("Group not found");
+    showToast("Space not found");
     navigateTo("/groups");
   }
 }
@@ -1231,7 +1460,7 @@ async function loadGroupDetail(gid) {
 async function toggleGroupMembership(gid, action) {
   try {
     await apiFetch(`/groups/${gid}/${action}`, { method: "POST" });
-    showToast(action === "join" ? "🎉 You joined this group!" : "You left this group.");
+    showToast(action === "join" ? "🎉 You joined this space!" : "You left this space.");
     await loadQuickNavGroups();
     await loadGroupDetail(gid);
   } catch (err) {
@@ -1308,7 +1537,7 @@ function renderGroupResources() {
   if (!container || !activeGroupData) return;
   const res = activeGroupData.resources || [];
   if (res.length === 0) {
-    container.innerHTML = `<p class="text-stone-400 font-bold col-span-2 text-center py-8 text-lg">No curated resource files added to this group library yet.</p>`;
+    container.innerHTML = `<p class="text-stone-400 font-bold col-span-2 text-center py-8 text-lg">No curated resource files added to this space library yet.</p>`;
     return;
   }
   container.innerHTML = res.map(r => `
@@ -1319,89 +1548,10 @@ function renderGroupResources() {
         <p class="text-xs font-bold text-stone-400">Curated by ${r.added_by_name || "Admin"}</p>
       </div>
       <a href="${r.url}" target="_blank" rel="noopener" class="w-full py-3.5 bg-stone-100 hover:bg-stone-200 text-stone-900 font-black text-center rounded-2xl border-2 border-stone-300 transition block touch-target">
-        ${r.resource_type === "PDF" ? "📄 View PDF Guide Guide ↗" : "🌐 Open Web Link ↗"}
+        ${r.resource_type === "PDF" ? "📄 View PDF Guide ↗" : "🌐 Open Web Link ↗"}
       </a>
     </div>
   `).join("");
-}
-
-async function submitBatchGroupResources(e) {
-  if (e) e.preventDefault();
-  if (!activeGroupId) return;
-
-  const title = document.getElementById("curate-title").value.trim();
-  const desc = document.getElementById("curate-desc").value.trim();
-  const theme = document.getElementById("res-theme").value;
-  const linkInputs = document.querySelectorAll(".curate-link-input");
-  const fileInput = document.getElementById("curate-file-input");
-
-  const resources = [];
-
-  // 1. Process web links
-  linkInputs.forEach((inp, idx) => {
-    const u = inp.value.trim();
-    if (u) {
-      resources.push({
-        title: linkInputs.length > 1 ? `${title} (Link ${idx+1})` : title,
-        description: desc || title,
-        url: u,
-        resource_type: "URL",
-        theme: theme
-      });
-    }
-  });
-
-  // 2. Process attached files via FileReader
-  const files = fileInput && fileInput.files ? Array.from(fileInput.files) : [];
-  for (const file of files) {
-    try {
-      const dataUrl = await new Promise((resolve, reject) => {
-        const reader = new FileReader();
-        reader.onload = () => resolve(reader.result);
-        reader.onerror = () => reject("");
-        reader.readAsDataURL(file);
-      });
-      if (dataUrl) {
-        resources.push({
-          title: file.name,
-          description: desc ? `${file.name} - ${desc}` : file.name,
-          url: dataUrl,
-          resource_type: file.name.toLowerCase().endsWith(".pdf") ? "PDF" : "FILE",
-          theme: theme
-        });
-      }
-    } catch(err) {
-      console.error("Could not read file:", file.name);
-    }
-  }
-
-  if (resources.length === 0) {
-    showToast("Please add at least one web link or select a file to upload.");
-    return;
-  }
-
-  try {
-    const res = await apiFetch(`/groups/${activeGroupId}/resources`, {
-      method: "POST",
-      body: JSON.stringify({ resources: resources })
-    });
-    showToast(`✅ Successfully attached ${resources.length} resource(s) to group library!`);
-    
-    document.getElementById("curate-title").value = "";
-    document.getElementById("curate-desc").value = "";
-    linkInputs.forEach((inp, idx) => {
-      if (idx === 0) inp.value = "";
-      else inp.closest(".flex").remove();
-    });
-    if (fileInput) fileInput.value = "";
-    const preview = document.getElementById("curate-files-preview");
-    if (preview) preview.innerHTML = "";
-
-    await loadGroupDetail(activeGroupId);
-    switchGroupTab("resources");
-  } catch (err) {
-    showToast("❌ " + (err.message || "Upload failed."));
-  }
 }
 
 function addCurateLinkField() {
@@ -1472,7 +1622,7 @@ function renderGroupRoster() {
       <div class="col-span-1 md:col-span-2 pt-8 border-t-4 border-slate-200 mt-6 text-left space-y-4 font-sans">
         <div class="flex flex-wrap items-center justify-between gap-2">
           <div>
-            <h3 class="text-xl font-black text-slate-900 flex items-center space-x-2"><span>💌</span><span>Sent Group Invitations Roster</span></h3>
+            <h3 class="text-xl font-black text-slate-900 flex items-center space-x-2"><span>💌</span><span>Sent Space Invitations Roster</span></h3>
             <p class="text-xs text-slate-500 font-medium">Track everyone invited to join this space and their real-time status.</p>
           </div>
           <span class="text-xs font-black bg-indigo-100 text-indigo-900 px-3.5 py-1 rounded-full border border-indigo-200">${invites.length} Tracked</span>
@@ -1509,7 +1659,8 @@ async function handleCreateGroup(e) {
   const name = document.getElementById("cgrp-name").value.trim();
   const icon_url = document.getElementById("cgrp-icon").value.trim();
   const description = document.getElementById("cgrp-desc").value.trim();
-  const themes = Array.from(document.querySelectorAll("input[name='cgrp-theme']:checked")).map(el => el.value);
+  const themeVal = document.getElementById("cgrp-theme") ? document.getElementById("cgrp-theme").value : "Mental Health";
+  const themes = [themeVal];
 
   try {
     const data = await apiFetch("/groups", {
@@ -1517,7 +1668,7 @@ async function handleCreateGroup(e) {
       body: JSON.stringify({ name, icon_url, description, themes })
     });
     closeModal("modal-create-group");
-    showToast("🎉 Group created successfully!");
+    showToast("🎉 Community Space created successfully!");
     await loadQuickNavGroups();
     navigateTo(`/group/${data.id}`);
   } catch (err) {
@@ -1525,7 +1676,7 @@ async function handleCreateGroup(e) {
   }
 }
 
-/* ================= USER PROFILE & SEGREGATED HISTORY (Req #20 Fix) ================= */
+/* ================= USER PROFILE ================= */
 
 async function loadUserProfile(targetId) {
   try {
@@ -1547,37 +1698,6 @@ async function loadUserProfile(targetId) {
   } catch (err) {
     showToast("❌ Failed to load profile: " + err.message);
     navigateTo("/feed");
-  }
-}
-
-function switchProfileTab(tab) {
-  currentProfileTab = tab;
-  ["posts", "received", "given"].forEach(t => {
-    const btn = document.getElementById(`ptab-${t}`);
-    if (!btn) return;
-    if (t === tab) {
-      btn.className = "ptab-btn px-8 py-4 font-black text-xl border-b-4 border-teal-600 text-teal-800 transition touch-target shrink-0";
-    } else {
-      btn.className = "ptab-btn px-8 py-4 font-black text-xl border-b-4 border-transparent text-stone-500 hover:text-stone-800 transition touch-target shrink-0";
-    }
-  });
-
-  renderProfileTabContent();
-}
-
-function renderProfileTabContent() {
-  const container = document.getElementById("prof-tab-content");
-  if (!container || !activeProfileData) return;
-
-  let items = [];
-  if (currentProfileTab === "posts") items = activeProfileData.authored_posts || [];
-  if (currentProfileTab === "received") items = activeProfileData.received_kudos || [];
-  if (currentProfileTab === "given") items = activeProfileData.given_kudos || [];
-
-  if (items.length === 0) {
-    container.innerHTML = `<p class="text-stone-400 font-bold text-center py-12 text-lg">No ${currentProfileTab} found for this member.</p>`;
-  } else {
-    container.innerHTML = items.map(item => renderFeedCard(item, true)).join("");
   }
 }
 
@@ -1612,7 +1732,7 @@ async function handleProfileUpdate(e) {
   }
 }
 
-/* ================= EMAIL OUTBOX INSPECTOR (Req #19 & #22) ================= */
+/* ================= EMAIL OUTBOX INSPECTOR ================= */
 
 async function loadOutbox() {
   const container = document.getElementById("outbox-list");
@@ -1654,7 +1774,7 @@ async function loadOutbox() {
   } catch (err) {}
 }
 
-/* ================= CUSTOMER SERVICE PORTAL (Req #22) ================= */
+/* ================= CUSTOMER SERVICE PORTAL ================= */
 
 async function handleSupportSubmit(e) {
   e.preventDefault();
@@ -1680,7 +1800,7 @@ async function handleSupportSubmit(e) {
   }
 }
 
-/* ================= GAMIFICATION & MONTHLY SPOTLIGHT Req ================= */
+/* ================= GAMIFICATION & MONTHLY SPOTLIGHT ================= */
 
 async function loadSpotlightView(reqMonth = "June 2026") {
   const kGrid = document.getElementById("spotlight-kudos-grid");
@@ -1688,7 +1808,6 @@ async function loadSpotlightView(reqMonth = "June 2026") {
   const rBox = document.getElementById("spotlight-res-container");
   if (!kGrid || !pGrid || !rBox) return;
 
-  // Update month selector button styles
   document.querySelectorAll(".smonth-btn").forEach(btn => {
     if (btn.textContent.includes(reqMonth.split(" ")[0])) {
       btn.className = "smonth-btn px-4 py-2 rounded-xl font-bold text-sm bg-amber-500 text-white shadow-sm transition touch-target";
@@ -1771,16 +1890,7 @@ async function loadSpotlightView(reqMonth = "June 2026") {
   }
 }
 
-function cheerSpotlightChampions() {
-  showToast("🎉🎊 🥳 Sending a massive community cheer to June's top contributors!");
-  const popup = document.getElementById("toast-popup");
-  if (popup) {
-    popup.classList.add("scale-110", "bg-amber-600");
-    setTimeout(() => popup.classList.remove("scale-110", "bg-amber-600"), 1500);
-  }
-}
-
-/* ================= GROUP MEMBERS INVITATION (Req) ================= */
+/* ================= GROUP MEMBERS INVITATION ================= */
 
 let allCommunityMembersCache = null;
 
@@ -1823,7 +1933,7 @@ function handleInviteAutocomplete(query) {
   }
 
   sugBox.innerHTML = matches.map(u => `
-    <div onclick="selectInviteMember('${u.email || u.username}')" class="px-4 py-3 hover:bg-indigo-50/80 cursor-pointer flex items-center space-x-3 transition">
+    <div onclick="selectInviteMember('${(u.email || u.username).replace(/'/g, "\\'")}')" class="px-4 py-3 hover:bg-indigo-50/80 cursor-pointer flex items-center space-x-3 transition">
       <img src="${u.avatar_url}" alt="${u.username}" class="w-8 h-8 rounded-full object-cover border border-slate-200 shrink-0">
       <div class="truncate text-left flex-1">
         <strong class="text-sm font-black text-slate-900 block truncate">${u.username}</strong>
@@ -1844,14 +1954,6 @@ function selectInviteMember(selectedEmailOrName) {
   if (sugBox) sugBox.classList.add("hidden");
   input.focus();
 }
-
-document.addEventListener("click", e => {
-  const sugBox = document.getElementById("ginvite-suggestions");
-  const input = document.getElementById("ginvite-email");
-  if (sugBox && !sugBox.classList.contains("hidden") && e.target !== input && !sugBox.contains(e.target)) {
-    sugBox.classList.add("hidden");
-  }
-});
 
 async function handleGroupInviteSubmit(e) {
   e.preventDefault();
@@ -1884,11 +1986,6 @@ async function handleGroupInviteSubmit(e) {
     }
     renderGroupRoster();
     showToast("✅ " + (data.message || "Invitation sent successfully!"));
-    setTimeout(() => {
-      if (confirm("Invitation sent successfully! Would you like to inspect the simulated invitation email in the Email Outbox Audit Log?")) {
-        navigateTo("/outbox");
-      }
-    }, 300);
   } catch (err) {
     if (submitBtn) { submitBtn.disabled = false; submitBtn.textContent = origText; }
     showToast("❌ " + err.message);
@@ -1916,7 +2013,7 @@ async function checkPendingInvitations() {
     banner.innerHTML = `
       <div class="bg-gradient-to-r from-amber-500 via-yellow-500 to-amber-600 p-6 sm:p-8 rounded-3xl text-white shadow-xl space-y-4 border-4 border-amber-200 mb-2 text-left animate-fadeIn">
         <div class="flex items-center justify-between border-b border-white/30 pb-3">
-          <span class="font-black text-xs sm:text-sm uppercase tracking-wider bg-white/25 backdrop-blur px-3.5 py-1.5 rounded-full shadow-sm">💌 You Have Pending Group Invitations!</span>
+          <span class="font-black text-xs sm:text-sm uppercase tracking-wider bg-white/25 backdrop-blur px-3.5 py-1.5 rounded-full shadow-sm">💌 You Have Pending Space Invitations!</span>
           <span class="text-xs font-extrabold bg-slate-900 px-3 py-1 rounded-full text-amber-300">${invites.length} Waiting</span>
         </div>
         <div class="space-y-3 pt-1">
@@ -1986,7 +2083,7 @@ async function toggleMemberRole(gid, uid, isAdmin) {
       method: "POST",
       body: JSON.stringify({ group_id: gid, user_id: uid, is_admin: isAdmin })
     });
-    showToast(isAdmin ? "✅ User promoted to group admin!" : "ℹ️ User demoted from group admin.");
+    showToast(isAdmin ? "✅ User promoted to space admin!" : "ℹ️ User demoted from space admin.");
     await loadGroupDetail(gid);
     switchGroupTab("roster");
   } catch (err) {
@@ -2009,3 +2106,17 @@ window.navigateTo = navigateTo;
 window.openModal = openModal;
 window.closeModal = closeModal;
 window.switchModal = switchModal;
+window.handleKudosRecipientSearch = handleKudosRecipientSearch;
+window.selectKudosRecipient = selectKudosRecipient;
+window.togglePostSubtype = togglePostSubtype;
+window.toggleCurateSubtype = toggleCurateSubtype;
+window.reviewPostStep = reviewPostStep;
+window.backToPostStep1 = backToPostStep1;
+window.confirmPublishPost = confirmPublishPost;
+window.reviewCurateStep = reviewCurateStep;
+window.backToCurateStep1 = backToCurateStep1;
+window.confirmSubmitCurateResources = confirmSubmitCurateResources;
+window.addCurateLinkField = addCurateLinkField;
+window.handleCurateFilesSelect = handleCurateFilesSelect;
+window.handleInviteAutocomplete = handleInviteAutocomplete;
+window.selectInviteMember = selectInviteMember;

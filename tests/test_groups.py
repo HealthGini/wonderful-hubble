@@ -106,12 +106,46 @@ class TestGroups(BaseTestCase):
         resources = body.get("resources", [])
         self.assertEqual(len(resources), 3)
         added_res = next(r for r in resources if r["url"] == resource_data["url"])
-        self.assertEqual(added_res["title"], resource_data["title"])
+        self.assertEqual(added_res["description"], resource_data["title"])
 
         # Verify in group details
         status, _, body = self.make_request("GET", "/api/groups/1", headers=headers)
         group_resources = body["group"]["resources"]
         self.assertTrue(any(r["title"] == resource_data["title"] for r in group_resources))
+
+    def test_curate_resource_batch_2step_flow(self):
+        """Tests 2-step batch curation of resources by group admin."""
+        token = self.get_token("elena@gooddeeds.space")
+        headers = self.get_auth_headers(token)
+
+        batch_payload = {
+            "resources": [
+                {
+                    "title": "Community Events Calendar Guide",
+                    "description": "Community Events Calendar Guide",
+                    "url": "https://events.community.org/calendar",
+                    "resource_type": "URL",
+                    "theme": "Events"
+                },
+                {
+                    "title": "Resource Handbook PDF",
+                    "description": "Resource Handbook PDF",
+                    "url": "data:application/pdf;base64,JVBERi0xLjQK...",
+                    "resource_type": "PDF",
+                    "theme": "Community Resources"
+                }
+            ]
+        }
+
+        status, _, body = self.make_request("POST", "/api/groups/1/resources", headers=headers, body=batch_payload)
+        self.assertEqual(status, 201)
+        self.assertTrue(body["success"])
+
+        # Verify resources added
+        status, _, body = self.make_request("GET", "/api/groups/1/resources", headers=headers)
+        resources = body.get("resources", [])
+        self.assertTrue(any(r["description"] == "Community Events Calendar Guide" and r["theme"] == "Events" for r in resources))
+        self.assertTrue(any(r["description"] == "Resource Handbook PDF" and r["theme"] == "Community Resources" for r in resources))
 
     def test_curate_resource_non_admin_forbidden(self):
         """Tests that a non-admin cannot curate resources."""

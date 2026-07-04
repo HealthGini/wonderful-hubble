@@ -52,7 +52,7 @@ def json_response(data, status=200):
 
 def error_response(msg, status=400):
     """Helper to generate an error JSON response tuple."""
-    return json_response({"error": msg}, status)
+    return json_response({"success": False, "error": msg}, status)
 
 def send_real_or_simulated_email(recipient_email, subject, text_body, html_body=None):
     """
@@ -60,15 +60,6 @@ def send_real_or_simulated_email(recipient_email, subject, text_body, html_body=
     
     Always records the transmission in the SQLite email_outbox table for verification
     and audit purposes (accessible via /api/outbox).
-    
-    Args:
-        recipient_email: Recipient's email address.
-        subject: Email subject.
-        text_body: Plain text body.
-        html_body: Optional HTML body.
-        
-    Returns:
-        bool: True if sent via live SMTP, False if logged only (or on error).
     """
     smtp_host = os.environ.get("SMTP_HOST")
     smtp_port = int(os.environ.get("SMTP_PORT", 587))
@@ -79,7 +70,6 @@ def send_real_or_simulated_email(recipient_email, subject, text_body, html_body=
 
     delivery_status = "LOGGED_ONLY"
 
-    # Attempt live SMTP sending if SMTP environment credentials are set
     if smtp_host and smtp_user and smtp_pass:
         try:
             msg = MIMEMultipart("alternative")
@@ -116,17 +106,6 @@ def send_real_or_simulated_email(recipient_email, subject, text_body, html_body=
 def enrich_items_list(raw_items, user_id=None):
     """
     Enriches a list of raw feed items with groups, reactions, and comments.
-    
-    Also calculates a '_score' for each item used in smart sorting:
-    _score = (100 if user_has_joined_any_group_tagged_to_item else 0) + total_reactions
-    
-    Args:
-        raw_items: List of dictionaries representing raw feed items.
-        user_id: Optional ID of the currently logged-in user to check group membership
-                 and user-specific reactions.
-                 
-    Returns:
-        list: Enriched list of feed items.
     """
     conn = get_db()
     cursor = conn.cursor()
@@ -178,15 +157,6 @@ def fetch_enriched_items(where_clause, params, user_id=None, sort_mode="smart"):
     """
     Fetches feed items from the database based on a WHERE clause, enriches them,
     and sorts them according to the selected mode.
-    
-    Args:
-        where_clause: SQL WHERE clause string.
-        params: Tuple of parameters for the SQL query.
-        user_id: Optional ID of the currently logged-in user.
-        sort_mode: 'smart' (default) or 'recent'.
-        
-    Returns:
-        list: Sorted and enriched feed items.
     """
     conn = get_db()
     cursor = conn.cursor()
@@ -211,21 +181,6 @@ def fetch_enriched_items(where_clause, params, user_id=None, sort_mode="smart"):
 
 # ================== MAIN API DISPATCHER ==================
 def handle_api_request(method, path, headers, body_bytes):
-    """
-    Main entry point for routing and handling API requests.
-    
-    Parses the path and query parameters, decodes the request body,
-    authenticates the user, and dispatches to the appropriate handler block.
-    
-    Args:
-        method: HTTP method (GET, POST, PUT, DELETE).
-        path: Full request path including query string.
-        headers: Request headers.
-        body_bytes: Raw request body bytes.
-        
-    Returns:
-        tuple: (status_code, headers_dict, response_body_string)
-    """
     parsed = urlparse(path)
     path_only = parsed.path
     if len(path_only) > 1:
@@ -393,21 +348,6 @@ def handle_api_request(method, path, headers, body_bytes):
 
     # ================== GAMIFICATION / MONTHLY HALL OF FAME ==================
     if path_only in ("/api/spotlight", "/api/gamification", "/api/halloffame") and method == "GET":
-        """
-        Handles the Monthly Hall of Fame Spotlight aggregation.
-        
-        Aggregates data for three categories:
-        1. Top Kudos Champions: Users receiving the most Kudos.
-        2. Top Post Creators: Users with the most likes (reactions) on their posts.
-        3. Valuable Resources: Curated resources grouped by category and sorted by saves.
-        
-        Supports a 'month' query parameter to rotate the standings using offsets
-        and simulated multipliers to make the standings dynamic for past months:
-        - June 2026: Offset 0
-        - May 2026: Offset 1
-        - April 2026: Offset 2
-        - March 2026: Offset 3
-        """
         req_month = query.get("month", ["June 2026"])[0].strip()
         offset = 0
         if "May" in req_month: offset = 1
@@ -429,7 +369,6 @@ def handle_api_request(method, path, headers, body_bytes):
             LIMIT 4
         """)
         raw_kudos = [dict(row) for row in cursor.fetchall()]
-        # Rotate standings based on month offset to simulate historical changes
         if raw_kudos and offset > 0:
             raw_kudos = raw_kudos[offset % len(raw_kudos):] + raw_kudos[:offset % len(raw_kudos)]
 
@@ -437,7 +376,6 @@ def handle_api_request(method, path, headers, body_bytes):
         mult_k = [14, 11, 9, 7]
         mult_r = [86, 72, 64, 52]
         for idx, d in enumerate(raw_kudos):
-            # Apply multipliers and offsets to simulate high-volume community engagement
             d["kudos_count"] = d["base_kudos"] + mult_k[idx % len(mult_k)] + (offset * 3)
             d["total_reactions"] = d["base_reactions"] + mult_r[idx % len(mult_r)] + (offset * 10)
             top_kudos.append(d)
@@ -454,7 +392,6 @@ def handle_api_request(method, path, headers, body_bytes):
             LIMIT 4
         """)
         raw_posts = [dict(row) for row in cursor.fetchall()]
-        # Rotate standings based on month offset
         if raw_posts and offset > 0:
             raw_posts = raw_posts[offset % len(raw_posts):] + raw_posts[:offset % len(raw_posts)]
 
@@ -462,7 +399,6 @@ def handle_api_request(method, path, headers, body_bytes):
         mult_l = [142, 118, 96, 74]
         mult_p = [8, 6, 5, 4]
         for idx, d in enumerate(raw_posts):
-            # Apply multipliers and offsets
             d["total_likes"] = d["base_likes"] + mult_l[idx % len(mult_l)] + (offset * 12)
             d["post_count"] = d["base_posts"] + mult_p[idx % len(mult_p)]
             top_posts.append(d)
@@ -480,13 +416,11 @@ def handle_api_request(method, path, headers, body_bytes):
         for idx, row in enumerate(cursor.fetchall()):
             res = dict(row)
             th = res.get("theme") or "Community Resources"
-            # Assign saves count based on value map and offset
             res["saves"] = val_map[(idx + offset) % len(val_map)]
             if th not in valuable_res:
                 valuable_res[th] = []
             valuable_res[th].append(res)
 
-        # Sort within each category by saves descending
         for th in valuable_res:
             valuable_res[th].sort(key=lambda x: x["saves"], reverse=True)
 
@@ -656,16 +590,30 @@ def handle_api_request(method, path, headers, body_bytes):
         content = body.get("content", "").strip()
         resource_url = body.get("resource_url", "").strip()
         group_ids = body.get("group_ids", [])
+        post_subtype = body.get("post_subtype", "").strip().upper()
+        event_date = body.get("event_date", "").strip()
+
+        VALID_THEMES = {"Inspiring Story", "Mental Health", "Wellness", "Mindfulness", "Spiritual", "Suicide Prevention", "Educational", "Community Service", "Events", "Resources", "Inspiring Stories", "Education", "Community Services", "Community Resources", "Inspiring Stories & Wisdom", "Mental Health & Peer Listening", "Education & Skill Building", "Community Services & Mutual Aid", "Upcoming Community Events", "General Community Resources"}
 
         if not title or not theme or not content:
             return error_response("Title, theme, and content are required.")
 
+        if theme not in VALID_THEMES:
+            return error_response(f"Invalid theme: {theme}", 400)
+
+        if post_subtype == "EVENT":
+            if not event_date:
+                return error_response("Event date is required for Community Events.", 400)
+            today_str = datetime.date.today().isoformat()
+            if event_date < today_str:
+                return error_response("Event date cannot be in the past.", 400)
+
         conn = get_db()
         cursor = conn.cursor()
         cursor.execute("""
-            INSERT INTO feed_items (item_type, author_id, title, theme, content, resource_url)
-            VALUES ('POST', ?, ?, ?, ?, ?)
-        """, (user["id"], title, theme, content, resource_url))
+            INSERT INTO feed_items (item_type, author_id, title, theme, content, resource_url, post_subtype, event_date)
+            VALUES ('POST', ?, ?, ?, ?, ?, ?, ?)
+        """, (user["id"], title, theme, content, resource_url, post_subtype, event_date))
         post_id = cursor.lastrowid
 
         for gid in group_ids:
@@ -850,7 +798,6 @@ def handle_api_request(method, path, headers, body_bytes):
             conn.close()
             return error_response("Group not found", 404)
 
-        # Check if sub-resource requested: /api/groups/<id>/resources|messages|chat|members|roster
         subres = parts[4] if len(parts) > 4 else None
 
         if subres == "resources":
@@ -893,7 +840,6 @@ def handle_api_request(method, path, headers, body_bytes):
             conn.close()
             return json_response({"members": rows, "roster": rows})
 
-        # Base group metadata view
         g_data = dict(g_row)
         try:
             g_data["themes"] = json.loads(g_data["themes"]) if g_data["themes"] else []
@@ -949,7 +895,7 @@ def handle_api_request(method, path, headers, body_bytes):
         conn.close()
         return json_response({"group": g_data})
 
-    # UPDATE GROUP MEMBER ROLE (PROMOTE / DEMOTE ADMIN)
+    # UPDATE GROUP MEMBER ROLE
     if (path_only == "/api/admin/moderation/group-member-role" or (path_only.startswith("/api/groups/") and path_only.endswith("/members/role"))) and method == "POST":
         if not user:
             return error_response("Login required", 401)
@@ -979,7 +925,6 @@ def handle_api_request(method, path, headers, body_bytes):
         conn = get_db()
         cursor = conn.cursor()
 
-        # Authorization check: site super admin (is_site_admin == 1) OR group admin for specific group
         is_super_admin = (user.get("is_site_admin") == 1)
         is_group_admin = False
 
@@ -993,13 +938,11 @@ def handle_api_request(method, path, headers, body_bytes):
             conn.close()
             return error_response("Forbidden: Requires site super admin or group admin status.", 403)
 
-        # Check target user exists
         cursor.execute("SELECT id FROM users WHERE id = ?", (target_uid,))
         if not cursor.fetchone():
             conn.close()
             return error_response("Target user not found.", 404)
 
-        # Update or insert into group_members
         cursor.execute("SELECT * FROM group_members WHERE group_id = ? AND user_id = ?", (gid, target_uid))
         member_row = cursor.fetchone()
         if member_row:
@@ -1110,7 +1053,7 @@ def handle_api_request(method, path, headers, body_bytes):
         conn.close()
         return json_response({"invitations": rows, "success": True})
 
-    # RESPOND TO GROUP INVITATION (ACCEPT / REJECT)
+    # RESPOND TO GROUP INVITATION
     if (path_only.startswith("/api/invitations/") or path_only.startswith("/api/groups/invitations/")) and path_only.endswith("/respond") and method == "POST":
         if not user:
             return error_response("Login required", 401)
@@ -1152,22 +1095,21 @@ def handle_api_request(method, path, headers, body_bytes):
 
         conn = get_db()
         cursor = conn.cursor()
-        # Admin Constraint Check: Verify user is an admin of the target group
         cursor.execute("SELECT is_admin FROM group_members WHERE group_id = ? AND user_id = ?", (gid, user["id"]))
         admin_row = cursor.fetchone()
         if not admin_row or admin_row["is_admin"] != 1:
             conn.close()
             return error_response("Only group Admins can curate resources for this group.", 403)
 
-        # Support batch list of multiple resources OR single object
         resources_list = body.get("resources", [])
         if not resources_list:
             desc = body.get("description", "").strip() or body.get("title", "").strip()
             url = body.get("url", "").strip()
             rtype = body.get("resource_type", "URL").strip()
             rtheme = body.get("theme", "Community Resources").strip()
+            edate = (body.get("event_date") or "").strip() or None
             if desc and url:
-                resources_list = [{"description": desc, "url": url, "resource_type": rtype, "theme": rtheme}]
+                resources_list = [{"description": desc, "url": url, "resource_type": rtype, "theme": rtheme, "event_date": edate}]
 
         if not resources_list:
             conn.close()
@@ -1179,9 +1121,10 @@ def handle_api_request(method, path, headers, body_bytes):
             url = item.get("url", "").strip()
             rtype = item.get("resource_type", "URL").strip()
             rtheme = item.get("theme", "Community Resources").strip()
+            edate = (item.get("event_date") or "").strip() or None
             if desc and url:
-                cursor.execute("INSERT INTO group_resources (group_id, title, url, resource_type, theme, added_by) VALUES (?, ?, ?, ?, ?, ?)",
-                               (gid, desc, url, rtype, rtheme, user["id"]))
+                cursor.execute("INSERT INTO group_resources (group_id, title, url, resource_type, theme, event_date, added_by) VALUES (?, ?, ?, ?, ?, ?, ?)",
+                               (gid, desc, url, rtype, rtheme, edate, user["id"]))
                 inserted_count += 1
 
         conn.commit()

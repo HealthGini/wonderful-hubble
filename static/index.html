@@ -34,7 +34,7 @@
     <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
       <div class="flex justify-between items-center min-h-[80px] py-2 gap-4">
         
-        <!-- Logo (Mirrors user screenshot: GoodDeeds in mint green, s p a c e in blue underneath) -->
+        <!-- Logo -->
         <a href="/#/" class="flex flex-col justify-center py-1 px-2 rounded-xl touch-target shrink-0 transition hover:opacity-90 select-none leading-none">
           <span class="text-2xl sm:text-3xl font-extrabold tracking-tight text-emerald-400 font-sans">GoodDeeds</span>
           <span class="text-xs sm:text-sm font-bold tracking-[0.45em] text-blue-400 pl-0.5 pt-1 lowercase">space</span>
@@ -42,20 +42,20 @@
 
         <!-- Navigation Links -->
         <nav class="hidden lg:flex items-center space-x-1.5" aria-label="Main Navigation">
-          <!-- Unified Groups Dropdown -->
+          <!-- Unified Spaces Dropdown -->
           <div class="relative group" id="quick-nav-container">
             <button type="button" class="px-4 py-2 rounded-xl font-bold text-sm text-slate-700 hover:bg-slate-100 hover:text-indigo-600 transition flex items-center space-x-1.5" aria-haspopup="true" aria-expanded="false">
-              <span>👥 Groups</span>
+              <span>👥 Spaces</span>
               <span aria-hidden="true" class="text-[10px] text-slate-400">▼</span>
             </button>
             
             <div class="absolute left-0 mt-1 w-72 bg-white border border-slate-200/80 rounded-2xl shadow-xl hidden group-hover:block z-50 py-2 animate-fadeIn">
               <a href="/#/groups" class="block px-4 py-2.5 text-sm font-bold text-indigo-600 hover:bg-indigo-50/70 transition flex items-center space-x-2">
-                <span>🌐</span><span>Browse Groups & Create New →</span>
+                <span>🌐</span><span>Browse Spaces & Create New →</span>
               </a>
-              <div class="px-4 py-1.5 mt-1 text-[11px] font-extrabold tracking-wider text-slate-400 border-t border-slate-100 uppercase">My Joined Groups</div>
+              <div class="px-4 py-1.5 mt-1 text-[11px] font-extrabold tracking-wider text-slate-400 border-t border-slate-100 uppercase">My Joined Spaces</div>
               <div id="quick-groups-list" class="max-h-64 overflow-y-auto">
-                <p class="px-4 py-3 text-slate-500 text-sm font-medium">Log in to see your joined groups</p>
+                <p class="px-4 py-3 text-slate-500 text-sm font-medium">Log in to see your joined spaces</p>
               </div>
             </div>
           </div>
@@ -80,10 +80,10 @@
           <!-- Logged In User Controls -->
           <div id="nav-auth-user" class="hidden flex items-center space-x-2.5">
             
-            <!-- Consolidated Kudos Hub Dropdown -->
+            <!-- Consolidated Kudos Dropdown -->
             <div class="relative group" id="kudos-hub-container">
               <button type="button" class="px-4 py-2.5 rounded-xl font-bold text-sm bg-amber-500 text-white hover:bg-amber-600 shadow-md shadow-amber-500/20 transition flex items-center space-x-1.5" aria-haspopup="true" aria-expanded="false">
-                <span>🌟 Kudos Hub</span>
+                <span>🌟 Kudos</span>
                 <span aria-hidden="true" class="text-[10px] text-amber-200">▼</span>
               </button>
               
@@ -101,10 +101,10 @@
               </div>
             </div>
 
-            <!-- Consolidated Posts Hub Dropdown -->
+            <!-- Consolidated Posts Dropdown -->
             <div class="relative group" id="posts-hub-container">
               <button type="button" class="px-4 py-2.5 rounded-xl font-bold text-sm bg-indigo-600 text-white hover:bg-indigo-700 shadow-md shadow-indigo-600/20 transition flex items-center space-x-1.5" aria-haspopup="true" aria-expanded="false">
-                <span>📝 Posts Hub</span>
+                <span>📝 Posts</span>
                 <span aria-hidden="true" class="text-[10px] text-indigo-200">▼</span>
               </button>
               
@@ -156,7 +156,6 @@
           </div>
         </div>
 
-        <!-- Modern Dynamic Glassmorphism Community Ripple Card (Replaces static grey box) -->
         <div class="bg-white/10 p-8 rounded-3xl border border-white/20 backdrop-blur-2xl max-w-md w-full shadow-2xl relative z-10 space-y-6">
           <div class="flex items-center justify-between border-b border-white/15 pb-4">
             <div class="flex items-center space-x-2.5">
@@ -213,38 +212,36 @@
           <!-- Keyword Search -->
           <div class="relative flex-1">
             <span class="absolute inset-y-0 left-0 pl-4 flex items-center pointer-events-none text-slate-400 text-lg" aria-hidden="true">🔍</span>
-            <input type="search" id="feed-search-input" placeholder="Search stories by title, content, theme, or keyword..." class="w-full pl-11 pr-4 py-3 rounded-xl border border-slate-300 font-medium text-sm bg-slate-50 focus:bg-white focus:border-indigo-600 transition">
+            <input type="search" id="feed-search-input" placeholder="Search Kudos, Posts, Events and Resources..." class="w-full pl-11 pr-4 py-3 rounded-xl border border-slate-300 font-medium text-sm bg-slate-50 focus:bg-white focus:border-indigo-600 transition">
           </div>
 
           <!-- Group Filter Dropdown -->
           <select id="feed-group-select" onchange="filterByGroup(this.value)" class="px-4 py-3 rounded-xl border border-slate-300 font-bold text-sm bg-white focus:border-indigo-600 cursor-pointer touch-target">
-            <option value="">All Groups</option>
+            <option value="">All Spaces</option>
           </select>
 
-          <!-- Item Type Filter (Req: Filter only Kudos vs Posts) -->
+          <!-- Item Type Filter -->
           <select id="feed-type-select" onchange="filterByType(this.value)" class="px-4 py-3 rounded-xl border border-slate-300 font-bold text-sm bg-white focus:border-indigo-600 cursor-pointer touch-target">
             <option value="">All Kudos and Posts</option>
             <option value="KUDOS">Kudos Only</option>
             <option value="POST">Posts Only</option>
           </select>
-
-          <!-- Sorting Selector -->
-          <select id="feed-sort-select" onchange="changeSortMode(this.value)" class="px-4 py-3 rounded-xl border border-slate-300 font-bold text-sm bg-white focus:border-indigo-600 cursor-pointer touch-target">
-            <option value="smart">⭐ By Relevance</option>
-            <option value="newest">⏱️ Newest First</option>
-          </select>
         </div>
 
-        <!-- Theme Filter Pills -->
-        <div class="flex flex-wrap items-center gap-2 pt-2" role="group" aria-label="Theme Filter">
+        <!-- Theme Filter Pills Bar (11 Topic Pills) -->
+        <div id="theme-pills-bar" class="flex flex-wrap items-center gap-2 pt-2" role="group" aria-label="Theme Filter">
           <span class="text-xs font-bold text-slate-400 uppercase tracking-wider pr-1">Filter Topic:</span>
           <button onclick="filterByTheme('')" class="theme-pill px-3.5 py-1.5 rounded-xl font-bold text-sm bg-slate-900 text-white transition touch-target shadow-sm">All Topics</button>
+          <button onclick="filterByTheme('Inspiring Story')" class="theme-pill px-3.5 py-1.5 rounded-xl font-bold text-sm bg-slate-100 hover:bg-slate-200 text-slate-700 transition touch-target">✨ Inspiring Story</button>
           <button onclick="filterByTheme('Mental Health')" class="theme-pill px-3.5 py-1.5 rounded-xl font-bold text-sm bg-slate-100 hover:bg-slate-200 text-slate-700 transition touch-target">🌱 Mental Health</button>
-          <button onclick="filterByTheme('Education')" class="theme-pill px-3.5 py-1.5 rounded-xl font-bold text-sm bg-slate-100 hover:bg-slate-200 text-slate-700 transition touch-target">🎓 Education</button>
-          <button onclick="filterByTheme('Community Services')" class="theme-pill px-3.5 py-1.5 rounded-xl font-bold text-sm bg-slate-100 hover:bg-slate-200 text-slate-700 transition touch-target">🤝 Community Services</button>
-          <button onclick="filterByTheme('Inspiring Stories')" class="theme-pill px-3.5 py-1.5 rounded-xl font-bold text-sm bg-slate-100 hover:bg-slate-200 text-slate-700 transition touch-target">✨ Inspiring Stories</button>
+          <button onclick="filterByTheme('Wellness')" class="theme-pill px-3.5 py-1.5 rounded-xl font-bold text-sm bg-slate-100 hover:bg-slate-200 text-slate-700 transition touch-target">🌿 Wellness</button>
+          <button onclick="filterByTheme('Mindfulness')" class="theme-pill px-3.5 py-1.5 rounded-xl font-bold text-sm bg-slate-100 hover:bg-slate-200 text-slate-700 transition touch-target">🧘 Mindfulness</button>
+          <button onclick="filterByTheme('Spiritual')" class="theme-pill px-3.5 py-1.5 rounded-xl font-bold text-sm bg-slate-100 hover:bg-slate-200 text-slate-700 transition touch-target">🕊️ Spiritual</button>
+          <button onclick="filterByTheme('Suicide Prevention')" class="theme-pill px-3.5 py-1.5 rounded-xl font-bold text-sm bg-slate-100 hover:bg-slate-200 text-slate-700 transition touch-target">🛡️ Suicide Prevention</button>
+          <button onclick="filterByTheme('Educational')" class="theme-pill px-3.5 py-1.5 rounded-xl font-bold text-sm bg-slate-100 hover:bg-slate-200 text-slate-700 transition touch-target">🎓 Educational</button>
+          <button onclick="filterByTheme('Community Service')" class="theme-pill px-3.5 py-1.5 rounded-xl font-bold text-sm bg-slate-100 hover:bg-slate-200 text-slate-700 transition touch-target">🤝 Community Service</button>
           <button onclick="filterByTheme('Events')" class="theme-pill px-3.5 py-1.5 rounded-xl font-bold text-sm bg-slate-100 hover:bg-slate-200 text-slate-700 transition touch-target">📅 Events</button>
-          <button onclick="filterByTheme('Community Resources')" class="theme-pill px-3.5 py-1.5 rounded-xl font-bold text-sm bg-slate-100 hover:bg-slate-200 text-slate-700 transition touch-target">📎 Resources</button>
+          <button onclick="filterByTheme('Resources')" class="theme-pill px-3.5 py-1.5 rounded-xl font-bold text-sm bg-slate-100 hover:bg-slate-200 text-slate-700 transition touch-target">📎 Resources</button>
         </div>
       </div>
 
@@ -253,12 +250,12 @@
         <p class="text-center font-bold text-xl text-stone-500 py-12">Loading feed...</p>
       </div>
 
-      <!-- Load More / Caught Up Stream Footer -->
+      <!-- Load More Footer -->
       <div id="feed-load-more-container" class="pt-6 text-center">
       </div>
     </section>
 
-    <!-- ================== VIEW 3: SINGLE ITEM DEDICATED VIEW ================== -->
+    <!-- ================== VIEW 3: SINGLE ITEM VIEW ================== -->
     <section id="view-single-item" class="hidden max-w-4xl mx-auto space-y-6">
       <button onclick="navigateTo('/feed')" class="px-6 py-3 rounded-xl bg-stone-200 hover:bg-stone-300 font-black text-lg transition inline-flex items-center space-x-2 touch-target">
         <span>← Return to Community Feed</span>
@@ -268,29 +265,28 @@
       </div>
     </section>
 
-    <!-- ================== VIEW 4: GROUPS DIRECTORY ================== -->
+    <!-- ================== VIEW 4: SPACES DIRECTORY ================== -->
     <section id="view-groups" class="hidden space-y-8">
       <div class="bg-white p-6 sm:p-8 rounded-3xl border-2 border-stone-200 shadow-sm flex flex-col md:flex-row justify-between items-start md:items-center gap-6">
         <div>
-          <h1 class="text-3xl sm:text-4xl font-black text-stone-900">Community Groups</h1>
+          <h1 class="text-3xl sm:text-4xl font-black text-stone-900">Community Spaces</h1>
           <p class="text-stone-600 font-medium text-lg pt-1">Collaborate across areas of interest, join discussions, and explore curated resource libraries.</p>
         </div>
         <button onclick="openModal('modal-create-group')" class="px-8 py-4 rounded-2xl font-black text-lg bg-teal-800 text-white hover:bg-teal-900 shadow transition touch-target shrink-0">
-          + Create New Group
+          + Create New Space
         </button>
       </div>
 
-      <!-- Search & Theme Filter Bar (Req #13) -->
+      <!-- Search & Theme Filter Bar -->
       <div class="flex flex-col sm:flex-row gap-4 bg-stone-100 p-4 rounded-2xl border border-stone-200">
-        <input type="search" id="group-search-input" placeholder="Search groups by name or description..." class="flex-1 px-4 py-3.5 rounded-xl border-2 border-stone-300 font-bold text-base bg-white">
+        <input type="search" id="group-search-input" placeholder="Search spaces by name or description..." class="flex-1 px-4 py-3.5 rounded-xl border-2 border-stone-300 font-bold text-base bg-white">
         <select id="group-theme-filter" onchange="filterGroupsTheme(this.value)" class="px-5 py-3.5 rounded-xl border-2 border-stone-300 font-black text-base bg-white cursor-pointer touch-target">
-          <option value="">All Group Themes</option>
+          <option value="">All Space Themes</option>
           <option value="Mental Health">Mental Health</option>
+          <option value="Wellness">Wellness</option>
+          <option value="Spiritual">Spiritual</option>
           <option value="Education">Education</option>
-          <option value="Community Services">Community Services</option>
-          <option value="Events">Events</option>
-          <option value="Community Resources">Community Resources</option>
-          <option value="Inspiring Stories">Inspiring Stories</option>
+          <option value="Community Service">Community Service</option>
         </select>
       </div>
 
@@ -299,17 +295,16 @@
       </div>
     </section>
 
-    <!-- ================== VIEW 5: GROUP DETAIL PAGE ================== -->
+    <!-- ================== VIEW 5: SPACE DETAIL PAGE ================== -->
     <section id="view-group-detail" class="hidden space-y-8">
       <button onclick="navigateTo('/groups')" class="px-6 py-3 rounded-xl bg-stone-200 hover:bg-stone-300 font-black text-base transition inline-flex items-center touch-target">
-        ← Back to All Groups
+        ← Back to All Spaces
       </button>
       
       <div id="group-detail-header" class="bg-white p-8 sm:p-10 rounded-3xl border-2 border-stone-200 shadow-sm flex flex-col md:flex-row items-start md:items-center justify-between gap-6">
-        <!-- Renders dynamically -->
       </div>
 
-      <!-- Navigation Tabs (Chat Board vs Curated Resources vs Roster) -->
+      <!-- Navigation Tabs -->
       <div class="flex border-b-2 border-stone-200 gap-2 overflow-x-auto" role="tablist">
         <button onclick="switchGroupTab('chat')" id="gtab-chat" class="gtab-btn px-8 py-4 font-black text-xl border-b-4 border-amber-600 text-amber-800 transition touch-target shrink-0">
           💬 Common Chat Board
@@ -318,7 +313,7 @@
           📚 Curated Resources
         </button>
         <button onclick="switchGroupTab('roster')" id="gtab-roster" class="gtab-btn px-8 py-4 font-black text-xl border-b-4 border-transparent text-stone-500 hover:text-stone-800 transition touch-target shrink-0">
-          👥 Public Member Roster
+          👥 Members List
         </button>
       </div>
 
@@ -336,47 +331,76 @@
         <div id="group-chat-list" class="space-y-3"></div>
       </div>
 
-      <!-- Tab Content 2: Curated Resources (Req #9) -->
+      <!-- Tab Content 2: Curated Resources -->
       <div id="gcontent-resources" class="hidden space-y-6">
         <div id="admin-curate-box" class="hidden max-w-2xl mx-auto bg-white p-8 sm:p-12 rounded-3xl border border-slate-200 shadow-xl space-y-8 animate-fadeIn">
           <div class="text-center space-y-1.5 border-b border-slate-100 pb-5">
-            <h3 class="text-3xl font-extrabold text-slate-800 tracking-tight">Add Group Resources</h3>
-            <p class="text-slate-500 font-medium text-sm">Curate helpful web links and downloadable files for your group members.</p>
+            <h3 class="text-3xl font-extrabold text-slate-800 tracking-tight">Add Space Resources</h3>
+            <p class="text-slate-500 font-medium text-sm">Publish public announcements, inspiring experiences, and community guides for your space members.</p>
           </div>
 
-          <form onsubmit="submitBatchGroupResources(event)" class="space-y-6">
-            <!-- Field 1: Title / Description -->
+          <!-- STEP 1: Authoring Form -->
+          <div id="curate-step-1" class="space-y-6">
+            <!-- Field 1: Title -->
             <div>
-              <label class="block font-bold text-slate-700 text-sm mb-1.5">Title <span class="text-slate-400 font-normal text-xs">*(Acts as resource description)*</span> <span class="text-red-500">*</span></label>
-              <input type="text" id="curate-title" required placeholder="e.g. Comprehensive Mutual Aid & Wellness Handbook" class="w-full px-4 py-3 rounded-xl border border-slate-300 font-semibold text-base bg-slate-50 focus:bg-white focus:border-indigo-600 transition">
+              <label class="block font-bold text-slate-700 text-sm mb-1.5">Title <span class="text-red-500">*</span></label>
+              <input type="text" id="curate-title" required placeholder="e.g. Free Senior Tutoring & Mentorship Workshop" class="w-full px-4 py-3 rounded-xl border border-slate-300 font-semibold text-base bg-slate-50 focus:bg-white focus:border-indigo-600 transition">
             </div>
 
-            <!-- Field 2: Description -->
+            <!-- Field 2: Description / Story -->
             <div>
-              <label class="block font-bold text-slate-700 text-sm mb-1.5">Description <span class="text-slate-400 font-normal text-xs">*(Detailed overview)*</span></label>
-              <textarea id="curate-desc" rows="3" placeholder="Provide additional details about what this resource contains..." class="w-full px-4 py-3 rounded-xl border border-slate-300 font-medium text-sm bg-slate-50 focus:bg-white focus:border-indigo-600 transition"></textarea>
+              <label class="block font-bold text-slate-700 text-sm mb-1.5">Description <span class="text-slate-400 font-normal text-xs">*(Your story or announcement)*</span> <span class="text-red-500">*</span></label>
+              <textarea id="curate-desc" required rows="4" placeholder="Share your experience, wisdom, or detailed announcements..." class="w-full px-4 py-3 rounded-xl border border-slate-300 font-medium text-base bg-slate-50 focus:bg-white focus:border-indigo-600 transition"></textarea>
             </div>
 
-            <!-- Field 3: Category Theme Purpose -->
+            <!-- Subtype Radio Buttons -->
             <div>
-              <label class="block font-bold text-slate-700 text-sm mb-1">Category Theme Selection Purpose <span class="text-red-500">*</span></label>
-              <p class="text-xs text-slate-400 font-medium mb-2">Explicitly categorizes these resources to help group members search, filter, and discover them.</p>
-              <select id="res-theme" required class="w-full px-4 py-3 rounded-xl border border-slate-300 font-bold text-base bg-white focus:border-indigo-600 transition cursor-pointer touch-target">
-                <option value="Community Resources">📎 General Community Resources (Guides, manuals & directories)</option>
-                <option value="Mental Health">🌱 Mental Health & Wellness (Support articles & audio tools)</option>
-                <option value="Education">🎓 Education & Skill Building (Tutoring & learning materials)</option>
-                <option value="Community Services">🤝 Community Services (Mutual aid networks & food pantries)</option>
-                <option value="Events">📅 Upcoming Events (Schedules, flyers & meetup details)</option>
-                <option value="Inspiring Stories">✨ Inspiring Stories & Member Wisdom</option>
+              <label class="block font-bold text-slate-700 text-sm mb-1">Post Subtype <span class="text-red-500">*</span></label>
+              <div class="flex flex-wrap gap-4 pt-1 pb-2">
+                <label class="inline-flex items-center space-x-2 cursor-pointer font-bold text-sm text-slate-700">
+                  <input type="radio" name="curate_subtype" value="GENERAL" checked onchange="toggleCurateEventDateVisibility()" class="w-4 h-4 text-indigo-600 focus:ring-indigo-500">
+                  <span>General Post</span>
+                </label>
+                <label class="inline-flex items-center space-x-2 cursor-pointer font-bold text-sm text-slate-700">
+                  <input type="radio" name="curate_subtype" value="EVENT" onchange="toggleCurateEventDateVisibility()" class="w-4 h-4 text-indigo-600 focus:ring-indigo-500">
+                  <span>📅 Community Event</span>
+                </label>
+                <label class="inline-flex items-center space-x-2 cursor-pointer font-bold text-sm text-slate-700">
+                  <input type="radio" name="curate_subtype" value="RESOURCE" onchange="toggleCurateEventDateVisibility()" class="w-4 h-4 text-indigo-600 focus:ring-indigo-500">
+                  <span>📚 Community Resource</span>
+                </label>
+              </div>
+            </div>
+
+            <!-- Event Date Picker (Shown only when Community Event selected) -->
+            <div id="curate-event-date-container" class="hidden animate-fadeIn">
+              <label class="block font-bold text-slate-700 text-sm mb-1">Event Date <span class="text-red-500">*</span></label>
+              <p class="text-xs text-slate-400 font-medium mb-1.5">Scheduled future date when this community event will take place.</p>
+              <input type="date" id="curate-event-date" class="w-full px-4 py-3 rounded-xl border border-slate-300 font-bold text-base bg-white focus:border-indigo-600 transition cursor-pointer">
+            </div>
+
+            <!-- Field 3: Theme -->
+            <div>
+              <label class="block font-bold text-slate-700 text-sm mb-1">Choose a Theme <span class="text-red-500">*</span></label>
+              <p class="text-xs text-slate-400 font-medium mb-2">Explicitly categorizes this post to help space members search, filter, and discover it.</p>
+              <select id="res-theme" required onchange="handleCurateThemeChange(this.value)" class="w-full px-4 py-3 rounded-xl border border-slate-300 font-bold text-base bg-white focus:border-indigo-600 transition cursor-pointer touch-target">
+                <option value="Inspiring Story">✨ Inspiring Story</option>
+                <option value="Mental Health">🌱 Mental Health</option>
+                <option value="Wellness">🌿 Wellness</option>
+                <option value="Mindfulness">🧘 Mindfulness</option>
+                <option value="Spiritual">🕊️ Spiritual</option>
+                <option value="Suicide Prevention">🛡️ Suicide Prevention</option>
+                <option value="Educational">🎓 Educational</option>
+                <option value="Community Service">🤝 Community Service</option>
               </select>
             </div>
 
             <!-- Field 4: Links (Multi-URL List) -->
             <div class="space-y-3">
-              <label class="block font-bold text-slate-700 text-sm">Links <span class="text-slate-400 font-normal text-xs">*(Add one or more web URLs)*</span></label>
+              <label class="block font-bold text-slate-700 text-sm">Links <span class="text-slate-400 font-normal text-xs">*(Attach one or more web URLs)*</span></label>
               <div id="curate-links-list" class="space-y-2.5">
                 <div class="flex gap-2">
-                  <input type="url" placeholder="https://example.com/useful-article" class="curate-link-input flex-1 px-4 py-3 rounded-xl border border-slate-300 font-medium text-sm bg-slate-50 focus:bg-white focus:border-indigo-600 transition">
+                  <input type="url" placeholder="https://example.com/resource-link" class="curate-link-input flex-1 px-4 py-3 rounded-xl border border-slate-300 font-medium text-sm bg-slate-50 focus:bg-white focus:border-indigo-600 transition">
                 </div>
               </div>
               <button type="button" onclick="addCurateLinkField()" class="px-4 py-2 bg-indigo-50 hover:bg-indigo-100 text-indigo-700 font-bold text-xs rounded-lg transition flex items-center space-x-1">
@@ -386,36 +410,60 @@
 
             <!-- Field 5: File Uploads -->
             <div class="space-y-3">
-              <label class="block font-bold text-slate-700 text-sm">File <span class="text-slate-400 font-normal text-xs">*(Upload PDFs, guides or images)*</span></label>
+              <label class="block font-bold text-slate-700 text-sm">Files <span class="text-slate-400 font-normal text-xs">*(Attach downloadable guides, flyers, or images)*</span></label>
               <div class="border-2 border-dashed border-slate-300 hover:border-indigo-500 rounded-2xl p-6 bg-slate-50 transition text-center cursor-pointer relative">
                 <input type="file" id="curate-file-input" multiple onchange="handleCurateFilesSelect(event)" class="absolute inset-0 opacity-0 cursor-pointer w-full h-full">
                 <div class="space-y-1 pointer-events-none">
                   <span class="text-2xl block">📁</span>
                   <span class="font-bold text-sm text-slate-700">Choose Files or Drag & Drop Here</span>
-                  <span class="text-xs text-slate-400 block font-medium">Supports PDF, DOCX, TXT, PNG, JPG (Multiple files allowed)</span>
+                  <span class="text-xs text-slate-400 block font-medium">Supports PDF, DOCX, PNG, JPG (Multiple files allowed)</span>
                 </div>
               </div>
               <div id="curate-files-preview" class="space-y-2 pt-1"></div>
             </div>
 
-            <!-- Field 6: Submit Button -->
             <div class="pt-4 text-center">
-              <button type="submit" class="w-full sm:w-auto min-w-[240px] px-8 py-3.5 bg-indigo-600 hover:bg-indigo-700 text-white font-extrabold text-lg rounded-xl shadow-lg shadow-indigo-600/25 transition touch-target">
-                Create
+              <button type="button" onclick="reviewCurateStep(event)" class="w-full sm:w-auto min-w-[280px] px-8 py-3.5 bg-indigo-600 hover:bg-indigo-700 text-white font-extrabold text-lg rounded-xl shadow-lg shadow-indigo-600/25 transition touch-target">
+                Preview & Verify Before Publishing →
               </button>
             </div>
-          </form>
+          </div>
+
+          <!-- STEP 2: Review / Confirmation Step -->
+          <div id="curate-step-2" class="hidden space-y-6">
+            <div class="bg-amber-50 p-5 rounded-2xl border border-amber-200 space-y-2">
+              <div class="font-black text-amber-950 text-base flex items-center space-x-1.5">
+                <span>⚠️</span><span>Step 2 of 2: Please Review Carefully Before Publishing</span>
+              </div>
+              <p class="text-amber-900/90 text-sm font-medium">
+                To ensure a dignified, reliable community record, posts cannot be edited or deleted once published. Please confirm your details below are correct.
+              </p>
+            </div>
+
+            <div id="curate-preview-card" class="bg-slate-50 p-6 rounded-2xl border border-slate-200 space-y-4 shadow-sm">
+              <!-- Populated dynamically -->
+            </div>
+
+            <div class="flex gap-4">
+              <button type="button" onclick="backToCurateStep1()" class="flex-1 py-3.5 bg-slate-100 hover:bg-slate-200 text-slate-700 font-bold text-base rounded-xl transition touch-target">
+                ← Edit Details
+              </button>
+              <button type="button" onclick="confirmPublishCurateResources()" class="flex-1 py-3.5 bg-indigo-600 hover:bg-indigo-700 text-white font-extrabold text-lg rounded-xl shadow-md shadow-indigo-600/20 transition touch-target">
+                ✅ Confirm & Add Resources ↗
+              </button>
+            </div>
+          </div>
         </div>
         <div id="group-resources-list" class="grid grid-cols-1 md:grid-cols-2 gap-6"></div>
       </div>
 
-      <!-- Tab Content 3: Public Member Roster (Req #17) -->
+      <!-- Tab Content 3: Public Member Roster -->
       <div id="gcontent-roster" class="hidden">
         <div id="group-roster-list" class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-6"></div>
       </div>
     </section>
 
-    <!-- ================== VIEW 6: USER PROFILE PAGE (Req #20 Segregated) ================== -->
+    <!-- ================== VIEW 6: USER PROFILE PAGE ================== -->
     <section id="view-profile" class="hidden space-y-8">
       <div class="bg-white p-8 sm:p-12 rounded-3xl border-2 border-stone-200 shadow-sm flex flex-col md:flex-row items-center justify-between gap-8">
         <div class="flex flex-col sm:flex-row items-center sm:items-start text-center sm:text-left space-y-4 sm:space-y-0 sm:space-x-6">
@@ -433,25 +481,24 @@
         </div>
       </div>
 
-      <!-- Clean Hubs Guidance Card (Replaces legacy profile feeds per user request) -->
       <div class="bg-gradient-to-r from-amber-50 via-slate-50 to-indigo-50 p-8 rounded-3xl border border-slate-200 shadow-sm text-center space-y-4 max-w-3xl mx-auto">
         <div class="text-4xl">🌟 📝</div>
         <h2 class="text-2xl font-black text-slate-900 tracking-tight">Looking for your Kudos or Stories?</h2>
         <p class="text-slate-600 font-medium text-base leading-relaxed">
-          To keep your profile page clean and clutter-free, all gratitude Kudos history and authored community posts are now consolidated directly into the **Kudos Hub** and **Posts Hub** in the top navigation bar!
+          To keep your profile page clean and clutter-free, all gratitude Kudos history and authored community posts are now consolidated directly into **Kudos** and **Posts** in the top navigation bar!
         </p>
         <div class="flex flex-wrap justify-center gap-4 pt-2">
           <button onclick="filterFeedByMyKudos('received')" class="px-6 py-3 bg-amber-500 hover:bg-amber-600 text-white font-bold rounded-xl shadow-sm transition touch-target">
-            🌟 Open Kudos Hub
+            🌟 Open Kudos
           </button>
           <button onclick="filterFeedByMyPosts('authored')" class="px-6 py-3 bg-indigo-600 hover:bg-indigo-700 text-white font-bold rounded-xl shadow-sm transition touch-target">
-            📝 Open Posts Hub
+            📝 Open Posts
           </button>
         </div>
       </div>
     </section>
 
-    <!-- ================== VIEW 7: EMAIL OUTBOX INSPECTOR (Req #19) ================== -->
+    <!-- ================== VIEW 7: EMAIL OUTBOX INSPECTOR ================== -->
     <section id="view-outbox" class="hidden space-y-8">
       <div class="bg-amber-50 p-8 rounded-3xl border-2 border-amber-300 flex flex-col md:flex-row justify-between items-start md:items-center gap-6">
         <div class="space-y-2">
@@ -467,7 +514,7 @@
       <div id="outbox-list" class="space-y-6"></div>
     </section>
 
-    <!-- ================== VIEW 8: INTERACTIVE SOURCE CODE BROWSER ================== -->
+    <!-- ================== VIEW 8: SOURCE CODE BROWSER ================== -->
     <section id="view-code" class="hidden space-y-8">
       <div class="bg-slate-900 text-white p-8 rounded-3xl border border-slate-800 flex flex-col md:flex-row justify-between items-start md:items-center gap-6 shadow-2xl">
         <div class="space-y-2">
@@ -478,7 +525,6 @@
       </div>
 
       <div class="grid grid-cols-1 lg:grid-cols-4 gap-6 items-start">
-        <!-- File Tree Pane -->
         <div class="bg-white p-4 rounded-2xl border border-slate-200 shadow-sm space-y-1 lg:sticky lg:top-24">
           <div class="px-3 py-2 text-xs font-black tracking-wider text-slate-400 uppercase">PROJECT FILES</div>
           <button onclick="browseSourceFile('server.py')" class="cfile-btn w-full text-left px-3.5 py-2.5 rounded-xl font-bold text-sm text-slate-700 hover:bg-slate-100 transition flex items-center space-x-2"><span>🐍</span><span>server.py</span></button>
@@ -489,7 +535,6 @@
           <button onclick="browseSourceFile('static/style.css')" class="cfile-btn w-full text-left px-3.5 py-2.5 rounded-xl font-bold text-sm text-slate-700 hover:bg-slate-100 transition flex items-center space-x-2"><span>🎨</span><span>style.css</span></button>
         </div>
 
-        <!-- Source Code Display Pane -->
         <div class="lg:col-span-3 bg-slate-950 text-emerald-300 p-6 sm:p-8 rounded-2xl border border-slate-800 shadow-2xl overflow-x-auto min-h-[500px]">
           <div class="flex justify-between items-center border-b border-slate-800 pb-4 mb-4 text-slate-400 text-sm font-mono font-bold">
             <span id="code-viewer-title">📄 Select a file to view code</span>
@@ -500,9 +545,8 @@
       </div>
     </section>
 
-    <!-- ================== VIEW 8: GAMIFICATION / MONTHLY HALL OF FAME ================== -->
+    <!-- ================== VIEW 8: MONTHLY HALL OF FAME ================== -->
     <section id="view-spotlight" class="hidden space-y-12 animate-fadeIn max-w-7xl mx-auto">
-      <!-- Hero Banner -->
       <div class="bg-gradient-to-r from-amber-500 via-yellow-500 to-amber-600 rounded-3xl p-8 sm:p-14 text-white shadow-2xl relative overflow-hidden text-center space-y-4">
         <div class="inline-flex items-center space-x-2 px-4 py-1.5 rounded-full bg-white/20 backdrop-blur-md font-extrabold text-xs uppercase tracking-wider shadow-sm">
           <span>👑 Monthly Hall of Fame</span>
@@ -511,7 +555,6 @@
         <p class="text-amber-100 font-medium text-base sm:text-lg max-w-2xl mx-auto">Highlighting our members with the most recognition Kudos, most engaging stories, and most valuable curated resources across topics.</p>
       </div>
 
-      <!-- Archive Month Selector (Req: View previous months winners) -->
       <div class="flex flex-wrap items-center justify-center gap-2.5 py-4 border-b border-slate-200/80">
         <span class="text-xs font-black text-slate-400 uppercase tracking-wider pr-1">Select Archive Month:</span>
         <button onclick="loadSpotlightView('June 2026')" class="smonth-btn px-4 py-2 rounded-xl font-bold text-sm bg-amber-500 text-white shadow-sm transition touch-target">☀️ June 2026 (Active)</button>
@@ -520,7 +563,6 @@
         <button onclick="loadSpotlightView('March 2026')" class="smonth-btn px-4 py-2 rounded-xl font-bold text-sm bg-slate-100 hover:bg-slate-200 text-slate-700 transition touch-target">🗓️ March 2026</button>
       </div>
 
-      <!-- Section 1: Most Recognition Kudos -->
       <div class="space-y-6">
         <div class="flex items-center justify-between border-b border-slate-200 pb-4 text-left">
           <div>
@@ -531,7 +573,6 @@
         <div id="spotlight-kudos-grid" class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-6"></div>
       </div>
 
-      <!-- Section 2: Most Story Likes -->
       <div class="space-y-6">
         <div class="flex items-center justify-between border-b border-slate-200 pb-4 text-left">
           <div>
@@ -542,11 +583,10 @@
         <div id="spotlight-posts-grid" class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-6"></div>
       </div>
 
-      <!-- Section 3: Most Valuable Curated Resources -->
       <div class="space-y-6">
         <div class="flex items-center justify-between border-b border-slate-200 pb-4 text-left">
           <div>
-            <h2 class="text-2xl font-extrabold text-slate-900 tracking-tight flex items-center space-x-2"><span>📚</span><span>Most Valuable Group Resources</span></h2>
+            <h2 class="text-2xl font-extrabold text-slate-900 tracking-tight flex items-center space-x-2"><span>📚</span><span>Most Valuable Space Resources</span></h2>
             <p class="text-slate-500 text-sm font-medium">Essential handbooks, guides, and directories highlighted by community saves.</p>
           </div>
         </div>
@@ -578,11 +618,9 @@
     </div>
   </footer>
 
-  <!-- ====================================================================== -->
   <!-- ======================== INTERACTIVE DIALOGS ========================= -->
-  <!-- ====================================================================== -->
 
-  <!-- MODAL 1: LOG IN (With One-Click Evaluator Demo Presets) -->
+  <!-- MODAL 1: LOG IN -->
   <dialog id="modal-login" class="p-0 rounded-3xl max-w-lg w-full shadow-2xl border-2 border-stone-200 m-auto">
     <div class="p-8 sm:p-10 space-y-6 bg-white">
       <div class="flex justify-between items-center border-b pb-4">
@@ -590,7 +628,6 @@
         <button onclick="closeModal('modal-login')" class="text-stone-400 hover:text-stone-700 text-3xl font-black p-2 touch-target" aria-label="Close modal">×</button>
       </div>
 
-      <!-- Instant Demo Account Selector for Quick Testing -->
       <div class="bg-amber-50 p-4 rounded-2xl border border-amber-200 space-y-2">
         <div class="text-xs font-black text-amber-800 uppercase tracking-wider">⚡ Instant Demo Login (Diverse Members):</div>
         <div class="grid grid-cols-2 sm:grid-cols-4 gap-2">
@@ -678,18 +715,18 @@
       </div>
 
       <form onsubmit="handleGiveKudos(event)" class="space-y-5">
-        <div>
+        <div class="relative">
           <label class="block font-bold text-slate-700 text-sm mb-1">Recipient <span class="text-red-500">*</span></label>
-          <select id="kudos-recipient" required class="w-full px-4 py-3 rounded-xl border border-slate-300 font-semibold text-base bg-white focus:border-indigo-600 transition">
-            <option value="">-- Choose Member --</option>
-          </select>
+          <input type="hidden" id="kudos-recipient-id" required>
+          <input type="text" id="kudos-recipient-input" required autocomplete="off" placeholder="Search member by username or email..." class="w-full px-4 py-3 rounded-xl border border-slate-300 font-semibold text-base bg-slate-50 focus:bg-white focus:border-indigo-600 transition">
+          <div id="kudos-recipient-dropdown" class="absolute left-0 right-0 mt-1 max-h-48 overflow-y-auto bg-white border border-slate-200 rounded-xl shadow-xl hidden z-50 divide-y divide-slate-100"></div>
         </div>
         <div>
           <label class="block font-bold text-slate-700 text-sm mb-1">Gratitude Message <span class="text-red-500">*</span></label>
           <textarea id="kudos-content" required rows="4" placeholder="Thank you so much for lending your support and collaboration..." class="w-full px-4 py-3 rounded-xl border border-slate-300 font-medium text-base bg-slate-50 focus:bg-white focus:border-indigo-600 transition"></textarea>
         </div>
         <div>
-          <label class="block font-bold text-slate-700 text-sm mb-1.5">Tag Associated Spaces / Groups (Optional)</label>
+          <label class="block font-bold text-slate-700 text-sm mb-1.5">Tag Associated Spaces (Optional)</label>
           <div id="kudos-groups-list" class="flex flex-wrap gap-2 max-h-32 overflow-y-auto p-2 bg-slate-50 rounded-xl border border-slate-200"></div>
         </div>
         <div class="pt-2 text-center">
@@ -701,7 +738,7 @@
     </div>
   </dialog>
 
-  <!-- MODAL 4: SHARE POST (2-Step Publish Confirmation & Immutability Req #21) -->
+  <!-- MODAL 4: SHARE POST -->
   <dialog id="modal-post" class="p-0 rounded-3xl max-w-2xl w-full shadow-2xl border border-slate-200 bg-white m-auto">
     <div class="p-8 sm:p-12 space-y-8 bg-white">
       <div class="text-center space-y-1.5 border-b border-slate-100 pb-5 relative">
@@ -710,37 +747,60 @@
         <button onclick="closeModal('modal-post')" class="absolute right-0 top-0 text-slate-400 hover:text-slate-700 text-3xl font-bold p-2 touch-target">×</button>
       </div>
 
-      <!-- STEP 1: Authoring Form -->
       <div id="post-step-1" class="space-y-6">
-        <!-- Field 1: Title -->
         <div>
           <label class="block font-bold text-slate-700 text-sm mb-1.5">Title <span class="text-red-500">*</span></label>
-          <input type="text" id="post-input-title" required placeholder="e.g. Free Online Mental Health Workshop This Saturday" class="w-full px-4 py-3 rounded-xl border border-slate-300 font-semibold text-base bg-slate-50 focus:bg-white focus:border-indigo-600 transition">
+          <input type="text" id="post-input-title" required placeholder="e.g. Free Senior Tutoring & Mentorship Workshop" class="w-full px-4 py-3 rounded-xl border border-slate-300 font-semibold text-base bg-slate-50 focus:bg-white focus:border-indigo-600 transition">
         </div>
 
-        <!-- Field 2: Description / Story -->
         <div>
           <label class="block font-bold text-slate-700 text-sm mb-1.5">Description <span class="text-slate-400 font-normal text-xs">*(Your story or announcement)*</span> <span class="text-red-500">*</span></label>
           <textarea id="post-input-content" required rows="4" placeholder="Share your experience, wisdom, or detailed announcements..." class="w-full px-4 py-3 rounded-xl border border-slate-300 font-medium text-base bg-slate-50 focus:bg-white focus:border-indigo-600 transition"></textarea>
         </div>
 
-        <!-- Field 3: Category Theme Selection Purpose -->
+        <!-- Subtype Radio Buttons -->
         <div>
-          <label class="block font-bold text-slate-700 text-sm mb-1">Category Theme Selection Purpose <span class="text-red-500">*</span></label>
-          <p class="text-xs text-slate-400 font-medium mb-2">Explicitly categorizes this post to help community members search, filter, and discover it.</p>
-          <select id="post-input-theme" required class="w-full px-4 py-3 rounded-xl border border-slate-300 font-bold text-base bg-white focus:border-indigo-600 transition cursor-pointer touch-target">
-            <option value="Inspiring Stories">✨ Inspiring Stories & Wisdom</option>
-            <option value="Mental Health">🌱 Mental Health & Peer Listening</option>
-            <option value="Education">🎓 Education & Skill Building</option>
-            <option value="Community Services">🤝 Community Services & Mutual Aid</option>
-            <option value="Events">📅 Upcoming Community Events</option>
-            <option value="Community Resources">📎 General Community Resources</option>
+          <label class="block font-bold text-slate-700 text-sm mb-1">Post Subtype <span class="text-red-500">*</span></label>
+          <div class="flex flex-wrap gap-4 pt-1 pb-2">
+            <label class="inline-flex items-center space-x-2 cursor-pointer font-bold text-sm text-slate-700">
+              <input type="radio" name="post_subtype" value="GENERAL" checked onchange="togglePostEventDateVisibility()" class="w-4 h-4 text-indigo-600 focus:ring-indigo-500">
+              <span>General Post</span>
+            </label>
+            <label class="inline-flex items-center space-x-2 cursor-pointer font-bold text-sm text-slate-700">
+              <input type="radio" name="post_subtype" value="EVENT" onchange="togglePostEventDateVisibility()" class="w-4 h-4 text-indigo-600 focus:ring-indigo-500">
+              <span>📅 Community Event</span>
+            </label>
+            <label class="inline-flex items-center space-x-2 cursor-pointer font-bold text-sm text-slate-700">
+              <input type="radio" name="post_subtype" value="RESOURCE" onchange="togglePostEventDateVisibility()" class="w-4 h-4 text-indigo-600 focus:ring-indigo-500">
+              <span>📚 Community Resource</span>
+            </label>
+          </div>
+        </div>
+
+        <!-- Event Date Picker (Shown only when Community Event selected) -->
+        <div id="post-event-date-container" class="hidden animate-fadeIn">
+          <label class="block font-bold text-slate-700 text-sm mb-1">Event Date <span class="text-red-500">*</span></label>
+          <p class="text-xs text-slate-400 font-medium mb-1.5">Scheduled future date when this community event will take place.</p>
+          <input type="date" id="post-event-date" class="w-full px-4 py-3 rounded-xl border border-slate-300 font-bold text-base bg-white focus:border-indigo-600 transition cursor-pointer">
+        </div>
+
+        <div>
+          <label class="block font-bold text-slate-700 text-sm mb-1">Choose a Theme <span class="text-red-500">*</span></label>
+          <p class="text-xs text-slate-400 font-medium mb-2">Explicitly categorizes this post to help space members search, filter, and discover it.</p>
+          <select id="post-input-theme" required onchange="handlePostThemeChange(this.value)" class="w-full px-4 py-3 rounded-xl border border-slate-300 font-bold text-base bg-white focus:border-indigo-600 transition cursor-pointer touch-target">
+            <option value="Inspiring Story">✨ Inspiring Story</option>
+            <option value="Mental Health">🌱 Mental Health</option>
+            <option value="Wellness">🌿 Wellness</option>
+            <option value="Mindfulness">🧘 Mindfulness</option>
+            <option value="Spiritual">🕊️ Spiritual</option>
+            <option value="Suicide Prevention">🛡️ Suicide Prevention</option>
+            <option value="Educational">🎓 Educational</option>
+            <option value="Community Service">🤝 Community Service</option>
           </select>
         </div>
 
-        <!-- Field 4: Links (Multi-URL List) -->
         <div class="space-y-3">
-          <label class="block font-bold text-slate-700 text-sm">Links <span class="text-slate-400 font-normal text-xs">*(Attach one or more web URLs)*</span></label>
+          <label class="block font-bold text-slate-700 text-sm">Links</label>
           <div id="post-links-list" class="space-y-2.5">
             <div class="flex gap-2">
               <input type="url" id="post-input-url" placeholder="https://example.com/resource-link" class="post-link-input flex-1 px-4 py-3 rounded-xl border border-slate-300 font-medium text-sm bg-slate-50 focus:bg-white focus:border-indigo-600 transition">
@@ -751,23 +811,20 @@
           </button>
         </div>
 
-        <!-- Field 5: File Uploads -->
         <div class="space-y-3">
-          <label class="block font-bold text-slate-700 text-sm">File <span class="text-slate-400 font-normal text-xs">*(Attach downloadable guides, flyers, or images)*</span></label>
+          <label class="block font-bold text-slate-700 text-sm">File</label>
           <div class="border-2 border-dashed border-slate-300 hover:border-indigo-500 rounded-2xl p-6 bg-slate-50 transition text-center cursor-pointer relative">
             <input type="file" id="post-file-input" multiple onchange="handlePostFilesSelect(event)" class="absolute inset-0 opacity-0 cursor-pointer w-full h-full">
             <div class="space-y-1 pointer-events-none">
               <span class="text-2xl block">📁</span>
               <span class="font-bold text-sm text-slate-700">Choose Files or Drag & Drop Here</span>
-              <span class="text-xs text-slate-400 block font-medium">Supports PDF, DOCX, PNG, JPG (Multiple files allowed)</span>
             </div>
           </div>
           <div id="post-files-preview" class="space-y-2 pt-1"></div>
         </div>
 
-        <!-- Field 6: Tag Associated Spaces -->
         <div>
-          <label class="block font-bold text-slate-700 text-sm mb-1.5">Tag Associated Spaces / Groups (Optional)</label>
+          <label class="block font-bold text-slate-700 text-sm mb-1.5">Tag Associated Spaces (Optional)</label>
           <div id="post-groups-list" class="flex flex-wrap gap-2 max-h-32 overflow-y-auto p-3 bg-slate-50 rounded-xl border border-slate-200"></div>
         </div>
 
@@ -778,7 +835,6 @@
         </div>
       </div>
 
-      <!-- STEP 2: Review / Confirmation Step -->
       <div id="post-step-2" class="hidden space-y-6">
         <div class="bg-amber-50 p-5 rounded-2xl border border-amber-200 space-y-2">
           <div class="font-black text-amber-950 text-base flex items-center space-x-1.5">
@@ -790,7 +846,6 @@
         </div>
 
         <div id="post-preview-card" class="bg-slate-50 p-6 rounded-2xl border border-slate-200 space-y-4 shadow-sm">
-          <!-- Populated dynamically -->
         </div>
 
         <div class="flex gap-4">
@@ -805,38 +860,39 @@
     </div>
   </dialog>
 
-  <!-- MODAL 5: CREATE NEW GROUP -->
+  <!-- MODAL 5: CREATE NEW SPACE -->
   <dialog id="modal-create-group" class="p-0 rounded-3xl max-w-lg w-full shadow-2xl border-2 border-stone-200 m-auto">
     <div class="p-8 sm:p-10 space-y-6 bg-white">
       <div class="flex justify-between items-center border-b pb-4">
-        <h3 class="text-3xl font-black text-stone-900">Create Community Space / Group</h3>
+        <h3 class="text-3xl font-black text-stone-900">Create Community Space</h3>
         <button onclick="closeModal('modal-create-group')" class="text-stone-400 hover:text-stone-700 text-3xl font-black p-2 touch-target">×</button>
       </div>
 
       <form onsubmit="handleCreateGroup(event)" class="space-y-4">
         <div>
-          <label class="block font-black text-stone-700 mb-1">Group Name</label>
+          <label class="block font-black text-stone-700 mb-1">Space Name</label>
           <input type="text" id="cgrp-name" required placeholder="e.g. Mindful Growth & Wellness" class="w-full px-5 py-4 rounded-xl border-2 border-stone-300 font-bold text-lg bg-stone-50">
         </div>
         <div>
-          <label class="block font-black text-stone-700 mb-1">Group Icon Image URL (Optional)</label>
+          <label class="block font-black text-stone-700 mb-1">Space Icon Image URL (Optional)</label>
           <input type="url" id="cgrp-icon" placeholder="https://images.unsplash.com/..." class="w-full px-5 py-3 rounded-xl border-2 border-stone-300 font-semibold text-sm">
         </div>
         <div>
           <label class="block font-black text-stone-700 mb-1">Description & Mission</label>
-          <textarea id="cgrp-desc" required rows="3" placeholder="Explain what collaboration, mutual aid, and companionship this group provides..." class="w-full px-5 py-3 rounded-xl border-2 border-stone-300 font-medium"></textarea>
+          <textarea id="cgrp-desc" required rows="3" placeholder="Explain what collaboration, mutual aid, and companionship this space provides..." class="w-full px-5 py-3 rounded-xl border-2 border-stone-300 font-medium"></textarea>
         </div>
         <div>
-          <label class="block font-black text-stone-700 mb-1 text-sm">Primary Themes</label>
-          <div class="grid grid-cols-2 gap-2 pt-1 font-bold text-sm">
-            <label class="flex items-center space-x-2"><input type="checkbox" name="cgrp-theme" value="Mental Health" checked class="w-4 h-4 text-amber-600"><span>Mental Health</span></label>
-            <label class="flex items-center space-x-2"><input type="checkbox" name="cgrp-theme" value="Education" checked class="w-4 h-4 text-amber-600"><span>Education</span></label>
-            <label class="flex items-center space-x-2"><input type="checkbox" name="cgrp-theme" value="Community Services" checked class="w-4 h-4 text-amber-600"><span>Community Services</span></label>
-            <label class="flex items-center space-x-2"><input type="checkbox" name="cgrp-theme" value="Events" class="w-4 h-4 text-amber-600"><span>Events</span></label>
-          </div>
+          <label class="block font-black text-stone-700 mb-1 text-sm">Primary Theme</label>
+          <select id="cgrp-theme" required class="w-full px-4 py-3 rounded-xl border border-slate-300 font-bold text-base bg-white focus:border-indigo-600 transition cursor-pointer touch-target">
+            <option value="Mental Health">Mental Health</option>
+            <option value="Wellness">Wellness</option>
+            <option value="Spiritual">Spiritual</option>
+            <option value="Education">Education</option>
+            <option value="Community Service">Community Service</option>
+          </select>
         </div>
         <button type="submit" class="w-full py-4 bg-teal-800 hover:bg-teal-900 text-white font-black text-xl rounded-2xl shadow transition touch-target">
-          Launch Community Group ↗
+          Launch Community Space ↗
         </button>
       </form>
     </div>
@@ -870,7 +926,7 @@
     </div>
   </dialog>
 
-  <!-- MODAL 7: CUSTOMER SERVICE PORTAL (Req #22) -->
+  <!-- MODAL 7: CUSTOMER SERVICE PORTAL -->
   <dialog id="modal-support" class="p-0 rounded-3xl max-w-lg w-full shadow-2xl border-2 border-amber-400 m-auto">
     <div class="p-8 sm:p-10 space-y-6 bg-white">
       <div class="flex justify-between items-center border-b pb-4">
@@ -882,13 +938,13 @@
       </div>
 
       <p class="text-stone-600 font-medium text-base">
-        Need assistance navigating gooddeeds.space or connecting with mutual aid networks? Submit an inquiry below. Submitting triggers an auto-response confirmation receipt to your email and logs an alert to <strong>roht_kgupta@yahoo.com</strong>.
+        Need assistance navigating gooddeeds.space or connecting with mutual aid networks? Submit an inquiry below.
       </p>
 
       <form onsubmit="handleSupportSubmit(event)" class="space-y-4">
         <div>
           <label class="block font-black text-stone-700 mb-1">Inquiry Subject</label>
-          <input type="text" id="supp-subject" required placeholder="e.g. Help finding local mutual aid group" class="w-full px-5 py-3.5 rounded-xl border-2 border-stone-300 font-bold bg-stone-50">
+          <input type="text" id="supp-subject" required placeholder="e.g. Help finding local mutual aid space" class="w-full px-5 py-3.5 rounded-xl border-2 border-stone-300 font-bold bg-stone-50">
         </div>
         <div>
           <label class="block font-black text-stone-700 mb-1">Your Question or Request</label>
@@ -901,7 +957,7 @@
     </div>
   </dialog>
 
-  <!-- MODAL 6: TERMS OF SERVICE & COMMUNITY STANDARDS -->
+  <!-- MODAL 8: TERMS OF SERVICE -->
   <dialog id="modal-tos" class="p-0 rounded-3xl max-w-2xl w-full shadow-2xl border border-slate-200 bg-white m-auto">
     <div class="p-8 sm:p-12 space-y-6 bg-white max-h-[85vh] overflow-y-auto text-left">
       <div class="flex justify-between items-center border-b border-slate-100 pb-4 sticky top-0 bg-white z-10">
@@ -920,27 +976,7 @@
 
         <div class="space-y-2">
           <h4 class="font-extrabold text-slate-900 text-base">1. Acceptance of Agreement</h4>
-          <p>By creating a profile, browsing stories, or participating in space chat boards, you agree to abide by these Terms of Service. If you do not agree with our uplifting mission or safety policies, please refrain from using the platform.</p>
-        </div>
-
-        <div class="space-y-2">
-          <h4 class="font-extrabold text-slate-900 text-base">2. Community Code of Conduct & Dignity</h4>
-          <p>We maintain zero tolerance for discrimination, harassment, hate speech, spam, exploitation, or fraudulent solicitation. Whether seeking support in mental health listening circles, offering educational tutoring, or organizing local mutual aid, all interactions must reflect mutual respect, empathy, and dignity.</p>
-        </div>
-
-        <div class="space-y-2">
-          <h4 class="font-extrabold text-slate-900 text-base">3. User Content & Permanent Recognition</h4>
-          <p>You retain ownership of experiences and resources you share. However, to preserve the integrity of community recognition, published celebration Kudos and Posts pass through confirmation steps and become permanent public records of goodness.</p>
-        </div>
-
-        <div class="space-y-2">
-          <h4 class="font-extrabold text-slate-900 text-base">4. Safety & Senior Accessibility</h4>
-          <p>Our pilot community prioritizes accessible, safe spaces for individuals of all ages, including seniors. Users are prohibited from sharing misleading medical advice or exploiting vulnerable members. Account administrators reserve the right to remove non-compliant accounts.</p>
-        </div>
-
-        <div class="space-y-2">
-          <h4 class="font-extrabold text-slate-900 text-base">5. Disclaimer & Support Portal</h4>
-          <p>gooddeeds.space provides peer collaboration "as is" and does not substitute for professional licensed medical, psychiatric, or emergency services. For platform assistance, please use our built-in Contact portal.</p>
+          <p>By creating a profile, browsing stories, or participating in space chat boards, you agree to abide by these Terms of Service.</p>
         </div>
       </div>
 
@@ -952,7 +988,7 @@
     </div>
   </dialog>
 
-  <!-- MODAL: INVITE OTHERS TO JOIN GROUP -->
+  <!-- MODAL: INVITE OTHERS -->
   <dialog id="modal-invite-group" class="p-0 rounded-3xl max-w-lg w-full shadow-2xl border-2 border-slate-200 m-auto">
     <div class="p-8 sm:p-10 space-y-6 bg-white">
       <div class="flex justify-between items-center border-b pb-4">
@@ -964,14 +1000,11 @@
           <label class="block text-sm font-bold text-slate-700 mb-2">Recipient Email Address(es) or Username <span class="text-red-500">*</span></label>
           <input type="text" id="ginvite-email" oninput="handleInviteAutocomplete(this.value)" onfocus="handleInviteAutocomplete(this.value)" placeholder="Type Martha, Arthur, or friend@example.com..." required autocomplete="off" class="w-full px-4 py-3 rounded-xl border-2 border-slate-300 font-medium text-base text-slate-900 focus:border-indigo-600 focus:outline-none transition">
           <div id="ginvite-suggestions" class="absolute left-0 right-0 mt-1 bg-white border-2 border-indigo-200 rounded-2xl shadow-xl max-h-52 overflow-y-auto hidden z-50 divide-y divide-slate-100"></div>
-          <p class="text-xs text-slate-500 mt-1">Separate multiple recipients with commas. Click any suggestion below to pick them!</p>
+          <p class="text-xs text-slate-500 mt-1">Separate multiple recipients with commas.</p>
         </div>
         <div>
           <label class="block text-sm font-bold text-slate-700 mb-2">Personal Message (Optional)</label>
           <textarea id="ginvite-message" rows="3" placeholder="I thought you'd love joining this uplifting community space on gooddeeds.space!" class="w-full px-4 py-3 rounded-xl border-2 border-slate-300 font-medium text-base text-slate-900 focus:border-indigo-600 focus:outline-none"></textarea>
-        </div>
-        <div class="bg-indigo-50 p-4 rounded-2xl border border-indigo-100 text-xs text-slate-700 leading-relaxed">
-          💡 **Note**: Sending this invitation triggers a welcome email containing a direct link to join **<span id="ginvite-group-name" class="font-bold text-indigo-900">this space</span>**, and logs the notification in the simulated Email Outbox!
         </div>
         <div class="flex justify-end space-x-3 pt-3">
           <button type="button" onclick="closeModal('modal-invite-group')" class="px-6 py-3 bg-slate-100 hover:bg-slate-200 text-slate-700 font-bold rounded-xl transition">Cancel</button>

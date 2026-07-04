@@ -1,5 +1,6 @@
 import unittest
 import json
+import datetime
 from base_test import BaseTestCase
 
 class TestPosts(BaseTestCase):
@@ -27,6 +28,64 @@ class TestPosts(BaseTestCase):
         # Verify it was tagged to group 2
         self.assertEqual(len(body["item"]["groups"]), 1)
         self.assertEqual(body["item"]["groups"][0]["id"], 2)
+
+    def test_create_event_post_validation_and_persistence(self):
+        """Tests that EVENT post creation requires a valid future (or today) event_date, stores it in SQLite, and returns it in feed responses."""
+        token = self.get_token("maya@gooddeeds.space")
+        headers = self.get_auth_headers(token)
+
+        # 1. Reject EVENT post missing event_date
+        missing_date_payload = {
+            "title": "Community Park Cleanup",
+            "theme": "Events",
+            "content": "Join us for our weekend cleanup!",
+            "post_subtype": "EVENT"
+        }
+        status, _, body = self.make_request("POST", "/api/posts", headers=headers, body=missing_date_payload)
+        self.assertEqual(status, 400)
+        self.assertIn("event date is required", body["error"].lower())
+
+        # 2. Reject EVENT post with past event_date
+        past_date_payload = {
+            "title": "Community Park Cleanup",
+            "theme": "Events",
+            "content": "Join us for our weekend cleanup!",
+            "post_subtype": "EVENT",
+            "event_date": "2020-01-01"
+        }
+        status, _, body = self.make_request("POST", "/api/posts", headers=headers, body=past_date_payload)
+        self.assertEqual(status, 400)
+        self.assertIn("cannot be in the past", body["error"].lower())
+
+        # 3. Accept EVENT post with valid future event_date
+        future_date = (datetime.date.today() + datetime.timedelta(days=14)).isoformat()
+        valid_event_payload = {
+            "title": "Community Park Cleanup",
+            "theme": "Events",
+            "content": "Join us for our weekend cleanup!",
+            "post_subtype": "EVENT",
+            "event_date": future_date,
+            "group_ids": [3]
+        }
+        status, _, body = self.make_request("POST", "/api/posts", headers=headers, body=valid_event_payload)
+        self.assertEqual(status, 201)
+        self.assertTrue(body["success"])
+        item = body["item"]
+        self.assertEqual(item["post_subtype"], "EVENT")
+        self.assertEqual(item["event_date"], future_date)
+        post_id = item["id"]
+
+        # 4. Verify GET /api/posts/<id> returns event_date
+        status, _, get_body = self.make_request("GET", f"/api/posts/{post_id}")
+        self.assertEqual(status, 200)
+        self.assertEqual(get_body["post"]["event_date"], future_date)
+
+        # 5. Verify GET /api/feed returns event_date in items
+        status, _, feed_body = self.make_request("GET", "/api/feed")
+        self.assertEqual(status, 200)
+        feed_item = next((i for i in feed_body["feed"] if i["id"] == post_id), None)
+        self.assertIsNotNone(feed_item)
+        self.assertEqual(feed_item["event_date"], future_date)
 
     def test_create_post_unauthorized(self):
         """Tests Post creation fails when unauthenticated."""
