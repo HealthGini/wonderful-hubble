@@ -132,10 +132,13 @@ async function handleRoute() {
 
   if (path === "" || path === "/") {
     if (currentUser) {
+      if (window.location.hash !== "#/feed") {
+        window.location.hash = "#/feed";
+        return;
+      }
       showView("view-feed");
       loadFeed();
       populateGroupFilterDropdown();
-      window.location.hash = "#/feed";
       return;
     }
     showView("view-landing");
