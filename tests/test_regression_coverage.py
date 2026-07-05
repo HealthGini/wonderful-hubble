@@ -322,5 +322,23 @@ class TestRegressionCoverage(GoodDeedsTestCase):
         self.assertIn("function openAttachment", app_js)
         self.assertIn("window.openAttachment = openAttachment", app_js)
 
+
+    def test_feed_endpoint_resilience_and_headers(self):
+        """
+        Verifies GET /api/feed returns status 200, a valid feed array, and anti-caching headers (Cache-Control).
+        """
+        status, headers, body = self.make_request("GET", "/api/feed")
+        self.assertEqual(status, 200)
+        self.assertIn("feed", body)
+        self.assertIsInstance(body["feed"], list)
+        
+        cache_control = None
+        for k, v in headers.items():
+            if k.lower() == "cache-control":
+                cache_control = v
+                break
+        self.assertIsNotNone(cache_control, "Cache-Control header missing from API response")
+        self.assertIn("no-cache", cache_control.lower())
+
 if __name__ == "__main__":
     unittest.main()

@@ -55,7 +55,12 @@ def get_user_from_token(headers):
 
 def json_response(data, status=200):
     """Helper to generate a JSON response tuple."""
-    return status, {"Content-Type": "application/json"}, json.dumps(data)
+    return status, {
+        "Content-Type": "application/json",
+        "Cache-Control": "no-cache, no-store, must-revalidate",
+        "Pragma": "no-cache",
+        "Expires": "0"
+    }, json.dumps(data)
 
 def error_response(msg, status=400):
     """Helper to generate an error JSON response tuple."""
@@ -116,49 +121,49 @@ def enrich_items_list(raw_items, user_id=None):
     """
     conn = get_db()
     cursor = conn.cursor()
-
-    joined_group_ids = set()
-    if user_id:
-        cursor.execute("SELECT group_id FROM group_members WHERE user_id = ?", (user_id,))
-        joined_group_ids = {r["group_id"] for r in cursor.fetchall()}
-
-    enriched = []
-    for item in raw_items:
-        item_id = item["id"]
-        cursor.execute("""
-            SELECT g.id, g.name
-            FROM item_groups ig
-            JOIN groups g ON ig.group_id = g.id
-            WHERE ig.item_id = ?
-        """, (item_id,))
-        item["groups"] = [dict(g) for g in cursor.fetchall()]
-
-        cursor.execute("SELECT emoji, COUNT(*) as cnt FROM reactions WHERE item_id = ? GROUP BY emoji", (item_id,))
-        r_counts = {r["emoji"]: r["cnt"] for r in cursor.fetchall()}
-        item["reactions"] = r_counts
-        item["total_reactions"] = sum(r_counts.values())
-
-        user_reactions = []
+    try:
+        joined_group_ids = set()
         if user_id:
-            cursor.execute("SELECT emoji FROM reactions WHERE item_id = ? AND user_id = ?", (item_id, user_id))
-            user_reactions = [r["emoji"] for r in cursor.fetchall()]
-        item["user_reactions"] = user_reactions
+            cursor.execute("SELECT group_id FROM group_members WHERE user_id = ?", (user_id,))
+            joined_group_ids = {r["group_id"] for r in cursor.fetchall()}
 
-        cursor.execute("""
-            SELECT c.id, c.content, c.created_at, u.username as author_name, u.avatar_url as author_avatar
-            FROM comments c
-            JOIN users u ON c.user_id = u.id
-            WHERE c.item_id = ?
-            ORDER BY c.created_at ASC
-        """, (item_id,))
-        item["comments"] = [dict(c) for c in cursor.fetchall()]
+        enriched = []
+        for item in raw_items:
+            item_id = item["id"]
+            cursor.execute("""
+                SELECT g.id, g.name
+                FROM item_groups ig
+                JOIN groups g ON ig.group_id = g.id
+                WHERE ig.item_id = ?
+            """, (item_id,))
+            item["groups"] = [dict(g) for g in cursor.fetchall()]
 
-        is_joined_tag = any(g["id"] in joined_group_ids for g in item["groups"])
-        item["_score"] = (100 if is_joined_tag else 0) + item["total_reactions"]
-        enriched.append(item)
+            cursor.execute("SELECT emoji, COUNT(*) as cnt FROM reactions WHERE item_id = ? GROUP BY emoji", (item_id,))
+            r_counts = {r["emoji"]: r["cnt"] for r in cursor.fetchall()}
+            item["reactions"] = r_counts
+            item["total_reactions"] = sum(r_counts.values())
 
-    conn.close()
-    return enriched
+            user_reactions = []
+            if user_id:
+                cursor.execute("SELECT emoji FROM reactions WHERE item_id = ? AND user_id = ?", (item_id, user_id))
+                user_reactions = [r["emoji"] for r in cursor.fetchall()]
+            item["user_reactions"] = user_reactions
+
+            cursor.execute("""
+                SELECT c.id, c.content, c.created_at, u.username as author_name, u.avatar_url as author_avatar
+                FROM comments c
+                JOIN users u ON c.user_id = u.id
+                WHERE c.item_id = ?
+                ORDER BY c.created_at ASC
+            """, (item_id,))
+            item["comments"] = [dict(c) for c in cursor.fetchall()]
+
+            is_joined_tag = any(g["id"] in joined_group_ids for g in item["groups"])
+            item["_score"] = (100 if is_joined_tag else 0) + item["total_reactions"]
+            enriched.append(item)
+        return enriched
+    finally:
+        conn.close()
 
 def fetch_enriched_items(where_clause, params, user_id=None, sort_mode="smart"):
     """
@@ -181,9 +186,9 @@ def fetch_enriched_items(where_clause, params, user_id=None, sort_mode="smart"):
 
     enriched = enrich_items_list(raw_items, user_id)
     if sort_mode == "smart":
-        enriched.sort(key=lambda x: (x["_score"], x["created_at"], x["id"]), reverse=True)
+        enriched.sort(key=lambda x: (x.get("_score") or 0, x.get("created_at") or "", x.get("id") or 0), reverse=True)
     else:
-        enriched.sort(key=lambda x: (x["created_at"], x["id"]), reverse=True)
+        enriched.sort(key=lambda x: (x.get("created_at") or "", x.get("id") or 0), reverse=True)
     return enriched
 
 # ================== MAIN API DISPATCHER ==================

@@ -448,6 +448,9 @@ async function loadQuickNavGroups() {
 /* ================= FEED CARDS RENDERER ================= */
 
 function renderFeedCard(item, isProfileView = false) {
+  if (!item) return "";
+  const authorName = item.author_name || "Anonymous";
+  const recipientName = item.recipient_name || "Community Member";
   const isKudos = item.item_type === "KUDOS";
   const cardClass = isKudos ? "kudos-card border-l-8 border-amber-500" : "post-card border-l-8 border-teal-600";
   const itemLink = isKudos ? `/#/kudos/${item.id}` : `/#/post/${item.id}`;
@@ -504,15 +507,15 @@ function renderFeedCard(item, isProfileView = false) {
         <div class="flex items-center space-x-3.5">
           ${isKudos ? `
             <a href="/#/user/${item.recipient_id}">
-              <img src="${item.recipient_avatar || item.author_avatar}" alt="${item.recipient_name}" class="w-12 h-12 rounded-full object-cover border-2 border-amber-400 shadow-sm">
+              <img src="${item.recipient_avatar || item.author_avatar}" alt="${recipientName}" class="w-12 h-12 rounded-full object-cover border-2 border-amber-400 shadow-sm">
             </a>
             <div>
               <div class="text-lg font-bold text-slate-900 flex items-center flex-wrap gap-1.5">
-                <a href="/#/user/${item.recipient_id}" class="hover:text-amber-700 transition font-extrabold text-slate-900">${item.recipient_name}</a>
-                ${["Maya_Lin", "Marcus_Vance", "Elena_Wellness", "Arthur_Pendleton"].includes(item.recipient_name) ? `<a href="/#/spotlight" class="inline-flex items-center space-x-1 px-2.5 py-0.5 bg-gradient-to-r from-amber-500 to-yellow-500 text-white font-black text-[10px] rounded-full uppercase tracking-wider shadow-sm hover:opacity-90 transition" title="June 2026 Hall of Fame Winner"><span>👑</span><span>Monthly Winner</span></a>` : ""}
+                <a href="/#/user/${item.recipient_id}" class="hover:text-amber-700 transition font-extrabold text-slate-900">${recipientName}</a>
+                ${["Maya_Lin", "Marcus_Vance", "Elena_Wellness", "Arthur_Pendleton"].includes(recipientName) ? `<a href="/#/spotlight" class="inline-flex items-center space-x-1 px-2.5 py-0.5 bg-gradient-to-r from-amber-500 to-yellow-500 text-white font-black text-[10px] rounded-full uppercase tracking-wider shadow-sm hover:opacity-90 transition" title="June 2026 Hall of Fame Winner"><span>👑</span><span>Monthly Winner</span></a>` : ""}
                 <span class="text-amber-600 font-semibold text-base">received Kudos from</span>
-                <a href="/#/user/${item.author_id}" class="hover:underline font-bold text-slate-700 bg-stone-100 border border-stone-200 px-3 py-0.5 rounded-full text-sm">${item.author_name}</a>
-                ${["Maya_Lin", "Marcus_Vance", "Elena_Wellness", "Arthur_Pendleton"].includes(item.author_name) && !["Maya_Lin", "Marcus_Vance", "Elena_Wellness", "Arthur_Pendleton"].includes(item.recipient_name) ? `<a href="/#/spotlight" class="inline-flex items-center space-x-1 px-2.5 py-0.5 bg-gradient-to-r from-amber-500 to-yellow-500 text-white font-black text-[10px] rounded-full uppercase tracking-wider shadow-sm hover:opacity-90 transition" title="June 2026 Hall of Fame Winner"><span>👑</span><span>Monthly Winner</span></a>` : ""}
+                <a href="/#/user/${item.author_id}" class="hover:underline font-bold text-slate-700 bg-stone-100 border border-stone-200 px-3 py-0.5 rounded-full text-sm">${authorName}</a>
+                ${["Maya_Lin", "Marcus_Vance", "Elena_Wellness", "Arthur_Pendleton"].includes(authorName) && !["Maya_Lin", "Marcus_Vance", "Elena_Wellness", "Arthur_Pendleton"].includes(recipientName) ? `<a href="/#/spotlight" class="inline-flex items-center space-x-1 px-2.5 py-0.5 bg-gradient-to-r from-amber-500 to-yellow-500 text-white font-black text-[10px] rounded-full uppercase tracking-wider shadow-sm hover:opacity-90 transition" title="June 2026 Hall of Fame Winner"><span>👑</span><span>Monthly Winner</span></a>` : ""}
               </div>
               <div class="text-xs text-slate-400 font-medium pt-0.5">
                 <span>⏱️ ${item.created_at}</span>
@@ -522,12 +525,12 @@ function renderFeedCard(item, isProfileView = false) {
             </div>
           ` : `
             <a href="/#/user/${item.author_id}">
-              <img src="${item.author_avatar}" alt="${item.author_name}" class="w-12 h-12 rounded-full object-cover border border-slate-200 shadow-sm">
+              <img src="${item.author_avatar}" alt="${authorName}" class="w-12 h-12 rounded-full object-cover border border-slate-200 shadow-sm">
             </a>
             <div>
               <div class="text-lg font-bold text-slate-900 flex items-center flex-wrap gap-1.5">
-                <a href="/#/user/${item.author_id}" class="hover:text-indigo-600 transition">${item.author_name}</a>
-                ${["Maya_Lin", "Marcus_Vance", "Elena_Wellness", "Arthur_Pendleton"].includes(item.author_name) ? `<a href="/#/spotlight" class="inline-flex items-center space-x-1 px-2.5 py-0.5 bg-gradient-to-r from-amber-500 to-yellow-500 text-white font-black text-[10px] rounded-full uppercase tracking-wider shadow-sm hover:opacity-90 transition" title="June 2026 Hall of Fame Winner"><span>👑</span><span>Monthly Winner</span></a>` : ""}
+                <a href="/#/user/${item.author_id}" class="hover:text-indigo-600 transition">${authorName}</a>
+                ${["Maya_Lin", "Marcus_Vance", "Elena_Wellness", "Arthur_Pendleton"].includes(authorName) ? `<a href="/#/spotlight" class="inline-flex items-center space-x-1 px-2.5 py-0.5 bg-gradient-to-r from-amber-500 to-yellow-500 text-white font-black text-[10px] rounded-full uppercase tracking-wider shadow-sm hover:opacity-90 transition" title="June 2026 Hall of Fame Winner"><span>👑</span><span>Monthly Winner</span></a>` : ""}
                 <span class="px-2.5 py-0.5 bg-indigo-50 text-indigo-700 border border-indigo-100 rounded-full text-xs font-bold">🏷️ ${item.theme}</span>
               </div>
               <div class="text-xs text-slate-400 font-medium pt-0.5">
@@ -553,10 +556,13 @@ function renderFeedCard(item, isProfileView = false) {
             if (item.resource_url.startsWith("[")) urls = JSON.parse(item.resource_url);
             else urls = item.resource_url.split("\n").filter(Boolean);
           } catch(e) { urls = [item.resource_url]; }
-          return `<div class="pt-3 flex flex-wrap gap-2">` + urls.map((u, idx) => `
-            <a href="${u}" target="_blank" rel="noopener" class="inline-flex items-center space-x-2 px-4 py-2.5 rounded-xl bg-indigo-50 hover:bg-indigo-100 text-indigo-950 font-bold text-sm border border-indigo-200 transition touch-target shadow-sm">
+          return `<div class="pt-3 flex flex-wrap gap-2">` + urls.map((u, idx) => {
+            const cacheKey = `attachment_${item.id}_${idx}`;
+            window._attachmentCache[cacheKey] = u;
+            return `
+            <button type="button" onclick="window.openAttachment(window._attachmentCache['${cacheKey}'], 'attachment_${item.id}_${idx}')" class="inline-flex items-center space-x-2 px-4 py-2.5 rounded-xl bg-indigo-50 hover:bg-indigo-100 text-indigo-950 font-bold text-sm border border-indigo-200 transition touch-target shadow-sm">
               <span>📎 Attached Link or File ${urls.length > 1 ? '#' + (idx+1) : ''} ↗</span>
-            </a>
+            </button>
           `).join("") + `</div>`;
         })()}
       </div>
@@ -626,12 +632,12 @@ async function loadLandingPreview(isLoadMore = false) {
         container.innerHTML = `<p class="text-stone-500 font-bold text-center col-span-2 py-8">No community posts or kudos yet.</p>`;
         if (loadMoreContainer) loadMoreContainer.innerHTML = "";
       } else {
-        container.innerHTML = feed.map(item => renderFeedCard(item, false)).join("");
+        container.innerHTML = feed.map(item => { try { return renderFeedCard(item, false); } catch(err) { console.error("Failed to render preview card:", err, item); return ""; } }).join("");
         renderLandingLoadMoreControls();
       }
     } else {
       if (feed.length > 0) {
-        container.insertAdjacentHTML("beforeend", feed.map(item => renderFeedCard(item, false)).join(""));
+        container.insertAdjacentHTML("beforeend", feed.map(item => { try { return renderFeedCard(item, false); } catch(err) { console.error("Failed to render preview card:", err, item); return ""; } }).join(""));
       }
       renderLandingLoadMoreControls();
     }
@@ -725,12 +731,12 @@ async function loadFeed(isLoadMore = false, isReload = false) {
         `;
         if (loadMoreContainer) loadMoreContainer.innerHTML = "";
       } else {
-        container.innerHTML = feed.map(item => renderFeedCard(item, false)).join("");
+        container.innerHTML = feed.map(item => { try { return renderFeedCard(item, false); } catch(err) { console.error("Failed to render feed card:", err, item); return ""; } }).join("");
         renderLoadMoreControls();
       }
     } else {
       if (feed.length > 0) {
-        container.insertAdjacentHTML("beforeend", feed.map(item => renderFeedCard(item, false)).join(""));
+        container.insertAdjacentHTML("beforeend", feed.map(item => { try { return renderFeedCard(item, false); } catch(err) { console.error("Failed to render feed card:", err, item); return ""; } }).join(""));
         displayedFeedLimit = feedOffset + feed.length;
       }
       renderLoadMoreControls();

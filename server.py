@@ -7,6 +7,7 @@ It serves static frontend files and routes API requests to the handlers module.
 
 import os
 import sys
+import json
 import mimetypes
 from http.server import ThreadingHTTPServer, BaseHTTPRequestHandler
 from database import init_db
@@ -45,11 +46,21 @@ class GoodDeedsServerHandler(BaseHTTPRequestHandler):
         if self.path.startswith("/api/"):
             content_len = int(self.headers.get("Content-Length", 0))
             body_bytes = self.rfile.read(content_len) if content_len > 0 else b""
-            status, headers, resp_body = handle_api_request(method, self.path, self.headers, body_bytes)
+            try:
+                status, headers, resp_body = handle_api_request(method, self.path, self.headers, body_bytes)
+            except Exception as e:
+                status = 500
+                headers = {"Content-Type": "application/json"}
+                resp_body = json.dumps({"success": False, "error": f"Internal Server Error: {str(e)}"})
+
             self.send_response(status)
             self.send_cors_headers()
+            self.send_header("Cache-Control", "no-cache, no-store, must-revalidate")
+            self.send_header("Pragma", "no-cache")
+            self.send_header("Expires", "0")
             for k, v in headers.items():
-                self.send_header(k, v)
+                if k.lower() not in ("cache-control", "pragma", "expires"):
+                    self.send_header(k, v)
             self.end_headers()
             if isinstance(resp_body, str):
                 resp_body = resp_body.encode("utf-8")
