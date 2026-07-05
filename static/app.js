@@ -1750,7 +1750,6 @@ async function loadUserProfile(targetId) {
     setEl("stat-unique-givers", s.unique_kudos_givers ?? s.unique_givers ?? 0);
     setEl("stat-posts-authored", s.posts_authored ?? 0);
     setEl("stat-avg-reactions", s.avg_reactions_per_post ?? s.avg_reactions ?? 0.0);
-    setEl("stat-last-active", s.last_active_date ?? s.last_active ?? "Recent");
 
     const bannerHeading = document.getElementById("prof-banner-heading");
     if (bannerHeading) {
