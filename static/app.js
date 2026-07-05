@@ -677,10 +677,10 @@ async function loadFeed(isLoadMore = false, isReload = false) {
   if (currentTheme) url += `theme=${encodeURIComponent(currentTheme)}&`;
   if (currentGroupFilter) url += `group_id=${encodeURIComponent(currentGroupFilter)}&`;
   if (currentSearch) url += `search=${encodeURIComponent(currentSearch)}&`;
-  if (currentTypeFilter) url += `filter_type=${encodeURIComponent(currentTypeFilter)}&`;
-  if (currentMyKudosMode === "received" && currentUser) url += `recipient_id=${currentUser.id}&filter_type=KUDOS&`;
-  if (currentMyKudosMode === "given" && currentUser) url += `author_id=${currentUser.id}&filter_type=KUDOS&`;
-  if (currentMyPostsMode === "authored" && currentUser) url += `author_id=${currentUser.id}&filter_type=POST&`;
+  let userIdToFilter = currentFilterUserId || (currentUser ? currentUser.id : null);
+  if (currentMyKudosMode === "received" && userIdToFilter) url += `recipient_id=${userIdToFilter}&filter_type=KUDOS&`;
+  if (currentMyKudosMode === "given" && userIdToFilter) url += `author_id=${userIdToFilter}&filter_type=KUDOS&`;
+  if (currentMyPostsMode === "authored" && userIdToFilter) url += `author_id=${userIdToFilter}&filter_type=POST&`;
 
   try {
     const data = await apiFetch(url);
