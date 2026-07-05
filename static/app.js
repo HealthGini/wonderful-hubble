@@ -392,9 +392,28 @@ async function handleLogin(e) {
   }
 }
 
-function presetLogin(email) {
+async function presetLogin(email) {
   document.getElementById("login-email").value = email;
   document.getElementById("login-pw").value = "password123";
+  try {
+    const data = await apiFetch("/auth/login", {
+      method: "POST",
+      body: JSON.stringify({ email, password: "password123" })
+    });
+    const token = data.token || data.access_token;
+    if (!token) throw new Error(data.error || "Login failed");
+    currentToken = token;
+    localStorage.setItem("gd_token", currentToken);
+    currentUser = data.user;
+    sessionPromise = Promise.resolve();
+    updateAuthUI(currentUser);
+    closeModal("modal-login");
+    showToast(`☀️ Welcome back, ${currentUser.username}!`);
+    await loadQuickNavGroups();
+    navigateTo("/feed");
+  } catch (err) {
+    showToast("❌ " + err.message);
+  }
 }
 
 function selectAvatar(url) {
@@ -418,6 +437,7 @@ async function handleSignup(e) {
     currentToken = data.token;
     localStorage.setItem("gd_token", currentToken);
     currentUser = data.user;
+    sessionPromise = Promise.resolve();
     updateAuthUI(currentUser);
     closeModal("modal-signup");
     showToast(`☀️ Welcome to gooddeeds.space, ${currentUser.username}!`);
@@ -628,7 +648,6 @@ function renderFeedCard(item, isProfileView = false) {
 /* ================= FEED CARDS LOADING & FILTERING ================= */
 
 async function loadLandingPreview(isLoadMore = false) {
-  await sessionPromise;
   const container = document.getElementById("landing-public-feed-preview") || document.getElementById("landing-preview-feed");
   const loadMoreContainer = document.getElementById("landing-load-more-container");
   if (!container) return;
