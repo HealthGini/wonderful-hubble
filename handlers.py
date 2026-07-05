@@ -15,7 +15,7 @@ import smtplib
 from email.mime.multipart import MIMEMultipart
 from email.mime.text import MIMEText
 from urllib.parse import parse_qs, urlparse
-from database import get_db, hash_password
+from database import get_db, hash_password, get_user_stats, extract_resource_text
 
 def get_user_from_token(headers):
     """
@@ -338,8 +338,10 @@ def handle_api_request(method, path, headers, body_bytes):
         given_kudos = [item for item in enriched_history if item["author_id"] == target_id and item["item_type"] == "KUDOS"]
         received_kudos = [item for item in enriched_history if item.get("recipient_id") == target_id and item["item_type"] == "KUDOS"]
 
+        stats_data = get_user_stats(target_id)
         return json_response({
             "user": u_data,
+            "stats": stats_data,
             "history": enriched_history,
             "authored_posts": authored_posts,
             "given_kudos": given_kudos,
@@ -482,17 +484,24 @@ def handle_api_request(method, path, headers, body_bytes):
             params.append(theme)
 
         if group_id:
-            try:
-                gid = int(group_id)
-                where_parts.append("f.id IN (SELECT item_id FROM item_groups WHERE group_id = ?)")
-                params.append(gid)
-            except ValueError:
-                pass
+            if group_id == "my_spaces":
+                if user:
+                    where_parts.append("f.id IN (SELECT item_id FROM item_groups WHERE group_id IN (SELECT group_id FROM group_members WHERE user_id = ?))")
+                    params.append(user["id"])
+                else:
+                    where_parts.append("1 = 0")
+            else:
+                try:
+                    gid = int(group_id)
+                    where_parts.append("f.id IN (SELECT item_id FROM item_groups WHERE group_id = ?)")
+                    params.append(gid)
+                except ValueError:
+                    pass
 
         if search:
             like_q = f"%{search}%"
-            where_parts.append("(f.title LIKE ? OR f.content LIKE ? OR f.theme LIKE ?)")
-            params.extend([like_q, like_q, like_q])
+            where_parts.append("(f.title LIKE ? OR f.content LIKE ? OR f.theme LIKE ? OR f.extracted_text LIKE ? OR f.resource_url LIKE ?)")
+            params.extend([like_q, like_q, like_q, like_q, like_q])
 
         where_clause = ""
         if where_parts:
@@ -610,10 +619,11 @@ def handle_api_request(method, path, headers, body_bytes):
 
         conn = get_db()
         cursor = conn.cursor()
+        extracted_text = extract_resource_text(resource_url)
         cursor.execute("""
-            INSERT INTO feed_items (item_type, author_id, title, theme, content, resource_url, post_subtype, event_date)
-            VALUES ('POST', ?, ?, ?, ?, ?, ?, ?)
-        """, (user["id"], title, theme, content, resource_url, post_subtype, event_date))
+            INSERT INTO feed_items (item_type, author_id, title, theme, content, resource_url, post_subtype, event_date, extracted_text)
+            VALUES ('POST', ?, ?, ?, ?, ?, ?, ?, ?)
+        """, (user["id"], title, theme, content, resource_url, post_subtype, event_date, extracted_text))
         post_id = cursor.lastrowid
 
         for gid in group_ids:
@@ -630,7 +640,7 @@ def handle_api_request(method, path, headers, body_bytes):
         return json_response({"item": item_obj, "post": item_obj, "success": True}, 201)
 
     # ================== REACTIONS & COMMENTS ==================
-    if path_only == "/api/reactions" and method == "POST":
+    if path_only in ("/api/reactions", "/api/react") and method == "POST":
         if not user:
             return error_response("Login required to react", 401)
         item_id = body.get("item_id")
@@ -1123,8 +1133,9 @@ def handle_api_request(method, path, headers, body_bytes):
             rtheme = item.get("theme", "Community Resources").strip()
             edate = (item.get("event_date") or "").strip() or None
             if desc and url:
-                cursor.execute("INSERT INTO group_resources (group_id, title, url, resource_type, theme, event_date, added_by) VALUES (?, ?, ?, ?, ?, ?, ?)",
-                               (gid, desc, url, rtype, rtheme, edate, user["id"]))
+                extracted_text = extract_resource_text(url)
+                cursor.execute("INSERT INTO group_resources (group_id, title, url, resource_type, theme, event_date, added_by, extracted_text) VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
+                               (gid, desc, url, rtype, rtheme, edate, user["id"], extracted_text))
                 inserted_count += 1
 
         conn.commit()

@@ -200,5 +200,110 @@ class TestRegressionCoverage(GoodDeedsTestCase):
 
         self.assertEqual(champ.get("base_kudos"), exact_count)
 
+
+    def test_profile_impact_and_activity_statistics(self):
+        """
+        Tests GET /api/users/<id> returns stats with all required 7 fields.
+        """
+        token = self.get_token("maya@gooddeeds.space")
+        headers = self.get_auth_headers(token)
+        status, _, body = self.make_request("GET", "/api/users/1", headers=headers)
+        self.assertEqual(status, 200)
+        self.assertIn("stats", body)
+        stats = body["stats"]
+        for key in ["kudos_received", "avg_kudos_year", "kudos_given", "unique_givers", "posts_authored", "avg_reactions", "last_active"]:
+            self.assertIn(key, stats)
+
+    def test_my_spaces_feed_filter(self):
+        """
+        Tests GET /api/feed?group_id=my_spaces for authenticated vs unauthenticated users.
+        """
+        # Unauthenticated -> empty result (1 = 0)
+        status, _, body = self.make_request("GET", "/api/feed?group_id=my_spaces")
+        self.assertEqual(status, 200)
+        self.assertEqual(len(body.get("feed", [])), 0)
+
+        # Authenticated user
+        token = self.get_token("maya@gooddeeds.space")
+        headers = self.get_auth_headers(token)
+        status, _, body = self.make_request("GET", "/api/feed?group_id=my_spaces", headers=headers)
+        self.assertEqual(status, 200)
+        self.assertIn("feed", body)
+
+    def test_space_details_tab_cleanup(self):
+        """
+        Asserts #gtab-resources button and #gcontent-resources pane are removed from index.html.
+        """
+        base_dir = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+        index_path = os.path.join(base_dir, "static", "index.html")
+        with open(index_path, "r", encoding="utf-8") as f:
+            html = f.read()
+        self.assertNotIn('id="gtab-resources"', html)
+        self.assertNotIn('id="gcontent-resources"', html)
+
+    def test_mobile_responsiveness_elements(self):
+        """
+        Asserts mobile menu button (#mobile-menu-btn), drawer (#mobile-menu), Pills bar classes, and modal bounds.
+        """
+        base_dir = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+        index_path = os.path.join(base_dir, "static", "index.html")
+        with open(index_path, "r", encoding="utf-8") as f:
+            html = f.read()
+        self.assertIn('id="mobile-menu-btn"', html)
+        self.assertIn('id="mobile-menu"', html)
+        self.assertIn('overflow-x-auto whitespace-nowrap scrollbar-none py-1.5 flex items-center gap-2', html)
+        self.assertIn('max-h-[90vh]', html)
+
+    def test_smart_search_in_attached_resource_files(self):
+        """
+        Tests base64 text extraction and search in attached resource files.
+        """
+        token = self.get_token("maya@gooddeeds.space")
+        headers = self.get_auth_headers(token)
+        
+        # Base64 encoded "SecretResourcePayload"
+        b64_content = "data:text/plain;base64,U2VjcmV0UmVzb3VyY2VQYXlsb2Fk"
+        post_data = {
+            "title": "Attachment Search Test",
+            "theme": "Educational",
+            "content": "Testing text extraction",
+            "resource_url": b64_content
+        }
+        status, _, body = self.make_request("POST", "/api/posts", headers=headers, body=post_data)
+        self.assertEqual(status, 201)
+
+        # Search for SecretResourcePayload
+        status, _, body = self.make_request("GET", "/api/feed?search=SecretResourcePayload")
+        self.assertEqual(status, 200)
+        feed = body.get("feed", [])
+        self.assertGreater(len(feed), 0)
+
+    def test_thumbs_up_emoji_reaction(self):
+        """
+        Tests 👍 reaction on /api/reactions and /api/react endpoints.
+        """
+        token = self.get_token("maya@gooddeeds.space")
+        headers = self.get_auth_headers(token)
+        
+        # Test POST /api/reactions with 👍
+        react_data = {"item_id": 1, "emoji": "👍"}
+        status, _, body = self.make_request("POST", "/api/reactions", headers=headers, body=react_data)
+        self.assertEqual(status, 200)
+
+        # Test POST /api/react alias
+        status, _, body = self.make_request("POST", "/api/react", headers=headers, body=react_data)
+        self.assertEqual(status, 200)
+
+    def test_open_attachment_helper_binding(self):
+        """
+        Asserts openAttachment function and window.openAttachment binding exist in app.js.
+        """
+        base_dir = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+        app_js_path = os.path.join(base_dir, "static", "app.js")
+        with open(app_js_path, "r", encoding="utf-8") as f:
+            app_js = f.read()
+        self.assertIn("function openAttachment", app_js)
+        self.assertIn("window.openAttachment = openAttachment", app_js)
+
 if __name__ == "__main__":
     unittest.main()

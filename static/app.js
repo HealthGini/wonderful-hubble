@@ -303,10 +303,13 @@ function updateAuthUI(user) {
     userBox.classList.remove("hidden");
     document.getElementById("nav-user-name").textContent = user.username;
     document.getElementById("nav-user-avatar").src = user.avatar_url;
+    currentGroupFilter = "my_spaces";
   } else {
     guestBox.classList.remove("hidden");
     userBox.classList.add("hidden");
+    currentGroupFilter = "";
   }
+  populateGroupFilterDropdown();
 }
 
 async function handleLogin(e) {
@@ -422,7 +425,7 @@ function renderFeedCard(item, isProfileView = false) {
   `).join(" ");
 
   // Reactions bar
-  const emojis = ["❤️", "👏", "🌟", "🤗", "🎉"];
+  const emojis = ["👍", "❤️", "👏", "🌟", "🤗", "🎉"];
   const reactionsHtml = emojis.map(em => {
     const cnt = (item.reactions || {})[em] || 0;
     const isActive = (item.user_reactions || []).includes(em);
@@ -610,7 +613,7 @@ function renderLandingLoadMoreControls() {
   if (landingPreviewHasMore) {
     loadMoreContainer.innerHTML = `
       <button id="landing-load-more-btn" onclick="loadMoreLandingPreview()" class="px-8 py-3.5 bg-indigo-600 hover:bg-indigo-700 text-white font-black text-base rounded-2xl shadow-sm hover:shadow transition duration-200 inline-flex items-center space-x-2 touch-target">
-        <span>Load More Stories & Kudos</span>
+        <span>Load More Posts & Kudos</span>
         <span>👇</span>
       </button>
     `;
@@ -672,7 +675,7 @@ async function loadFeed(isLoadMore = false, isReload = false) {
         container.innerHTML = `
           <div class="bg-white p-12 rounded-3xl border border-slate-200 text-center space-y-3">
             <div class="text-5xl">🕊️</div>
-            <h3 class="text-2xl font-bold text-slate-800">No Stories or Kudos Found</h3>
+            <h3 class="text-2xl font-bold text-slate-800">No Posts or Kudos Found</h3>
             <p class="text-base text-slate-500 font-medium">No posts or kudos match your active filter selection.</p>
             <button onclick="clearAllFilters()" class="px-6 py-3 bg-amber-500 hover:bg-amber-600 text-white font-bold rounded-xl shadow-sm transition">Reset All Filters</button>
           </div>
@@ -703,7 +706,7 @@ function renderLoadMoreControls() {
   if (feedHasMore) {
     loadMoreContainer.innerHTML = `
       <button id="load-more-btn" onclick="loadMoreFeed()" class="px-8 py-3.5 bg-indigo-600 hover:bg-indigo-700 text-white font-black text-base rounded-2xl shadow-sm hover:shadow transition duration-200 inline-flex items-center space-x-2 touch-target">
-        <span>Load More Stories & Kudos</span>
+        <span>Load More Posts & Kudos</span>
         <span>👇</span>
       </button>
     `;
@@ -832,8 +835,31 @@ async function populateGroupFilterDropdown() {
   if (!sel) return;
   try {
     const data = await apiFetch("/groups");
-    sel.innerHTML = `<option value="">All Groups</option>` + 
-      (data.groups || []).map(g => `<option value="${g.id}">👥 ${g.name}</option>`).join("");
+    const groups = data.groups || [];
+    let html = "";
+    if (currentUser) {
+      html += `<option value="my_spaces">⭐ My Spaces (All Joined)</option>`;
+      html += `<option value="">All Spaces</option>`;
+      const joined = groups.filter(g => g.is_joined);
+      const others = groups.filter(g => !g.is_joined);
+      if (joined.length > 0) {
+        html += `<optgroup label="My Joined Spaces">` +
+          joined.map(g => `<option value="${g.id}">👥 ${g.name}</option>`).join("") +
+          `</optgroup>`;
+      }
+      if (others.length > 0) {
+        html += `<optgroup label="Other Community Spaces">` +
+          others.map(g => `<option value="${g.id}">👥 ${g.name}</option>`).join("") +
+          `</optgroup>`;
+      }
+    } else {
+      html += `<option value="">All Spaces</option>`;
+      html += groups.map(g => `<option value="${g.id}">👥 ${g.name}</option>`).join("");
+    }
+    sel.innerHTML = html;
+    if (currentGroupFilter) {
+      sel.value = currentGroupFilter;
+    }
   } catch (err) {}
 }
 
@@ -851,7 +877,7 @@ async function loadSingleItemView(id) {
     container.innerHTML = `
       <div class="bg-white p-12 rounded-3xl border-2 border-red-200 text-center space-y-4">
         <div class="text-6xl">❌</div>
-        <h2 class="text-3xl font-black text-stone-800">Kudos or Story Not Found</h2>
+        <h2 class="text-3xl font-black text-stone-800">Kudos or Post Not Found</h2>
         <p class="text-lg text-stone-600">The requested direct link may be invalid or expired.</p>
         <button onclick="navigateTo('/feed')" class="px-6 py-3 bg-amber-600 text-white font-bold rounded-xl">Return to Feed</button>
       </div>
@@ -1128,7 +1154,7 @@ async function confirmPublishPost() {
     document.getElementById("post-input-content").value = "";
     document.getElementById("post-input-url").value = "";
     backToPostStep1();
-    showToast("✅ Story published permanently to community feed!");
+    showToast("✅ Post published permanently to community feed!");
     navigateTo("/feed");
     loadFeed();
   } catch (err) {
@@ -1469,7 +1495,7 @@ async function toggleGroupMembership(gid, action) {
 }
 
 function switchGroupTab(tabName) {
-  ["chat", "resources", "roster"].forEach(t => {
+  ["chat", "roster"].forEach(t => {
     const btn = document.getElementById(`gtab-${t}`);
     const box = document.getElementById(`gcontent-${t}`);
     if (!btn || !box) return;
@@ -1694,6 +1720,30 @@ async function loadUserProfile(targetId) {
       editBox.classList.remove("hidden");
     } else {
       editBox.classList.add("hidden");
+    }
+
+    if (data.stats) {
+      const s = data.stats;
+      const setEl = (id, val) => {
+        const el = document.getElementById(id);
+        if (el) el.textContent = val !== undefined && val !== null ? val : "0";
+      };
+      setEl("stat-kudos-received", s.kudos_received);
+      setEl("stat-avg-kudos-year", s.avg_kudos_year);
+      setEl("stat-kudos-given", s.kudos_given);
+      setEl("stat-unique-givers", s.unique_kudos_givers ?? s.unique_givers);
+      setEl("stat-posts-authored", s.posts_authored);
+      setEl("stat-avg-reactions", s.avg_reactions_per_post ?? s.avg_reactions);
+      setEl("stat-last-active", s.last_active_date ?? s.last_active);
+    }
+
+    const bannerHeading = document.getElementById("prof-banner-heading");
+    if (bannerHeading) {
+      if (currentUser && currentUser.id === u.id) {
+        bannerHeading.textContent = "Looking for your Kudos or Posts?";
+      } else {
+        bannerHeading.textContent = `Looking for ${u.username}'s Kudos or Posts?`;
+      }
     }
   } catch (err) {
     showToast("❌ Failed to load profile: " + err.message);
@@ -2120,3 +2170,24 @@ window.addCurateLinkField = addCurateLinkField;
 window.handleCurateFilesSelect = handleCurateFilesSelect;
 window.handleInviteAutocomplete = handleInviteAutocomplete;
 window.selectInviteMember = selectInviteMember;
+
+function openAttachment(url, filename) {
+  if (!url) return;
+  const win = window.open(url, '_blank');
+  if (win) {
+    win.focus();
+  } else {
+    window.location.href = url;
+  }
+}
+window.openAttachment = openAttachment;
+
+function toggleMobileMenu() {
+  const menu = document.getElementById("mobile-menu");
+  if (menu) menu.classList.toggle("hidden");
+}
+
+function closeMobileMenu() {
+  const menu = document.getElementById("mobile-menu");
+  if (menu) menu.classList.add("hidden");
+}

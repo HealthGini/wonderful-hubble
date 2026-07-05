@@ -166,6 +166,14 @@ def init_db():
         cursor.execute("ALTER TABLE feed_items ADD COLUMN event_date TEXT")
     except Exception:
         pass
+    try:
+        cursor.execute("ALTER TABLE feed_items ADD COLUMN extracted_text TEXT")
+    except Exception:
+        pass
+    try:
+        cursor.execute("ALTER TABLE group_resources ADD COLUMN extracted_text TEXT")
+    except Exception:
+        pass
 
     # 8. Item Groups (Tagging Kudos/Posts to Groups)
     cursor.execute("""
@@ -338,7 +346,7 @@ def seed_data(cursor):
 
     # Reactions
     reactions = [
-        (1, 3, "❤️"), (1, 4, "👏"), (1, 1, "🌟"),
+        (1, 3, "👍"), (1, 4, "👏"), (1, 1, "🌟"),
         (2, 1, "❤️"), (2, 2, "❤️"), (2, 4, "🤗"), (2, 2, "🌟"),
         (3, 1, "👏"), (3, 2, "🎉"),
         (4, 3, "❤️"), (4, 4, "🌟"),
@@ -370,6 +378,165 @@ def seed_data(cursor):
         (3, 4, "Marcus_Vance", "Arthur invited you to join Community Action & Mutual Aid!")
     ]
     cursor.executemany("INSERT INTO group_invitations (group_id, sender_id, recipient_username, message) VALUES (?, ?, ?, ?)", invites)
+
+
+import base64
+import re
+from datetime import datetime
+
+def extract_resource_text(resource_url: str) -> str:
+    """
+    Extracts text content from resource URLs or base64 data URLs (plain text, JSON, PDF).
+    """
+    if not resource_url or not isinstance(resource_url, str):
+        return ""
+    
+    url = resource_url.strip()
+    if not url:
+        return ""
+        
+    extracted = []
+    b64_data = None
+    mime_type = ""
+    
+    if url.startswith("data:"):
+        parts = url.split(",", 1)
+        if len(parts) == 2:
+            header, content = parts
+            mime_type = header.split(":")[1].split(";")[0] if ":" in header else ""
+            if ";base64" in header:
+                try:
+                    b64_data = base64.b64decode(content)
+                except Exception:
+                    pass
+            else:
+                b64_data = content.encode("utf-8")
+    else:
+        try:
+            b64_data = base64.b64decode(url)
+        except Exception:
+            b64_data = None
+
+    if b64_data:
+        try:
+            text_str = b64_data.decode("utf-8", errors="ignore")
+            if "json" in mime_type or text_str.startswith("{") or text_str.startswith("["):
+                try:
+                    parsed_json = json.loads(text_str)
+                    extracted.append(json.dumps(parsed_json))
+                except Exception:
+                    extracted.append(text_str)
+            else:
+                extracted.append(text_str)
+        except Exception:
+            pass
+
+        try:
+            pdf_str = b64_data.decode("latin1", errors="ignore")
+            pdf_texts = re.findall(r'\((.*?)\)\s*(?:Tj|TJ|\n|\r)', pdf_str)
+            if pdf_texts:
+                extracted.extend(pdf_texts)
+            else:
+                words = re.findall(r'[A-Za-z0-9_]{3,}', pdf_str)
+                if words:
+                    extracted.append(" ".join(words))
+        except Exception:
+            pass
+
+    res = " ".join(extracted).strip()
+    return res if res else url
+
+def format_last_active_date(dt_str: str) -> str:
+    """
+    Parses a timestamp string robustly and returns a formatted date (e.g. 'June 25, 2026').
+    """
+    if not dt_str:
+        return "Never"
+    try:
+        clean_str = str(dt_str).replace("Z", "").split(".")[0]
+        if " " in clean_str:
+            dt = datetime.strptime(clean_str, "%Y-%m-%d %H:%M:%S")
+        elif "T" in clean_str:
+            dt = datetime.strptime(clean_str, "%Y-%m-%dT%H:%M:%S")
+        else:
+            dt = datetime.strptime(clean_str, "%Y-%m-%d")
+        return f"{dt.strftime('%B')} {dt.day}, {dt.year}"
+    except Exception:
+        return str(dt_str)
+
+def get_user_stats(user_id: int) -> dict:
+    """
+    Calculates impact and activity statistics for a user profile.
+    """
+    conn = get_db()
+    cursor = conn.cursor()
+
+    cursor.execute("SELECT COUNT(*) as cnt FROM feed_items WHERE recipient_id = ? AND item_type = 'KUDOS'", (user_id,))
+    kudos_received = cursor.fetchone()["cnt"]
+
+    cursor.execute("SELECT COUNT(*) as cnt FROM feed_items WHERE recipient_id = ? AND item_type = 'KUDOS' AND created_at >= datetime('now', '-1 year')", (user_id,))
+    kudos_year = cursor.fetchone()["cnt"]
+    avg_kudos_year = round(kudos_year / 12.0, 1)
+
+    cursor.execute("SELECT COUNT(*) as cnt FROM feed_items WHERE author_id = ? AND item_type = 'KUDOS'", (user_id,))
+    kudos_given = cursor.fetchone()["cnt"]
+
+    cursor.execute("SELECT COUNT(DISTINCT author_id) as cnt FROM feed_items WHERE recipient_id = ? AND item_type = 'KUDOS'", (user_id,))
+    unique_givers = cursor.fetchone()["cnt"]
+
+    cursor.execute("SELECT COUNT(*) as cnt FROM feed_items WHERE author_id = ? AND item_type = 'POST'", (user_id,))
+    posts_authored = cursor.fetchone()["cnt"]
+
+    cursor.execute("""
+        SELECT COUNT(r.id) as cnt
+        FROM reactions r
+        JOIN feed_items f ON r.item_id = f.id
+        WHERE f.author_id = ? AND f.item_type = 'POST'
+    """, (user_id,))
+    total_post_reactions = cursor.fetchone()["cnt"]
+    avg_reactions = round(float(total_post_reactions) / posts_authored, 1) if posts_authored > 0 else 0.0
+
+    cursor.execute("""
+        SELECT MAX(dt) as max_dt FROM (
+            SELECT created_at AS dt FROM users WHERE id = ?
+            UNION ALL
+            SELECT created_at AS dt FROM feed_items WHERE author_id = ? OR recipient_id = ?
+            UNION ALL
+            SELECT created_at AS dt FROM comments WHERE user_id = ?
+            UNION ALL
+            SELECT created_at AS dt FROM group_messages WHERE user_id = ?
+            UNION ALL
+            SELECT created_at AS dt FROM group_resources WHERE added_by = ?
+            UNION ALL
+            SELECT joined_at AS dt FROM group_members WHERE user_id = ?
+            UNION ALL
+            SELECT created_at AS dt FROM sessions WHERE user_id = ?
+        )
+    """, (user_id, user_id, user_id, user_id, user_id, user_id, user_id, user_id))
+    row = cursor.fetchone()
+    max_dt = row["max_dt"] if row and row["max_dt"] else None
+    if not max_dt:
+        cursor.execute("SELECT created_at FROM users WHERE id = ?", (user_id,))
+        u_row = cursor.fetchone()
+        if u_row:
+            max_dt = u_row["created_at"]
+
+    last_active_formatted = format_last_active_date(max_dt)
+    conn.close()
+
+    return {
+        "kudos_received": kudos_received,
+        "avg_kudos_year": avg_kudos_year,
+        "kudos_given": kudos_given,
+        "unique_kudos_givers": unique_givers,
+        "unique_givers": unique_givers,
+        "posts_authored": posts_authored,
+        "avg_reactions_per_post": avg_reactions,
+        "avg_reactions": avg_reactions,
+        "last_active_date": last_active_formatted,
+        "last_active": last_active_formatted
+    }
+
 
 if __name__ == "__main__":
     init_db()
