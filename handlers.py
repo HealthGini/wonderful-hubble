@@ -28,8 +28,15 @@ def get_user_from_token(headers):
         dict: A dictionary containing user details (id, email, username, phone, avatar_url, bio)
               if authentication is successful; None otherwise.
     """
-    auth = headers.get("Authorization", "")
-    if not auth.startswith("Bearer "):
+    auth = ""
+    if hasattr(headers, "get"):
+        auth = headers.get("Authorization") or headers.get("authorization") or ""
+    if not auth and isinstance(headers, dict):
+        for k, v in headers.items():
+            if str(k).lower() == "authorization":
+                auth = v
+                break
+    if not auth or not auth.startswith("Bearer "):
         return None
     token = auth.split(" ")[1].strip()
     conn = get_db()

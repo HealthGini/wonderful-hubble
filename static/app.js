@@ -300,6 +300,12 @@ async function apiFetch(endpoint, options = {}) {
   } catch (err) {}
 
   if (!res.ok) {
+    if (res.status === 401 && currentToken) {
+      currentToken = null;
+      localStorage.removeItem("gd_token");
+      currentUser = null;
+      updateAuthUI(null);
+    }
     throw new Error(data.error || "Request failed");
   }
   return data;
@@ -731,6 +737,12 @@ async function loadFeed(isLoadMore = false, isReload = false) {
     }
   } catch (err) {
     if (!isLoadMore) {
+      if (currentGroupFilter) {
+        currentGroupFilter = "";
+        const gSel = document.getElementById("feed-group-select");
+        if (gSel) gSel.value = "";
+        return loadFeed(isLoadMore, isReload);
+      }
       container.innerHTML = `<p class="text-center font-bold text-red-600 py-12">Failed to load feed: ${err.message}</p>`;
     }
   }
