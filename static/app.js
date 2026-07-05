@@ -1705,6 +1705,9 @@ async function handleCreateGroup(e) {
 /* ================= USER PROFILE ================= */
 
 async function loadUserProfile(targetId) {
+  if (!targetId || targetId === "profile" || targetId === "undefined" || targetId === "null" || targetId === "me") {
+    targetId = currentUser ? currentUser.id : 1;
+  }
   try {
     const data = await apiFetch(`/users/${targetId}`);
     activeProfileData = data;

@@ -310,6 +310,10 @@ def handle_api_request(method, path, headers, body_bytes):
         cursor = conn.cursor()
         if target_seg.isdigit():
             cursor.execute("SELECT id, username, avatar_url, bio, created_at FROM users WHERE id = ?", (int(target_seg),))
+        elif target_seg.lower() in ("profile", "me", "undefined", "null") and user:
+            cursor.execute("SELECT id, username, avatar_url, bio, created_at FROM users WHERE id = ?", (user["id"],))
+        elif target_seg.lower() in ("profile", "me", "undefined", "null"):
+            cursor.execute("SELECT id, username, avatar_url, bio, created_at FROM users WHERE id = 1")
         else:
             cursor.execute("SELECT id, username, avatar_url, bio, created_at FROM users WHERE username = ? OR email = ?", (target_seg, target_seg))
         u_row = cursor.fetchone()
