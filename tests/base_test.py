@@ -39,6 +39,8 @@ class BaseTestCase(unittest.TestCase):
             shutil.rmtree(cls.temp_db_dir)
         if "DB_PATH" in os.environ:
             del os.environ["DB_PATH"]
+        if hasattr(cls, "database"):
+            cls.database.DB_PATH = cls.database.DEFAULT_DB
 
     def setUp(self):
         # Fresh database for every test

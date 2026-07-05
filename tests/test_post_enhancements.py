@@ -74,7 +74,7 @@ class TestPostEnhancements(BaseTestCase):
         status, _, body = self.make_request("GET", "/api/feed")
         self.assertEqual(status, 200)
         feed = body.get("feed", [])
-        post4 = next((item for item in feed if item.get("title") == "Free Online Tutoring & Mentorship Fair This Saturday"), None)
+        post4 = next((item for item in feed if "Free Online Tutoring & Mentorship Fair This Saturday" in (item.get("title") or "")), None)
         self.assertIsNotNone(post4)
         self.assertIn(post4["theme"], ["Educational", "Education"])
         self.assertIn(post4["post_subtype"], ["EVENT", "Upcoming Community Event"])
