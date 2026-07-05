@@ -2382,3 +2382,5 @@ window.loadMoreFeed = loadMoreFeed;
 window.respondGroupInvite = respondGroupInvite;
 window.showView = showView;
 window.hideAllViews = hideAllViews;
+window.addPostLinkField = addPostLinkField;
+window.handlePostFilesSelect = handlePostFilesSelect;
