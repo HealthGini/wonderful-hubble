@@ -645,6 +645,7 @@ async function loadFeed(isLoadMore = false, isReload = false) {
   const container = document.getElementById("feed-items-container");
   const loadMoreContainer = document.getElementById("feed-load-more-container");
   if (!container) return;
+  renderActiveFilterBanner();
 
   if (!isLoadMore && !isReload) {
     feedOffset = 0;
@@ -814,6 +815,57 @@ function changeSortMode(mode) {
   loadFeed();
 }
 
+async function renderActiveFilterBanner() {
+  const banner = document.getElementById("active-filter-banner");
+  const bannerText = document.getElementById("active-filter-banner-text");
+  if (!banner || !bannerText) return;
+
+  const activeParts = [];
+  let filterUserId = currentFilterUserId || (currentUser ? currentUser.id : null);
+
+  if (currentMyPostsMode === "authored" || (currentTypeFilter === "POST" && filterUserId)) {
+    let targetName = "User";
+    if (filterUserId) {
+      if (currentUser && currentUser.id === Number(filterUserId)) {
+        targetName = currentUser.username;
+      } else {
+        const uObj = allUsersCache.find(u => u.id === Number(filterUserId));
+        targetName = uObj ? uObj.username : `User #${filterUserId}`;
+      }
+    }
+    activeParts.push(`📝 Posts authored by ${targetName}`);
+  } else if (currentMyKudosMode === "received" || (currentTypeFilter === "KUDOS" && filterUserId)) {
+    let targetName = "User";
+    if (filterUserId) {
+      if (currentUser && currentUser.id === Number(filterUserId)) {
+        targetName = currentUser.username;
+      } else {
+        const uObj = allUsersCache.find(u => u.id === Number(filterUserId));
+        targetName = uObj ? uObj.username : `User #${filterUserId}`;
+      }
+    }
+    activeParts.push(`⭐ Kudos received by ${targetName}`);
+  } else if (currentTypeFilter === "POST") {
+    activeParts.push("📝 Posts Only");
+  } else if (currentTypeFilter === "KUDOS") {
+    activeParts.push("⭐ Kudos Only");
+  }
+
+  if (currentTheme) {
+    activeParts.push(`Topic: ${currentTheme}`);
+  }
+  if (currentSearch) {
+    activeParts.push(`Search: "${currentSearch}"`);
+  }
+
+  if (activeParts.length > 0) {
+    bannerText.innerHTML = `<span>🔍</span><span>Active Filter: <strong>${activeParts.join(" | ")}</strong></span>`;
+    banner.classList.remove("hidden");
+  } else {
+    banner.classList.add("hidden");
+  }
+}
+
 function clearAllFilters() {
   currentTheme = "";
   currentGroupFilter = "";
@@ -821,12 +873,14 @@ function clearAllFilters() {
   currentTypeFilter = "";
   currentMyKudosMode = "";
   currentMyPostsMode = "";
+  currentFilterUserId = null;
   const sInput = document.getElementById("feed-search-input");
   if (sInput) sInput.value = "";
   const gSel = document.getElementById("feed-group-select");
   if (gSel) gSel.value = "";
   const tSel = document.getElementById("feed-type-select");
   if (tSel) tSel.value = "";
+  renderActiveFilterBanner();
   filterByTheme("");
 }
 
