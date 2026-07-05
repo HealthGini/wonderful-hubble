@@ -776,14 +776,22 @@ function filterByType(type) {
   loadFeed();
 }
 
-function getUsernameForId(targetId) {
+async function getUsernameForIdAsync(targetId) {
   if (!targetId && currentUser) return currentUser.username;
   if (currentUser && currentUser.id === Number(targetId)) return currentUser.username;
+  if (activeProfileData && activeProfileData.user && activeProfileData.user.id === Number(targetId)) {
+    return activeProfileData.user.username;
+  }
   const uObj = allUsersCache.find(u => u.id === Number(targetId));
-  return uObj ? uObj.username : (currentUser ? currentUser.username : "Maya_Lin");
+  if (uObj) return uObj.username;
+  try {
+    const data = await apiFetch(`/users/${targetId}`);
+    if (data && data.user) return data.user.username;
+  } catch(e) {}
+  return currentUser ? currentUser.username : "Maya_Lin";
 }
 
-function filterFeedByMyKudos(mode, targetUserId = null) {
+async function filterFeedByMyKudos(mode, targetUserId = null) {
   currentFilterUserId = targetUserId || (currentUser ? currentUser.id : null);
   currentMyPostsMode = "";
   if (mode === "all") {
@@ -801,7 +809,7 @@ function filterFeedByMyKudos(mode, targetUserId = null) {
     currentTypeFilter = "KUDOS";
     const typeSel = document.getElementById("feed-type-select");
     if (typeSel) typeSel.value = "KUDOS";
-    const username = getUsernameForId(currentFilterUserId);
+    const username = await getUsernameForIdAsync(currentFilterUserId);
     currentSearch = `author:${username}`;
     const sInput = document.getElementById("feed-search-input");
     if (sInput) sInput.value = currentSearch;
@@ -816,7 +824,7 @@ function filterFeedByMyKudos(mode, targetUserId = null) {
   }
 }
 
-function filterFeedByMyPosts(mode, targetUserId = null) {
+async function filterFeedByMyPosts(mode, targetUserId = null) {
   currentFilterUserId = targetUserId || (currentUser ? currentUser.id : null);
   currentMyKudosMode = "";
   if (mode === "all") {
@@ -837,7 +845,7 @@ function filterFeedByMyPosts(mode, targetUserId = null) {
     if (typeSel) typeSel.value = "POST";
     const grpSel = document.getElementById("feed-group-select");
     if (grpSel) grpSel.value = "";
-    const username = getUsernameForId(currentFilterUserId);
+    const username = await getUsernameForIdAsync(currentFilterUserId);
     currentSearch = `author:${username}`;
     const sInput = document.getElementById("feed-search-input");
     if (sInput) sInput.value = currentSearch;
