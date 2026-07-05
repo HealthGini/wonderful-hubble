@@ -490,8 +490,8 @@ def handle_api_request(method, path, headers, body_bytes):
         if group_id:
             if group_id == "my_spaces":
                 if user:
-                    where_parts.append("f.id IN (SELECT item_id FROM item_groups WHERE group_id IN (SELECT group_id FROM group_members WHERE user_id = ?))")
-                    params.append(user["id"])
+                    where_parts.append("(f.id IN (SELECT item_id FROM item_groups WHERE group_id IN (SELECT group_id FROM group_members WHERE user_id = ?)) OR f.author_id = ? OR f.recipient_id = ?)")
+                    params.extend([user["id"], user["id"], user["id"]])
                 else:
                     where_parts.append("1 = 0")
             else:

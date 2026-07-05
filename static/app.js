@@ -55,7 +55,7 @@ sessionPromise = checkSession();
 window.addEventListener("DOMContentLoaded", async () => {
   setupEventListeners();
   await sessionPromise;
-  await loadQuickNavGroups();
+  loadQuickNavGroups();
   await handleRoute();
 });
 
@@ -700,6 +700,12 @@ async function loadFeed(isLoadMore = false, isReload = false) {
 
     if (!isLoadMore) {
       if (feed.length === 0) {
+        if (currentGroupFilter === "my_spaces") {
+          currentGroupFilter = "";
+          const gSel = document.getElementById("feed-group-select");
+          if (gSel) gSel.value = "";
+          return loadFeed(isLoadMore, isReload);
+        }
         container.innerHTML = `
           <div class="bg-white p-12 rounded-3xl border border-slate-200 text-center space-y-3">
             <div class="text-5xl">🕊️</div>
