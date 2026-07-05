@@ -82,7 +82,7 @@ class TestIntegrationFixes(BaseTestCase):
         self.assertIn('placeholder="Search Kudos, Posts, Events and Resources..."', html_content)
         self.assertNotIn('id="feed-sort-select"', html_content)
         self.assertIn('id="theme-pills-bar"', html_content)
-        for topic in ["All Topics", "✨ Inspiring Story", "🌱 Mental Health", "🌿 Wellness", "🧘 Mindfulness", "🕊️ Spiritual", "🛡️ Suicide Prevention", "🎓 Educational", "🤝 Community Service", "📅 Events", "📎 Resources"]:
+        for topic in ["All", "✨ Inspiring Story", "🌱 Mental Health", "🌿 Wellness", "🧘 Mindfulness", "🕊️ Spiritual", "🛡️ Suicide Prevention", "🎓 Educational", "🤝 Community Service", "📅 Events", "📎 Resources"]:
             self.assertIn(topic, html_content)
 
         # 3. Create Post Modal

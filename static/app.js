@@ -737,11 +737,11 @@ function filterByTheme(th) {
   document.querySelectorAll(".theme-pill").forEach(el => {
     const onclickAttr = el.getAttribute("onclick") || "";
     if (th !== "" && onclickAttr.includes(`'${th}'`)) {
-      el.className = "theme-pill px-3.5 py-1.5 rounded-xl font-bold text-sm bg-amber-500 text-white shadow-sm transition touch-target";
+      el.className = "theme-pill shrink-0 px-3.5 py-1.5 rounded-xl font-bold text-sm bg-amber-500 text-white shadow-sm transition touch-target";
     } else if (th === "" && onclickAttr.includes("''")) {
-      el.className = "theme-pill px-3.5 py-1.5 rounded-xl font-bold text-sm bg-slate-900 text-white transition touch-target shadow-sm";
+      el.className = "theme-pill shrink-0 px-3.5 py-1.5 rounded-xl font-bold text-sm bg-slate-900 text-white transition touch-target shadow-sm";
     } else {
-      el.className = "theme-pill px-3.5 py-1.5 rounded-xl font-bold text-sm bg-slate-100 hover:bg-slate-200 text-slate-700 transition touch-target";
+      el.className = "theme-pill shrink-0 px-3.5 py-1.5 rounded-xl font-bold text-sm bg-slate-100 hover:bg-slate-200 text-slate-700 transition touch-target";
     }
   });
   loadFeed();

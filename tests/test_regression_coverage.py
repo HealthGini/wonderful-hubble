@@ -40,7 +40,7 @@ class TestRegressionCoverage(GoodDeedsTestCase):
 
         # Assert #theme-pills-bar includes the exact 11 topic pills in order
         expected_pills = [
-            'All Topics', 'Inspiring Story', 'Mental Health', 'Wellness',
+            'All', 'Inspiring Story', 'Mental Health', 'Wellness',
             'Mindfulness', 'Spiritual', 'Suicide Prevention', 'Educational',
             'Community Service', 'Events', 'Resources'
         ]
