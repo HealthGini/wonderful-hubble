@@ -687,6 +687,7 @@ async function loadFeed(isLoadMore = false, isReload = false) {
   if (currentTheme) url += `theme=${encodeURIComponent(currentTheme)}&`;
   if (currentGroupFilter) url += `group_id=${encodeURIComponent(currentGroupFilter)}&`;
   if (currentSearch) url += `search=${encodeURIComponent(currentSearch)}&`;
+  if (currentTypeFilter) url += `filter_type=${encodeURIComponent(currentTypeFilter)}&`;
   let userIdToFilter = currentFilterUserId || (currentUser ? currentUser.id : null);
   if (currentMyKudosMode === "received" && userIdToFilter) url += `recipient_id=${userIdToFilter}&filter_type=KUDOS&`;
   if (currentMyKudosMode === "given" && userIdToFilter) url += `author_id=${userIdToFilter}&filter_type=KUDOS&`;
