@@ -679,15 +679,15 @@
           <label class="block font-bold text-slate-700 text-sm mb-1">Post Subtype <span class="text-red-500">*</span></label>
           <div class="flex flex-wrap gap-4 pt-1 pb-2">
             <label class="inline-flex items-center space-x-2 cursor-pointer font-bold text-sm text-slate-700">
-              <input type="radio" name="post-subtype" value="General Post" checked onchange="togglePostSubtype(this.value)" class="w-4 h-4 text-indigo-600 focus:ring-indigo-500">
+              <input type="radio" name="post_subtype" value="GENERAL" checked onchange="togglePostSubtype(this.value)" class="w-4 h-4 text-indigo-600 focus:ring-indigo-500">
               <span>General Post</span>
             </label>
             <label class="inline-flex items-center space-x-2 cursor-pointer font-bold text-sm text-slate-700">
-              <input type="radio" name="post-subtype" value="Community Event" onchange="togglePostSubtype(this.value)" class="w-4 h-4 text-indigo-600 focus:ring-indigo-500">
+              <input type="radio" name="post_subtype" value="EVENT" onchange="togglePostSubtype(this.value)" class="w-4 h-4 text-indigo-600 focus:ring-indigo-500">
               <span>📅 Community Event</span>
             </label>
             <label class="inline-flex items-center space-x-2 cursor-pointer font-bold text-sm text-slate-700">
-              <input type="radio" name="post-subtype" value="Community Resource" onchange="togglePostSubtype(this.value)" class="w-4 h-4 text-indigo-600 focus:ring-indigo-500">
+              <input type="radio" name="post_subtype" value="RESOURCE" onchange="togglePostSubtype(this.value)" class="w-4 h-4 text-indigo-600 focus:ring-indigo-500">
               <span>📚 Community Resource</span>
             </label>
           </div>
@@ -728,12 +728,13 @@
         </div>
 
         <div class="space-y-3">
-          <label class="block font-bold text-slate-700 text-sm">File</label>
+          <label class="block font-bold text-slate-700 text-sm">Files</label>
           <div class="border-2 border-dashed border-slate-300 hover:border-indigo-500 rounded-2xl p-6 bg-slate-50 transition text-center cursor-pointer relative">
             <input type="file" id="post-file-input" multiple onchange="handlePostFilesSelect(event)" class="absolute inset-0 opacity-0 cursor-pointer w-full h-full">
             <div class="space-y-1 pointer-events-none">
               <span class="text-2xl block">📁</span>
               <span class="font-bold text-sm text-slate-700">Choose Files or Drag & Drop Here</span>
+              <span class="text-xs text-slate-400 block font-medium">*(Attach downloadable guides, flyers, or images)*</span>
             </div>
           </div>
           <div id="post-files-preview" class="space-y-2 pt-1"></div>
@@ -933,23 +934,14 @@
   <!-- Toast Notification Popup -->
   <div id="toast-popup" class="fixed bottom-6 right-6 z-50 hidden bg-stone-900 text-white font-black px-6 py-4 rounded-2xl shadow-2xl border-2 border-amber-500 max-w-md transition duration-300"></div>
 
-  <!-- Vanilla JS Application Logic -->
-  <script src="/app.js"></script>
-
-    <div id="curate-step-2"></div>
-    <div id="curate-event-date-container"></div>
-  </div>
-
-    <div id="curate-step-2"></div>
-    <div id="curate-event-date-container"></div>
-    <span>*(Attach downloadable guides, flyers, or images)*</span>
-  </div>
   <!-- Hidden legacy curate elements for schema compatibility -->
   <div class="hidden">
     <div id="curate-step-1"></div>
     <div id="curate-step-2"></div>
     <div id="curate-event-date-container"></div>
-    <span>*(Attach downloadable guides, flyers, or images)*</span>
   </div>
+
+  <!-- Vanilla JS Application Logic -->
+  <script src="/app.js"></script>
 </body>
 </html>

@@ -87,7 +87,7 @@ class TestIntegrationFixes(BaseTestCase):
 
         # 3. Create Post Modal
         self.assertIn('placeholder="e.g. Free Senior Tutoring & Mentorship Workshop"', html_content)
-        self.assertIn('name="post-subtype"', html_content)
+        self.assertTrue('name="post_subtype"' in html_content or 'name="post-subtype"' in html_content)
         self.assertIn('id="post-event-date-container"', html_content)
         self.assertIn('id="post-input-theme"', html_content)
         for th in ["Inspiring Story", "Mental Health", "Wellness", "Mindfulness", "Spiritual", "Suicide Prevention", "Educational", "Community Service"]:

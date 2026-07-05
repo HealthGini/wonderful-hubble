@@ -612,7 +612,8 @@ function renderFeedCard(item, isProfileView = false) {
             <button type="button" onclick="window.openAttachment(window._attachmentCache['${cacheKey}'], 'attachment_${item.id}_${idx}')" class="inline-flex items-center space-x-2 px-4 py-2.5 rounded-xl bg-indigo-50 hover:bg-indigo-100 text-indigo-950 font-bold text-sm border border-indigo-200 transition touch-target shadow-sm">
               <span>📎 Attached Link or File ${urls.length > 1 ? '#' + (idx+1) : ''} ↗</span>
             </button>
-          `).join("") + `</div>`;
+            `;
+          }).join("") + `</div>`;
         })()}
       </div>
 
@@ -1160,7 +1161,7 @@ function togglePostSubtype(subtype) {
   const dateInput = document.getElementById("post-event-date");
   if (!container) return;
 
-  if (subtype === "Community Event") {
+  if (subtype === "Community Event" || subtype === "EVENT") {
     container.classList.remove("hidden");
     const today = new Date().toISOString().split("T")[0];
     if (dateInput) {
@@ -1174,10 +1175,10 @@ function togglePostSubtype(subtype) {
 
 async function populatePostModal() {
   populateGroupCheckboxes("post-groups-list", "post-group");
-  const defaultSubtypeRadio = document.querySelector("input[name='post-subtype'][value='General Post']");
+  const defaultSubtypeRadio = document.querySelector("input[name='post_subtype'][value='GENERAL'], input[name='post-subtype'][value='General Post'], input[name='post_subtype'][value='GENERAL']");
   if (defaultSubtypeRadio) {
     defaultSubtypeRadio.checked = true;
-    togglePostSubtype("General Post");
+    togglePostSubtype(defaultSubtypeRadio.value);
   }
 }
 
@@ -1200,8 +1201,9 @@ async function reviewPostStep(e) {
   const title = document.getElementById("post-input-title").value.trim();
   const theme = document.getElementById("post-input-theme").value;
   let content = document.getElementById("post-input-content").value.trim();
-  const subtypeRadio = document.querySelector("input[name='post-subtype']:checked");
-  const subtype = subtypeRadio ? subtypeRadio.value : "General Post";
+  const subtypeRadio = document.querySelector("input[name='post_subtype']:checked, input[name='post-subtype']:checked");
+  const rawSubtype = subtypeRadio ? subtypeRadio.value : "GENERAL";
+  const subtype = rawSubtype === "Community Event" ? "EVENT" : (rawSubtype === "Community Resource" ? "RESOURCE" : (rawSubtype === "General Post" ? "GENERAL" : rawSubtype));
   const eventDate = document.getElementById("post-event-date") ? document.getElementById("post-event-date").value : "";
 
   if (!title || !content) {
