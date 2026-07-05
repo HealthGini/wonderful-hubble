@@ -1710,35 +1710,47 @@ async function loadUserProfile(targetId) {
   }
   try {
     const data = await apiFetch(`/users/${targetId}`);
+    if (!data || !data.user) return;
     activeProfileData = data;
     const u = data.user;
 
-    document.getElementById("prof-avatar").src = u.avatar_url;
-    document.getElementById("prof-username").textContent = u.username;
-    document.getElementById("prof-email").textContent = `Member since ${new Date(u.created_at).toLocaleDateString()}`;
-    document.getElementById("prof-bio").textContent = u.bio ? `"${u.bio}"` : "No bio added yet.";
+    const avatarEl = document.getElementById("prof-avatar");
+    if (avatarEl) avatarEl.src = u.avatar_url || "";
+
+    const unameEl = document.getElementById("prof-username");
+    if (unameEl) unameEl.textContent = u.username || "";
+
+    const emailEl = document.getElementById("prof-email");
+    if (emailEl) {
+      const createdStr = u.created_at ? new Date(u.created_at).toLocaleDateString() : "";
+      emailEl.textContent = createdStr ? `Member since ${createdStr}` : "Member";
+    }
+
+    const bioEl = document.getElementById("prof-bio");
+    if (bioEl) bioEl.textContent = u.bio ? `"${u.bio}"` : "No bio added yet.";
 
     const editBox = document.getElementById("prof-edit-btn-box");
-    if (currentUser && currentUser.id === u.id) {
-      editBox.classList.remove("hidden");
-    } else {
-      editBox.classList.add("hidden");
+    if (editBox) {
+      if (currentUser && currentUser.id === u.id) {
+        editBox.classList.remove("hidden");
+      } else {
+        editBox.classList.add("hidden");
+      }
     }
 
-    if (data.stats) {
-      const s = data.stats;
-      const setEl = (id, val) => {
-        const el = document.getElementById(id);
-        if (el) el.textContent = val !== undefined && val !== null ? val : "0";
-      };
-      setEl("stat-kudos-received", s.kudos_received);
-      setEl("stat-avg-kudos-year", s.avg_kudos_year);
-      setEl("stat-kudos-given", s.kudos_given);
-      setEl("stat-unique-givers", s.unique_kudos_givers ?? s.unique_givers);
-      setEl("stat-posts-authored", s.posts_authored);
-      setEl("stat-avg-reactions", s.avg_reactions_per_post ?? s.avg_reactions);
-      setEl("stat-last-active", s.last_active_date ?? s.last_active);
-    }
+    const s = data.stats || {};
+    const setEl = (id, val) => {
+      const el = document.getElementById(id);
+      if (el) el.textContent = (val !== undefined && val !== null) ? val : "0";
+    };
+
+    setEl("stat-kudos-received", s.kudos_received ?? 0);
+    setEl("stat-avg-kudos-year", s.avg_kudos_year ?? 0.0);
+    setEl("stat-kudos-given", s.kudos_given ?? 0);
+    setEl("stat-unique-givers", s.unique_kudos_givers ?? s.unique_givers ?? 0);
+    setEl("stat-posts-authored", s.posts_authored ?? 0);
+    setEl("stat-avg-reactions", s.avg_reactions_per_post ?? s.avg_reactions ?? 0.0);
+    setEl("stat-last-active", s.last_active_date ?? s.last_active ?? "Recent");
 
     const bannerHeading = document.getElementById("prof-banner-heading");
     if (bannerHeading) {
@@ -1749,8 +1761,7 @@ async function loadUserProfile(targetId) {
       }
     }
   } catch (err) {
-    showToast("❌ Failed to load profile: " + err.message);
-    navigateTo("/feed");
+    console.error("loadUserProfile error:", err);
   }
 }
 
