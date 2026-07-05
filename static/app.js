@@ -131,7 +131,10 @@ async function handleRoute() {
 
   if (path === "" || path === "/") {
     if (currentUser) {
-      navigateTo("/feed");
+      showView("view-feed");
+      loadFeed();
+      populateGroupFilterDropdown();
+      window.location.hash = "#/feed";
       return;
     }
     showView("view-landing");
@@ -180,7 +183,12 @@ async function handleRoute() {
 }
 
 function navigateTo(route) {
-  window.location.hash = route;
+  const newHash = route.startsWith("#") ? route : `#${route}`;
+  if (window.location.hash === newHash) {
+    handleRoute();
+  } else {
+    window.location.hash = newHash;
+  }
 }
 
 function hideAllViews() {
