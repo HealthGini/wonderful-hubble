@@ -53,7 +53,7 @@ let allUsersCache = [];
 
 sessionPromise = checkSession();
 
-window.addEventListener("DOMContentLoaded", async () => {
+async function initApp() {
   setupEventListeners();
   try {
     await sessionPromise;
@@ -66,7 +66,13 @@ window.addEventListener("DOMContentLoaded", async () => {
     console.error("QuickNav init error:", err);
   }
   await handleRoute();
-});
+}
+
+if (document.readyState === "loading") {
+  window.addEventListener("DOMContentLoaded", initApp);
+} else {
+  initApp();
+}
 
 window.addEventListener("hashchange", async () => {
   await handleRoute();
