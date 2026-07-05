@@ -1644,7 +1644,7 @@ async function toggleGroupMembership(gid, action) {
 }
 
 function switchGroupTab(tabName) {
-  ["chat", "roster"].forEach(t => {
+  ["chat", "kudos", "posts", "roster"].forEach(t => {
     const btn = document.getElementById(`gtab-${t}`);
     const box = document.getElementById(`gcontent-${t}`);
     if (!btn || !box) return;
@@ -1658,8 +1658,43 @@ function switchGroupTab(tabName) {
   });
 
   if (tabName === "chat") renderGroupChatList();
-  if (tabName === "resources") renderGroupResources();
+  if (tabName === "kudos") renderGroupKudos();
+  if (tabName === "posts") renderGroupPosts();
   if (tabName === "roster") renderGroupRoster();
+}
+
+async function renderGroupKudos() {
+  const container = document.getElementById("group-kudos-list");
+  if (!container || !activeGroupId) return;
+  container.innerHTML = `<p class="text-stone-500 font-bold text-center py-8">Loading Kudos...</p>`;
+  try {
+    const data = await apiFetch(`/feed?group_id=${activeGroupId}&filter_type=KUDOS`);
+    const feed = data.feed || [];
+    if (feed.length === 0) {
+      container.innerHTML = `<p class="text-slate-400 font-bold text-center py-8 text-base">No Kudos recognized within this space yet. Send a Kudos to a fellow member!</p>`;
+      return;
+    }
+    container.innerHTML = feed.map(item => renderFeedCard(item, false)).join("");
+  } catch (err) {
+    container.innerHTML = `<p class="text-red-500 font-bold text-center py-8">Failed to load Kudos.</p>`;
+  }
+}
+
+async function renderGroupPosts() {
+  const container = document.getElementById("group-posts-list");
+  if (!container || !activeGroupId) return;
+  container.innerHTML = `<p class="text-stone-500 font-bold text-center py-8">Loading Posts...</p>`;
+  try {
+    const data = await apiFetch(`/feed?group_id=${activeGroupId}&filter_type=POST`);
+    const feed = data.feed || [];
+    if (feed.length === 0) {
+      container.innerHTML = `<p class="text-slate-400 font-bold text-center py-8 text-base">No Posts shared in this space yet. Create a post tagged with this space!</p>`;
+      return;
+    }
+    container.innerHTML = feed.map(item => renderFeedCard(item, false)).join("");
+  } catch (err) {
+    container.innerHTML = `<p class="text-red-500 font-bold text-center py-8">Failed to load Posts.</p>`;
+  }
 }
 
 function renderGroupChatList() {

@@ -325,6 +325,12 @@
         <button onclick="switchGroupTab('chat')" id="gtab-chat" class="gtab-btn px-8 py-4 font-black text-xl border-b-4 border-amber-600 text-amber-800 transition touch-target shrink-0">
           💬 Common Chat Board
         </button>
+        <button onclick="switchGroupTab('kudos')" id="gtab-kudos" class="gtab-btn px-8 py-4 font-black text-xl border-b-4 border-transparent text-stone-500 hover:text-stone-800 transition touch-target shrink-0">
+          🌟 Kudos
+        </button>
+        <button onclick="switchGroupTab('posts')" id="gtab-posts" class="gtab-btn px-8 py-4 font-black text-xl border-b-4 border-transparent text-stone-500 hover:text-stone-800 transition touch-target shrink-0">
+          📝 Posts
+        </button>
         <button onclick="switchGroupTab('roster')" id="gtab-roster" class="gtab-btn px-8 py-4 font-black text-xl border-b-4 border-transparent text-stone-500 hover:text-stone-800 transition touch-target shrink-0">
           👥 Members List
         </button>
@@ -344,7 +350,17 @@
         <div id="group-chat-list" class="space-y-3"></div>
       </div>
 
-      <!-- Tab Content 3: Public Member Roster -->
+      <!-- Tab Content 2: Space Kudos -->
+      <div id="gcontent-kudos" class="hidden space-y-6 animate-fadeIn">
+        <div id="group-kudos-list" class="space-y-6"></div>
+      </div>
+
+      <!-- Tab Content 3: Space Posts -->
+      <div id="gcontent-posts" class="hidden space-y-6 animate-fadeIn">
+        <div id="group-posts-list" class="space-y-6"></div>
+      </div>
+
+      <!-- Tab Content 4: Public Member Roster -->
       <div id="gcontent-roster" class="hidden">
         <div id="group-roster-list" class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-6"></div>
       </div>
