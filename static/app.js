@@ -3,6 +3,7 @@
 const API_BASE = "/api";
 let currentUser = null;
 let currentToken = localStorage.getItem("gd_token") || null;
+window._attachmentCache = window._attachmentCache || {};
 
 // Discussion thread state persistence
 const expandedThreads = new Set();
@@ -481,9 +482,10 @@ function renderFeedCard(item, isProfileView = false) {
   const commentsBoxClass = isExpanded 
     ? "space-y-3.5 pt-2.5 border-t border-stone-200/40" 
     : "space-y-3.5 hidden pt-2.5 border-t border-stone-200/40";
+  const commentsCount = (item.comments || []).length;
   const toggleIconText = isExpanded 
-    ? (item.comments.length > 0 ? "▲ Hide Thread" : "▲ Hide Reply")
-    : (item.comments.length > 0 ? "▼ Show Thread" : "▼ Write Reply");
+    ? (commentsCount > 0 ? "▲ Hide Thread" : "▲ Hide Reply")
+    : (commentsCount > 0 ? "▼ Show Thread" : "▼ Write Reply");
 
   return `
     <article class="bg-white rounded-3xl border border-slate-200/80 shadow-sm hover:shadow-md hover:-translate-y-0.5 transition-all duration-200 p-6 sm:p-8 space-y-6 ${cardClass}">
@@ -561,7 +563,7 @@ function renderFeedCard(item, isProfileView = false) {
         <button type="button" onclick="toggleCommentsStream(${item.id})" class="w-full flex justify-between items-center text-sm font-black text-stone-500 uppercase tracking-wider hover:text-stone-850 transition touch-target">
           <span class="flex items-center space-x-1.5">
             <span>💬 Community Discussion</span>
-            <span class="bg-stone-200 text-stone-700 px-2 py-0.5 rounded-full text-xs font-extrabold">${item.comments.length}</span>
+            <span class="bg-stone-200 text-stone-700 px-2 py-0.5 rounded-full text-xs font-extrabold">${commentsCount}</span>
           </span>
           <span id="comments-toggle-icon-${item.id}" class="text-xs text-amber-700 hover:underline">
             ${toggleIconText}
@@ -569,7 +571,7 @@ function renderFeedCard(item, isProfileView = false) {
         </button>
 
         <div id="comments-stream-box-${item.id}" class="${commentsBoxClass}">
-          ${item.comments.length > 0 ? `
+          ${commentsCount > 0 ? `
             <div class="space-y-2.5">${commentsHtml}</div>
           ` : `
             <p class="text-sm text-slate-400 font-bold italic py-1 text-left">No comments yet. Be the first to share an uplifting note! ☀️</p>
