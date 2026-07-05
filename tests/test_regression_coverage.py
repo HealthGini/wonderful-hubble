@@ -214,6 +214,23 @@ class TestRegressionCoverage(GoodDeedsTestCase):
         for key in ["kudos_received", "avg_kudos_year", "kudos_given", "unique_givers", "posts_authored", "avg_reactions", "last_active"]:
             self.assertIn(key, stats)
 
+    def test_profile_open_posts_for_target_user(self):
+        """
+        Tests that requesting user profile API returns user 3 (Elena) data and app.js binds target user ID to profile buttons.
+        """
+        token = self.get_token("maya@gooddeeds.space")
+        headers = self.get_auth_headers(token)
+        status, _, body = self.make_request("GET", "/api/users/3", headers=headers)
+        self.assertEqual(status, 200)
+        self.assertEqual(body["user"]["id"], 3)
+
+        base_dir = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+        app_js_path = os.path.join(base_dir, "static", "app.js")
+        with open(app_js_path, "r", encoding="utf-8") as f:
+            js = f.read()
+        self.assertIn("prof-open-posts-btn", js)
+        self.assertIn("filterFeedByMyPosts('authored', ${u.id})", js)
+
     def test_my_spaces_feed_filter(self):
         """
         Tests GET /api/feed?group_id=my_spaces for authenticated vs unauthenticated users.

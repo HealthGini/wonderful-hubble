@@ -1812,6 +1812,15 @@ async function loadUserProfile(targetId) {
         bannerHeading.textContent = `Looking for ${u.username}'s Kudos or Posts?`;
       }
     }
+
+    const kudosBtn = document.getElementById("prof-open-kudos-btn");
+    if (kudosBtn) {
+      kudosBtn.setAttribute("onclick", `filterFeedByMyKudos('received', ${u.id})`);
+    }
+    const postsBtn = document.getElementById("prof-open-posts-btn");
+    if (postsBtn) {
+      postsBtn.setAttribute("onclick", `filterFeedByMyPosts('authored', ${u.id})`);
+    }
   } catch (err) {
     console.error("loadUserProfile error:", err);
   }
