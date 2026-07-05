@@ -19,6 +19,7 @@ let currentSearch = "";
 let currentTypeFilter = "";
 let currentMyKudosMode = "";
 let currentMyPostsMode = "";
+let currentFilterUserId = null;
 
 // Feed pagination state
 let feedLimit = 4;
@@ -2353,3 +2354,31 @@ function closeMobileMenu() {
   const menu = document.getElementById("mobile-menu");
   if (menu) menu.classList.add("hidden");
 }
+
+window.presetLogin = presetLogin;
+window.handleLogin = handleLogin;
+window.handleSignup = handleSignup;
+window.logout = logout;
+window.selectAvatar = selectAvatar;
+window.handleGiveKudos = handleGiveKudos;
+window.handleCreateGroup = handleCreateGroup;
+window.handleProfileUpdate = handleProfileUpdate;
+window.handleSupportSubmit = handleSupportSubmit;
+window.handleGroupInviteSubmit = handleGroupInviteSubmit;
+window.filterGroupsTheme = filterGroupsTheme;
+window.switchGroupTab = switchGroupTab;
+window.sendGroupChat = sendGroupChat;
+window.openEditProfileModal = openEditProfileModal;
+window.loadOutbox = loadOutbox;
+window.browseSourceFile = browseSourceFile;
+window.loadSpotlightView = loadSpotlightView;
+window.toggleMobileMenu = toggleMobileMenu;
+window.closeMobileMenu = closeMobileMenu;
+window.openGroupInviteModal = openGroupInviteModal;
+window.toggleGroupMembership = toggleGroupMembership;
+window.toggleMemberRole = toggleMemberRole;
+window.loadMoreLandingPreview = loadMoreLandingPreview;
+window.loadMoreFeed = loadMoreFeed;
+window.respondGroupInvite = respondGroupInvite;
+window.showView = showView;
+window.hideAllViews = hideAllViews;
