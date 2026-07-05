@@ -65,11 +65,28 @@ window.addEventListener("hashchange", async () => {
 function setupEventListeners() {
   let searchTimeout;
   const feedSearch = document.getElementById("feed-search-input");
+  const feedSearchClearBtn = document.getElementById("feed-search-clear-btn");
+
+  function updateSearchClearBtn() {
+    if (!feedSearch || !feedSearchClearBtn) return;
+    if (feedSearch.value.trim().length > 0) {
+      feedSearchClearBtn.classList.remove("hidden");
+    } else {
+      feedSearchClearBtn.classList.add("hidden");
+    }
+  }
+
   if (feedSearch) {
     feedSearch.addEventListener("input", (e) => {
+      updateSearchClearBtn();
       clearTimeout(searchTimeout);
       searchTimeout = setTimeout(() => {
         currentSearch = e.target.value.trim();
+        if (!currentSearch || !currentSearch.toLowerCase().includes("author:")) {
+          currentFilterUserId = null;
+          currentMyPostsMode = "";
+          currentMyKudosMode = "";
+        }
         loadFeed();
       }, 300);
     });
@@ -760,23 +777,38 @@ function filterByType(type) {
   loadFeed();
 }
 
-function filterFeedByMyKudos(mode) {
-  if (!currentUser) {
-    showToast("Please log in to view your Kudos history.");
-    openModal("modal-login");
-    return;
-  }
+function getUsernameForId(targetId) {
+  if (!targetId && currentUser) return currentUser.username;
+  if (currentUser && currentUser.id === Number(targetId)) return currentUser.username;
+  const uObj = allUsersCache.find(u => u.id === Number(targetId));
+  return uObj ? uObj.username : (currentUser ? currentUser.username : "Maya_Lin");
+}
+
+function filterFeedByMyKudos(mode, targetUserId = null) {
+  currentFilterUserId = targetUserId || (currentUser ? currentUser.id : null);
   currentMyPostsMode = "";
   if (mode === "all") {
     currentMyKudosMode = "";
     currentTypeFilter = "";
+    currentFilterUserId = null;
+    currentSearch = "";
+    const sInput = document.getElementById("feed-search-input");
+    if (sInput) sInput.value = "";
+    const clearBtn = document.getElementById("feed-search-clear-btn");
+    if (clearBtn) clearBtn.classList.add("hidden");
     showToast("🔄 Showing all community feed items.");
   } else {
     currentMyKudosMode = mode;
     currentTypeFilter = "KUDOS";
     const typeSel = document.getElementById("feed-type-select");
     if (typeSel) typeSel.value = "KUDOS";
-    showToast(mode === "received" ? "📥 Filtering by Kudos you've received!" : "📤 Filtering by Kudos you've given!");
+    const username = getUsernameForId(currentFilterUserId);
+    currentSearch = `author:${username}`;
+    const sInput = document.getElementById("feed-search-input");
+    if (sInput) sInput.value = currentSearch;
+    const clearBtn = document.getElementById("feed-search-clear-btn");
+    if (clearBtn) clearBtn.classList.remove("hidden");
+    showToast(mode === "received" ? `📥 Filtering by Kudos received by ${username}!` : `📤 Filtering by Kudos given by ${username}!`);
   }
   if (window.location.hash !== "#/feed" && window.location.hash !== "#/" && window.location.hash !== "") {
     navigateTo("/feed");
@@ -785,23 +817,31 @@ function filterFeedByMyKudos(mode) {
   }
 }
 
-function filterFeedByMyPosts(mode) {
-  if (!currentUser) {
-    showToast("Please log in to view your Posts history.");
-    openModal("modal-login");
-    return;
-  }
+function filterFeedByMyPosts(mode, targetUserId = null) {
+  currentFilterUserId = targetUserId || (currentUser ? currentUser.id : null);
   currentMyKudosMode = "";
   if (mode === "all") {
     currentMyPostsMode = "";
     currentTypeFilter = "";
+    currentFilterUserId = null;
+    currentSearch = "";
+    const sInput = document.getElementById("feed-search-input");
+    if (sInput) sInput.value = "";
+    const clearBtn = document.getElementById("feed-search-clear-btn");
+    if (clearBtn) clearBtn.classList.add("hidden");
     showToast("🔄 Showing all community feed items.");
   } else {
     currentMyPostsMode = "authored";
     currentTypeFilter = "POST";
     const typeSel = document.getElementById("feed-type-select");
     if (typeSel) typeSel.value = "POST";
-    showToast("📂 Filtering by Posts you've authored!");
+    const username = getUsernameForId(currentFilterUserId);
+    currentSearch = `author:${username}`;
+    const sInput = document.getElementById("feed-search-input");
+    if (sInput) sInput.value = currentSearch;
+    const clearBtn = document.getElementById("feed-search-clear-btn");
+    if (clearBtn) clearBtn.classList.remove("hidden");
+    showToast(`📂 Filtering by Posts authored by ${username}!`);
   }
   if (window.location.hash !== "#/feed" && window.location.hash !== "#/" && window.location.hash !== "") {
     navigateTo("/feed");
@@ -809,6 +849,15 @@ function filterFeedByMyPosts(mode) {
     loadFeed();
   }
 }
+
+function clearFeedSearchInput() {
+  const sInput = document.getElementById("feed-search-input");
+  if (sInput) sInput.value = "";
+  const clearBtn = document.getElementById("feed-search-clear-btn");
+  if (clearBtn) clearBtn.classList.add("hidden");
+  clearAllFilters();
+}
+window.clearFeedSearchInput = clearFeedSearchInput;
 
 function changeSortMode(mode) {
   currentSortMode = mode;

@@ -227,7 +227,8 @@
           <!-- Keyword Search -->
           <div class="relative flex-1">
             <span class="absolute inset-y-0 left-0 pl-4 flex items-center pointer-events-none text-slate-400 text-lg" aria-hidden="true">🔍</span>
-            <input type="search" id="feed-search-input" placeholder="Search Kudos, Posts, Events and Resources..." class="w-full pl-11 pr-4 py-3 rounded-xl border border-slate-300 font-medium text-sm bg-slate-50 focus:bg-white focus:border-indigo-600 transition">
+            <input type="search" id="feed-search-input" placeholder="Search Kudos, Posts, Events and Resources..." class="w-full pl-11 pr-10 py-3 rounded-xl border border-slate-300 font-medium text-sm bg-slate-50 focus:bg-white focus:border-indigo-600 transition">
+            <button id="feed-search-clear-btn" onclick="clearFeedSearchInput()" class="hidden absolute inset-y-0 right-0 pr-3 flex items-center text-slate-400 hover:text-slate-600 font-bold text-base">✕</button>
           </div>
 
           <!-- Group Filter Dropdown -->

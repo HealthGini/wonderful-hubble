@@ -503,9 +503,21 @@ def handle_api_request(method, path, headers, body_bytes):
                     pass
 
         if search:
-            like_q = f"%{search}%"
-            where_parts.append("(f.title LIKE ? OR f.content LIKE ? OR f.theme LIKE ? OR f.extracted_text LIKE ? OR f.resource_url LIKE ?)")
-            params.extend([like_q, like_q, like_q, like_q, like_q])
+            if "author:" in search.lower():
+                parts = search.split("author:", 1)
+                prefix = parts[0].strip()
+                author_name = parts[1].strip().split()[0]
+                remaining = (prefix + " " + " ".join(parts[1].strip().split()[1:])).strip()
+                where_parts.append("(u.username LIKE ? OR ru.username LIKE ?)")
+                params.extend([f"%{author_name}%", f"%{author_name}%"])
+                if remaining:
+                    like_q = f"%{remaining}%"
+                    where_parts.append("(f.title LIKE ? OR f.content LIKE ? OR f.theme LIKE ? OR f.extracted_text LIKE ? OR f.resource_url LIKE ?)")
+                    params.extend([like_q, like_q, like_q, like_q, like_q])
+            else:
+                like_q = f"%{search}%"
+                where_parts.append("(f.title LIKE ? OR f.content LIKE ? OR f.theme LIKE ? OR f.extracted_text LIKE ? OR f.resource_url LIKE ?)")
+                params.extend([like_q, like_q, like_q, like_q, like_q])
 
         where_clause = ""
         if where_parts:
