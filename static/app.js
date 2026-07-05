@@ -292,6 +292,14 @@ function showToast(msg) {
 /* ================= AUTHENTICATION & SESSION ================= */
 
 async function apiFetch(endpoint, options = {}) {
+  let url;
+  if (endpoint.startsWith("http")) {
+    url = endpoint;
+  } else if (endpoint.startsWith("/api/")) {
+    url = endpoint;
+  } else {
+    url = API_BASE + (endpoint.startsWith("/") ? endpoint : "/" + endpoint);
+  }
   const headers = options.headers || {};
   if (currentToken) {
     headers["Authorization"] = `Bearer ${currentToken}`;
@@ -301,7 +309,7 @@ async function apiFetch(endpoint, options = {}) {
   }
   options.headers = headers;
 
-  const res = await fetch(API_BASE + endpoint, options);
+  const res = await fetch(url, options);
   let data = {};
   try {
     data = await res.json();
@@ -324,10 +332,13 @@ async function checkSession() {
     updateAuthUI(null);
     return;
   }
+  const timeoutPromise = new Promise(resolve => setTimeout(resolve, 2500));
   try {
-    const data = await apiFetch("/auth/me");
-    currentUser = data.user;
-    updateAuthUI(currentUser);
+    const fetchPromise = apiFetch("/auth/me").then(data => {
+      currentUser = data.user;
+      updateAuthUI(currentUser);
+    });
+    await Promise.race([fetchPromise, timeoutPromise]);
   } catch (err) {
     currentToken = null;
     localStorage.removeItem("gd_token");
@@ -365,9 +376,12 @@ async function handleLogin(e) {
       method: "POST",
       body: JSON.stringify({ email, password })
     });
-    currentToken = data.token;
+    const token = data.token || data.access_token;
+    if (!token) throw new Error(data.error || "Login failed");
+    currentToken = token;
     localStorage.setItem("gd_token", currentToken);
     currentUser = data.user;
+    sessionPromise = Promise.resolve();
     updateAuthUI(currentUser);
     closeModal("modal-login");
     showToast(`☀️ Welcome back, ${currentUser.username}!`);

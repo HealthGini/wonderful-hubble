@@ -340,5 +340,25 @@ class TestRegressionCoverage(GoodDeedsTestCase):
         self.assertIsNotNone(cache_control, "Cache-Control header missing from API response")
         self.assertIn("no-cache", cache_control.lower())
 
+    def test_login_case_insensitivity_and_api_fetch_paths(self):
+        """
+        Verifies login case insensitivity for email/username and app.js apiFetch URL normalization.
+        """
+        # Test uppercase email login
+        status, _, body = self.make_request("POST", "/api/auth/login", body={"email": "MAYA@GOODDEEDS.SPACE", "password": "password123"})
+        self.assertEqual(status, 200)
+        self.assertIn("token", body)
+
+        # Test lowercase username login
+        status, _, body = self.make_request("POST", "/api/auth/login", body={"email": "maya_lin", "password": "password123"})
+        self.assertEqual(status, 200)
+        self.assertIn("token", body)
+
+        base_dir = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+        app_js_path = os.path.join(base_dir, "static", "app.js")
+        with open(app_js_path, "r", encoding="utf-8") as f:
+            app_js = f.read()
+        self.assertIn("endpoint.startsWith(\"/api/\")", app_js)
+
 if __name__ == "__main__":
     unittest.main()

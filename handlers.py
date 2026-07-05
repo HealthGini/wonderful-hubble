@@ -259,7 +259,7 @@ def handle_api_request(method, path, headers, body_bytes):
         cursor.execute("""
             SELECT id, email, username, phone, avatar_url, bio, is_site_admin
             FROM users
-            WHERE (email = ? OR username = ?) AND password_hash = ?
+            WHERE (LOWER(email) = LOWER(?) OR LOWER(username) = LOWER(?)) AND password_hash = ?
         """, (email, email, pw_hash))
         row = cursor.fetchone()
         if not row:
