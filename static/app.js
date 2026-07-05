@@ -54,8 +54,16 @@ sessionPromise = checkSession();
 
 window.addEventListener("DOMContentLoaded", async () => {
   setupEventListeners();
-  await sessionPromise;
-  loadQuickNavGroups();
+  try {
+    await sessionPromise;
+  } catch (err) {
+    console.error("Session init error:", err);
+  }
+  try {
+    loadQuickNavGroups();
+  } catch (err) {
+    console.error("QuickNav init error:", err);
+  }
   await handleRoute();
 });
 
