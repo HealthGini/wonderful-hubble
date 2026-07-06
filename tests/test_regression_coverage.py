@@ -360,5 +360,19 @@ class TestRegressionCoverage(GoodDeedsTestCase):
             app_js = f.read()
         self.assertIn("endpoint.startsWith(\"/api/\")", app_js)
 
+    def test_homepage_vision_features_and_faq_sections(self):
+        """Verifies landing vision, features showcase, FAQ, and CTA sections exist in static/index.html."""
+        base_dir = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+        index_path = os.path.join(base_dir, "static", "index.html")
+        with open(index_path, "r", encoding="utf-8") as f:
+            html_content = f.read()
+        self.assertIn("id=\"landing-vision-section\"", html_content)
+        self.assertIn("id=\"landing-features-section\"", html_content)
+        self.assertIn("id=\"landing-faq-section\"", html_content)
+        self.assertIn("id=\"landing-cta-section\"", html_content)
+        self.assertIn("Why Join GoodDeeds.space?", html_content)
+        self.assertIn("Platform Features Built for Kindness", html_content)
+        self.assertIn("Frequently Asked Questions", html_content)
+
 if __name__ == "__main__":
     unittest.main()
