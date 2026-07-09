@@ -2467,11 +2467,40 @@ window.formatAttachmentLabel = formatAttachmentLabel;
 
 function openAttachment(url, filename) {
   if (!url) return;
-  const win = window.open(url, '_blank');
+  let targetUrl = url;
+  try {
+    const strUrl = String(url).trim();
+    if (strUrl.toLowerCase().startsWith("data:")) {
+      const commaIdx = strUrl.indexOf(",");
+      if (commaIdx !== -1) {
+        const header = strUrl.slice(0, commaIdx);
+        const base64Data = strUrl.slice(commaIdx + 1);
+        let mimeType = "application/octet-stream";
+        const mimeMatch = header.match(/^data:([^;,]+)/i);
+        if (mimeMatch && mimeMatch[1] && mimeMatch[1].trim()) {
+          mimeType = mimeMatch[1].trim();
+        }
+        if (/;base64/i.test(header) || header.toLowerCase().includes(";base64")) {
+          const cleanBase64 = base64Data.replace(/\s+/g, '');
+          const byteString = atob(cleanBase64);
+          const ab = new ArrayBuffer(byteString.length);
+          const ia = new Uint8Array(ab);
+          for (let i = 0; i < byteString.length; i++) {
+            ia[i] = byteString.charCodeAt(i);
+          }
+          const blob = new Blob([ab], { type: mimeType });
+          targetUrl = URL.createObjectURL(blob);
+        }
+      }
+    }
+  } catch (e) {
+    targetUrl = url;
+  }
+  const win = window.open(targetUrl, '_blank');
   if (win) {
     win.focus();
   } else {
-    window.location.href = url;
+    window.location.href = targetUrl;
   }
 }
 window.openAttachment = openAttachment;

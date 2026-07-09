@@ -322,6 +322,19 @@ class TestRegressionCoverage(GoodDeedsTestCase):
         self.assertIn("function openAttachment", app_js)
         self.assertIn("window.openAttachment = openAttachment", app_js)
 
+        # Assert synchronous Base64 Data URI to Blob URL conversion logic and optimizations
+        open_attachment_idx = app_js.find("function openAttachment")
+        self.assertNotEqual(open_attachment_idx, -1)
+        open_attachment_block = app_js[open_attachment_idx:open_attachment_idx + 1500]
+        self.assertIn("data:", open_attachment_block.lower())
+        self.assertIn("atob(", open_attachment_block)
+        self.assertIn("ArrayBuffer", open_attachment_block)
+        self.assertIn("Uint8Array", open_attachment_block)
+        self.assertIn("Blob(", open_attachment_block)
+        self.assertIn("createObjectURL(", open_attachment_block)
+        self.assertIn("window.open(", open_attachment_block)
+        self.assertIn("indexOf(\",\")", open_attachment_block)
+        self.assertIn(".replace(", open_attachment_block)
 
     def test_feed_endpoint_resilience_and_headers(self):
         """
