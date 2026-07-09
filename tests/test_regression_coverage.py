@@ -247,16 +247,30 @@ class TestRegressionCoverage(GoodDeedsTestCase):
         self.assertEqual(status, 200)
         self.assertIn("feed", body)
 
-    def test_space_details_tab_cleanup(self):
+    def test_space_details_resources_tab_restoration(self):
         """
-        Asserts #gtab-resources button and #gcontent-resources pane are removed from index.html.
+        Asserts #gtab-resources, #gcontent-resources, and #group-resources-list exist in static/index.html.
+        Asserts switchGroupTab includes 'resources' and renderGroupResources uses attachment helpers in static/app.js.
         """
         base_dir = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
         index_path = os.path.join(base_dir, "static", "index.html")
+        app_path = os.path.join(base_dir, "static", "app.js")
+
         with open(index_path, "r", encoding="utf-8") as f:
             html = f.read()
-        self.assertNotIn('id="gtab-resources"', html)
-        self.assertNotIn('id="gcontent-resources"', html)
+        self.assertIn('id="gtab-resources"', html)
+        self.assertIn('id="gcontent-resources"', html)
+        self.assertIn('id="group-resources-list"', html)
+        self.assertIn('id="admin-curate-box"', html)
+
+        with open(app_path, "r", encoding="utf-8") as f:
+            js = f.read()
+        self.assertIn('"resources"', js)
+        self.assertIn("renderGroupResources", js)
+        self.assertIn("_attachmentCache", js)
+        self.assertIn("openAttachment", js)
+        self.assertIn("formatAttachmentLabel", js)
+
 
     def test_mobile_responsiveness_elements(self):
         """

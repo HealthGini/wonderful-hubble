@@ -436,6 +436,9 @@
         <button onclick="switchGroupTab('roster')" id="gtab-roster" class="gtab-btn px-8 py-4 font-black text-xl border-b-4 border-transparent text-stone-500 hover:text-stone-800 transition touch-target shrink-0">
           👥 Members List
         </button>
+        <button onclick="switchGroupTab('resources')" id="gtab-resources" class="gtab-btn px-8 py-4 font-black text-xl border-b-4 border-transparent text-stone-500 hover:text-stone-800 transition touch-target shrink-0">
+          📚 Resources
+        </button>
       </div>
 
       <!-- Tab Content 1: Common Chat Board -->
@@ -466,7 +469,124 @@
       <div id="gcontent-roster" class="hidden">
         <div id="group-roster-list" class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-6"></div>
       </div>
+
+      <!-- Tab Content 5: Space Resources -->
+      <div id="gcontent-resources" class="hidden space-y-8 animate-fadeIn">
+        <div id="admin-curate-box" class="hidden max-w-3xl mx-auto bg-white p-8 sm:p-12 rounded-3xl border-2 border-stone-200 shadow-xl space-y-8 animate-fadeIn text-left">
+          <div class="text-center space-y-1.5 border-b border-stone-100 pb-5">
+            <h3 class="text-3xl font-black text-stone-900 tracking-tight">Add Space Resources</h3>
+            <p class="text-stone-500 font-bold text-sm">Curate helpful web links and downloadable files for your space members.</p>
+          </div>
+
+          <!-- Step 1 Wizard -->
+          <form id="curate-step-1" onsubmit="reviewCurateStep(event)" class="space-y-6">
+            <!-- Subtype Selection -->
+            <div>
+              <label class="block font-bold text-stone-700 text-sm mb-2">Resource Subtype <span class="text-red-500">*</span></label>
+              <div class="flex flex-wrap gap-4">
+                <label class="inline-flex items-center space-x-2 cursor-pointer font-bold text-stone-800">
+                  <input type="radio" name="curate-subtype" value="Community Resource" checked onchange="toggleCurateSubtype('Community Resource')" class="text-amber-600 focus:ring-amber-500 h-4 w-4">
+                  <span>📚 Community Resource</span>
+                </label>
+                <label class="inline-flex items-center space-x-2 cursor-pointer font-bold text-stone-800">
+                  <input type="radio" name="curate-subtype" value="Community Event" onchange="toggleCurateSubtype('Community Event')" class="text-amber-600 focus:ring-amber-500 h-4 w-4">
+                  <span>📅 Community Event</span>
+                </label>
+                <label class="inline-flex items-center space-x-2 cursor-pointer font-bold text-stone-800">
+                  <input type="radio" name="curate-subtype" value="General Post" onchange="toggleCurateSubtype('General Post')" class="text-amber-600 focus:ring-amber-500 h-4 w-4">
+                  <span>📝 General Post</span>
+                </label>
+              </div>
+            </div>
+
+            <!-- Event Date Container -->
+            <div id="curate-event-date-container" class="hidden">
+              <label class="block font-bold text-stone-700 text-sm mb-1.5">Event Date <span class="text-red-500">*</span></label>
+              <input type="date" id="curate-event-date" class="w-full px-4 py-3 rounded-xl border-2 border-stone-300 font-bold text-base bg-stone-50 focus:bg-white focus:border-amber-600 transition">
+            </div>
+
+            <!-- Field 1: Title -->
+            <div>
+              <label class="block font-bold text-stone-700 text-sm mb-1.5">Title <span class="text-stone-400 font-normal text-xs">*(Acts as resource description)*</span> <span class="text-red-500">*</span></label>
+              <input type="text" id="curate-title" required placeholder="e.g. Comprehensive Mutual Aid & Wellness Handbook" class="w-full px-4 py-3 rounded-xl border-2 border-stone-300 font-bold text-base bg-stone-50 focus:bg-white focus:border-amber-600 transition">
+            </div>
+
+            <!-- Field 2: Description -->
+            <div>
+              <label class="block font-bold text-stone-700 text-sm mb-1.5">Description <span class="text-stone-400 font-normal text-xs">*(Detailed overview)*</span></label>
+              <textarea id="curate-desc" rows="3" placeholder="Provide additional details about what this resource contains..." class="w-full px-4 py-3 rounded-xl border-2 border-stone-300 font-medium text-sm bg-stone-50 focus:bg-white focus:border-amber-600 transition"></textarea>
+            </div>
+
+            <!-- Field 3: Category Theme Purpose -->
+            <div>
+              <label class="block font-bold text-stone-700 text-sm mb-1">Category Theme Selection Purpose <span class="text-red-500">*</span></label>
+              <p class="text-xs text-stone-400 font-medium mb-2">Explicitly categorizes these resources to help space members search, filter, and discover them.</p>
+              <select id="res-theme" required class="w-full px-4 py-3 rounded-xl border-2 border-stone-300 font-bold text-base bg-white focus:border-amber-600 transition cursor-pointer touch-target">
+                <option value="Inspiring Story">✨ Inspiring Story</option>
+                <option value="Mental Health">🌱 Mental Health</option>
+                <option value="Wellness">🌿 Wellness</option>
+                <option value="Mindfulness">🧘 Mindfulness</option>
+                <option value="Spiritual">🕊️ Spiritual</option>
+                <option value="Suicide Prevention">🛡️ Suicide Prevention</option>
+                <option value="Educational">🎓 Educational</option>
+                <option value="Community Service">🤝 Community Service</option>
+              </select>
+            </div>
+
+            <!-- Field 4: Links -->
+            <div class="space-y-3">
+              <label class="block font-bold text-stone-700 text-sm">Links <span class="text-stone-400 font-normal text-xs">*(Add one or more web URLs)*</span></label>
+              <div id="curate-links-list" class="space-y-2.5">
+                <div class="flex gap-2">
+                  <input type="url" placeholder="https://example.com/useful-article" class="curate-link-input flex-1 px-4 py-3 rounded-xl border-2 border-stone-300 font-medium text-sm bg-stone-50 focus:bg-white focus:border-amber-600 transition">
+                </div>
+              </div>
+              <button type="button" onclick="addCurateLinkField()" class="px-4 py-2 bg-amber-50 hover:bg-amber-100 text-amber-800 font-bold text-xs rounded-lg transition flex items-center space-x-1">
+                <span>+ Add More Links</span>
+              </button>
+            </div>
+
+            <!-- Field 5: File Uploads -->
+            <div class="space-y-3">
+              <label class="block font-bold text-stone-700 text-sm">File <span class="text-stone-400 font-normal text-xs">*(Upload PDFs, guides or images)*</span></label>
+              <div class="border-2 border-dashed border-stone-300 hover:border-amber-500 rounded-2xl p-6 bg-stone-50 transition text-center cursor-pointer relative">
+                <input type="file" id="curate-file-input" multiple onchange="handleCurateFilesSelect(event)" class="absolute inset-0 opacity-0 cursor-pointer w-full h-full">
+                <div class="space-y-1 pointer-events-none">
+                  <span class="text-2xl block">📁</span>
+                  <span class="font-bold text-sm text-stone-700">Choose Files or Drag & Drop Here</span>
+                  <span class="text-xs text-stone-400 block font-medium">Supports PDF, DOCX, TXT, PNG, JPG (Multiple files allowed)</span>
+                </div>
+              </div>
+              <div id="curate-files-preview" class="space-y-2 pt-1"></div>
+            </div>
+
+            <!-- Field 6: Submit Button -->
+            <div class="pt-4 text-center">
+              <button type="submit" class="w-full sm:w-auto min-w-[240px] px-8 py-3.5 bg-amber-600 hover:bg-amber-700 text-white font-black text-lg rounded-xl shadow-lg transition touch-target">
+                Next: Review Resources ↗
+              </button>
+            </div>
+          </form>
+
+          <!-- Step 2 Wizard -->
+          <div id="curate-step-2" class="hidden space-y-6">
+            <h4 class="text-xl font-black text-stone-900">Review & Confirm Resource Attachment</h4>
+            <div id="curate-preview-card" class="bg-stone-50 p-6 rounded-2xl border-2 border-stone-200 space-y-3"></div>
+            <div class="flex flex-col sm:flex-row justify-end gap-3 pt-4">
+              <button type="button" onclick="backToCurateStep1()" class="px-6 py-3 bg-stone-200 hover:bg-stone-300 text-stone-800 font-bold rounded-xl transition">
+                ← Back to Edit
+              </button>
+              <button type="button" onclick="confirmSubmitCurateResources()" class="px-8 py-3.5 bg-emerald-600 hover:bg-emerald-700 text-white font-black rounded-xl shadow-lg transition touch-target">
+                ✅ Confirm & Add to Space Library
+              </button>
+            </div>
+          </div>
+        </div>
+
+        <div id="group-resources-list" class="grid grid-cols-1 md:grid-cols-2 gap-6"></div>
+      </div>
     </section>
+
 
     <!-- ================== VIEW 6: USER PROFILE PAGE ================== -->
     <section id="view-profile" class="hidden space-y-8">
@@ -679,16 +799,7 @@
         New here? <button onclick="switchModal('modal-login', 'modal-signup')" class="text-amber-700 font-black underline">Create a free account</button>
       </p>
     </div>
-          <select id="res-theme" class="hidden">
-          <option value="Inspiring Story">✨ Inspiring Story</option>
-          <option value="Mental Health">🌱 Mental Health</option>
-          <option value="Wellness">🌿 Wellness</option>
-          <option value="Mindfulness">🧘 Mindfulness</option>
-          <option value="Spiritual">🕊️ Spiritual</option>
-          <option value="Suicide Prevention">🛡️ Suicide Prevention</option>
-          <option value="Educational">🎓 Educational</option>
-          <option value="Community Service">🤝 Community Service</option>
-        </select>
+
   </dialog>
 
   <!-- MODAL 2: SIGN UP FREE -->
@@ -1052,12 +1163,7 @@
   <!-- Toast Notification Popup -->
   <div id="toast-popup" class="fixed bottom-6 right-6 z-50 hidden bg-stone-900 text-white font-black px-6 py-4 rounded-2xl shadow-2xl border-2 border-amber-500 max-w-md transition duration-300"></div>
 
-  <!-- Hidden legacy curate elements for schema compatibility -->
-  <div class="hidden">
-    <div id="curate-step-1"></div>
-    <div id="curate-step-2"></div>
-    <div id="curate-event-date-container"></div>
-  </div>
+
 
   <!-- Vanilla JS Application Logic -->
   <script src="/app.js"></script>

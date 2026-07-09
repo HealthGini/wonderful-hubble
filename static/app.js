@@ -1644,7 +1644,7 @@ async function toggleGroupMembership(gid, action) {
 }
 
 function switchGroupTab(tabName) {
-  ["chat", "kudos", "posts", "roster"].forEach(t => {
+  ["chat", "kudos", "posts", "roster", "resources"].forEach(t => {
     const btn = document.getElementById(`gtab-${t}`);
     const box = document.getElementById(`gcontent-${t}`);
     if (!btn || !box) return;
@@ -1661,6 +1661,7 @@ function switchGroupTab(tabName) {
   if (tabName === "kudos") renderGroupKudos();
   if (tabName === "posts") renderGroupPosts();
   if (tabName === "roster") renderGroupRoster();
+  if (tabName === "resources") renderGroupResources();
 }
 
 async function renderGroupKudos() {
@@ -1750,19 +1751,28 @@ function renderGroupResources() {
     container.innerHTML = `<p class="text-stone-400 font-bold col-span-2 text-center py-8 text-lg">No curated resource files added to this space library yet.</p>`;
     return;
   }
-  container.innerHTML = res.map(r => `
+  container.innerHTML = res.map((r, idx) => {
+    const cacheKey = `group_res_${activeGroupData.id}_${idx}`;
+    window._attachmentCache = window._attachmentCache || {};
+    window._attachmentCache[cacheKey] = r.url;
+    const titleText = r.title || r.description || "Resource";
+    const descText = r.description && r.description !== r.title ? `<p class="text-stone-600 font-medium text-sm pt-1 whitespace-pre-line">${r.description}</p>` : "";
+    return `
     <div class="bg-white p-7 rounded-3xl border-2 border-stone-200 shadow-sm space-y-4 flex flex-col justify-between">
       <div class="space-y-2.5">
-        <span class="px-3.5 py-1 bg-teal-50 text-teal-800 font-black text-xs rounded-full border border-teal-200">${r.theme}</span>
-        <h4 class="text-2xl font-black text-stone-900">${r.description || r.title}</h4>
+        <span class="px-3.5 py-1 bg-teal-50 text-teal-800 font-black text-xs rounded-full border border-teal-200">${r.theme || "Community Resources"}</span>
+        <h4 class="text-2xl font-black text-stone-900">${titleText}</h4>
+        ${descText}
         <p class="text-xs font-bold text-stone-400">Curated by ${r.added_by_name || "Admin"}</p>
       </div>
-      <a href="${r.url}" target="_blank" rel="noopener" class="w-full py-3.5 bg-stone-100 hover:bg-stone-200 text-stone-900 font-black text-center rounded-2xl border-2 border-stone-300 transition block touch-target">
-        ${r.resource_type === "PDF" ? "📄 View PDF Guide ↗" : "🌐 Open Web Link ↗"}
-      </a>
+      <button type="button" onclick="window.openAttachment(window._attachmentCache['${cacheKey}'], 'resource_${activeGroupData.id}_${idx}')" class="w-full py-3.5 bg-stone-100 hover:bg-stone-200 text-stone-900 font-black text-center rounded-2xl border-2 border-stone-300 transition block touch-target">
+        ${formatAttachmentLabel(r.url, 0, 1)}
+      </button>
     </div>
-  `).join("");
+    `;
+  }).join("");
 }
+
 
 function addCurateLinkField() {
   const container = document.getElementById("curate-links-list");
