@@ -1743,31 +1743,112 @@ async function sendGroupChat() {
   }
 }
 
-function renderGroupResources() {
+async function renderGroupResources() {
   const container = document.getElementById("group-resources-list");
   if (!container || !activeGroupData) return;
-  const res = activeGroupData.resources || [];
-  if (res.length === 0) {
-    container.innerHTML = `<p class="text-stone-400 font-bold col-span-2 text-center py-8 text-lg">No curated resource files added to this space library yet.</p>`;
+
+  container.className = "flex flex-col space-y-4";
+  container.innerHTML = `<p class="text-stone-500 font-bold text-center py-8">Loading space resources and attachments...</p>`;
+
+  let feedItems = [];
+  try {
+    const res = await apiFetch("/feed?group_id=" + activeGroupData.id);
+    if (res && res.feed) {
+      feedItems = res.feed;
+    }
+  } catch (err) {
+    console.error("Failed to fetch space feed for resources:", err);
+  }
+
+  const unifiedList = [];
+
+  // 1. Admin-curated resources
+  const res_curated = activeGroupData.resources || [];
+  res_curated.forEach((r, idx) => {
+    const cacheKey = `group_res_${activeGroupData.id}_${idx}`;
+    const filename = `resource_${activeGroupData.id}_${idx}`;
+    unifiedList.push({
+      url: r.url,
+      cacheKey: cacheKey,
+      filename: filename,
+      theme: r.theme || "Community Resources",
+      title: r.title || r.description || "Resource",
+      description: r.description && r.description !== r.title ? r.description : "",
+      meta: `Curated by ${r.added_by_name || "Admin"}`,
+      isAdmin: true
+    });
+  });
+
+  // 2. Post / Kudos attachments
+  feedItems.forEach(item => {
+    if (!item.resource_url) return;
+    let urls = [];
+    const resUrlStr = String(item.resource_url || "").trim();
+    if (resUrlStr) {
+      try {
+        if (resUrlStr.startsWith("[")) {
+          urls = JSON.parse(resUrlStr);
+        } else {
+          urls = resUrlStr.split("\n").map(u => u.trim()).filter(Boolean);
+        }
+      } catch (e) {
+        urls = [resUrlStr];
+      }
+    }
+    if (Array.isArray(urls)) {
+      urls.forEach((u, idx) => {
+        if (!u) return;
+        const cacheKey = `attachment_${item.id}_${idx}`;
+        const filename = `attachment_${item.id}_${idx}`;
+        const isKudos = item.item_type === "KUDOS";
+        const fromPrefix = isKudos ? "From kudos: " : "From post: ";
+        const postTitle = item.title || (item.content ? (item.content.length > 80 ? item.content.substring(0, 80) + "..." : item.content) : "Untitled Post");
+        const descText = fromPrefix + postTitle;
+        const authorName = item.author_name || "Anonymous";
+        const dateStr = item.created_at ? ` • ${item.created_at}` : "";
+        unifiedList.push({
+          url: u,
+          cacheKey: cacheKey,
+          filename: filename,
+          theme: item.theme || (isKudos ? "Kudos Attachment" : "Post Attachment"),
+          title: descText,
+          description: "",
+          meta: `Shared by ${authorName}${dateStr}`,
+          isAdmin: false
+        });
+      });
+    }
+  });
+
+  if (unifiedList.length === 0) {
+    container.innerHTML = `<p class="text-stone-400 font-bold text-center py-8 text-lg">No resources or attachments associated with this space yet.</p>`;
     return;
   }
-  container.innerHTML = res.map((r, idx) => {
-    const cacheKey = `group_res_${activeGroupData.id}_${idx}`;
-    window._attachmentCache = window._attachmentCache || {};
-    window._attachmentCache[cacheKey] = r.url;
-    const titleText = r.title || r.description || "Resource";
-    const descText = r.description && r.description !== r.title ? `<p class="text-stone-600 font-medium text-sm pt-1 whitespace-pre-line">${r.description}</p>` : "";
+
+  window._attachmentCache = window._attachmentCache || {};
+
+  container.innerHTML = unifiedList.map((item, idx) => {
+    window._attachmentCache[item.cacheKey] = item.url;
+    const descHtml = item.description ? `<p class="text-stone-600 font-medium text-sm pt-1 whitespace-pre-line break-words">${item.description}</p>` : "";
+    const badgeStyle = item.isAdmin
+      ? "bg-teal-50 text-teal-800 border-teal-200"
+      : "bg-indigo-50 text-indigo-700 border-indigo-200";
+
     return `
-    <div class="bg-white p-7 rounded-3xl border-2 border-stone-200 shadow-sm space-y-4 flex flex-col justify-between">
-      <div class="space-y-2.5">
-        <span class="px-3.5 py-1 bg-teal-50 text-teal-800 font-black text-xs rounded-full border border-teal-200">${r.theme || "Community Resources"}</span>
-        <h4 class="text-2xl font-black text-stone-900">${titleText}</h4>
-        ${descText}
-        <p class="text-xs font-bold text-stone-400">Curated by ${r.added_by_name || "Admin"}</p>
+    <div class="bg-white p-6 sm:p-7 rounded-3xl border-2 border-stone-200 shadow-sm space-y-4 flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+      <div class="space-y-2 flex-1 min-w-0">
+        <div class="flex items-center gap-2 flex-wrap">
+          <span class="px-3.5 py-1 font-black text-xs rounded-full border ${badgeStyle}">${item.theme}</span>
+          <span class="text-xs font-bold text-stone-400">${item.meta}</span>
+        </div>
+        <h4 class="text-xl font-black text-stone-900 break-words">${item.title}</h4>
+        ${descHtml}
       </div>
-      <button type="button" onclick="window.openAttachment(window._attachmentCache['${cacheKey}'], 'resource_${activeGroupData.id}_${idx}')" class="w-full py-3.5 bg-stone-100 hover:bg-stone-200 text-stone-900 font-black text-center rounded-2xl border-2 border-stone-300 transition block touch-target">
-        ${formatAttachmentLabel(r.url, 0, 1)}
-      </button>
+      <div class="flex-shrink-0">
+        <button type="button" onclick="window.openAttachment(window._attachmentCache[\"${item.cacheKey}\"], \"${item.filename}\")" class="w-full sm:w-auto px-6 py-3.5 bg-stone-100 hover:bg-stone-200 text-stone-900 font-black text-center rounded-2xl border-2 border-stone-300 transition block touch-target">
+          ${formatAttachmentLabel(item.url, 0, 1)}
+        </button>
+      </div>
     </div>
     `;
   }).join("");

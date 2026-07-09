@@ -250,7 +250,8 @@ class TestRegressionCoverage(GoodDeedsTestCase):
     def test_space_details_resources_tab_restoration(self):
         """
         Asserts #gtab-resources, #gcontent-resources, and #group-resources-list exist in static/index.html.
-        Asserts switchGroupTab includes 'resources' and renderGroupResources uses attachment helpers in static/app.js.
+        Asserts switchGroupTab includes "resources" and renderGroupResources uses attachment helpers in static/app.js.
+        Verifies client-side aggregation of space resources and attachments in a 1-column layout with contextual descriptions.
         """
         base_dir = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
         index_path = os.path.join(base_dir, "static", "index.html")
@@ -258,19 +259,56 @@ class TestRegressionCoverage(GoodDeedsTestCase):
 
         with open(index_path, "r", encoding="utf-8") as f:
             html = f.read()
-        self.assertIn('id="gtab-resources"', html)
-        self.assertIn('id="gcontent-resources"', html)
-        self.assertIn('id="group-resources-list"', html)
-        self.assertIn('id="admin-curate-box"', html)
+        self.assertIn("id=\"gtab-resources\"", html)
+        self.assertIn("id=\"gcontent-resources\"", html)
+        self.assertIn("id=\"group-resources-list\"", html)
+        self.assertIn("id=\"admin-curate-box\"", html)
+        self.assertIn("id=\"group-resources-list\" class=\"flex flex-col space-y-4\"", html)
 
         with open(app_path, "r", encoding="utf-8") as f:
             js = f.read()
-        self.assertIn('"resources"', js)
+        self.assertIn("\"resources\"", js)
         self.assertIn("renderGroupResources", js)
         self.assertIn("_attachmentCache", js)
         self.assertIn("openAttachment", js)
         self.assertIn("formatAttachmentLabel", js)
+        self.assertIn("container.className = \"flex flex-col space-y-4\"", js)
+        self.assertIn("async function renderGroupResources()", js)
+        self.assertIn("/feed?group_id=", js)
+        self.assertIn("Curated by ", js)
+        self.assertIn("From post: ", js)
+        self.assertIn("From kudos: ", js)
+        self.assertIn("Shared by ", js)
 
+        # Integration test: verify that posting a post and kudos with resource_url to a space makes them accessible via /api/feed?group_id=
+        token = self.get_token("maya@gooddeeds.space")
+        headers = self.get_auth_headers(token)
+        post_body = {
+            "title": "Test Resource Attachment",
+            "theme": "Education",
+            "content": "Here is a useful doc",
+            "group_ids": [1],
+            "resource_url": "https://example.com/doc.pdf"
+        }
+        status, _, res = self.make_request("POST", "/api/posts", headers=headers, body=post_body)
+        self.assertEqual(status, 201)
+
+        conn = self.database.get_db()
+        cursor = conn.cursor()
+        cursor.execute("""
+            INSERT INTO feed_items (item_type, author_id, recipient_id, content, resource_url)
+            VALUES ("KUDOS", 1, 2, "Kudos with attachment", "https://example.com/kudos.png")
+        """)
+        kudos_id = cursor.lastrowid
+        cursor.execute("INSERT OR IGNORE INTO item_groups (item_id, group_id) VALUES (?, 1)", (kudos_id,))
+        conn.commit()
+        conn.close()
+
+        status, _, feed_res = self.make_request("GET", "/api/feed?group_id=1", headers=headers)
+        self.assertEqual(status, 200)
+        feed_items_str = str(feed_res.get("feed", []))
+        self.assertTrue("doc.pdf" in feed_items_str)
+        self.assertTrue("kudos.png" in feed_items_str)
 
     def test_mobile_responsiveness_elements(self):
         """
