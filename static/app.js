@@ -610,7 +610,7 @@ function renderFeedCard(item, isProfileView = false) {
             window._attachmentCache[cacheKey] = u;
             return `
             <button type="button" onclick="window.openAttachment(window._attachmentCache['${cacheKey}'], 'attachment_${item.id}_${idx}')" class="inline-flex items-center space-x-2 px-4 py-2.5 rounded-xl bg-indigo-50 hover:bg-indigo-100 text-indigo-950 font-bold text-sm border border-indigo-200 transition touch-target shadow-sm">
-              <span>📎 Attached Link or File ${urls.length > 1 ? '#' + (idx+1) : ''} ↗</span>
+              <span>${formatAttachmentLabel(u, idx, urls.length)}</span>
             </button>
             `;
           }).join("") + `</div>`;
@@ -2376,6 +2376,94 @@ window.addCurateLinkField = addCurateLinkField;
 window.handleCurateFilesSelect = handleCurateFilesSelect;
 window.handleInviteAutocomplete = handleInviteAutocomplete;
 window.selectInviteMember = selectInviteMember;
+
+function formatAttachmentLabel(url, idx, totalCount) {
+  const count = (totalCount !== undefined && totalCount !== null && !isNaN(Number(totalCount))) ? Number(totalCount) : 1;
+  let num = 1;
+  if (idx !== undefined && idx !== null && !isNaN(Number(idx))) {
+    num = Number(idx) + 1;
+  }
+  const prefix = count > 1 ? `#${num}: ` : "";
+
+  if (!url) return `📎 ${prefix}Attached Link or File ↗`;
+
+  const str = String(url).trim();
+  if (str.toLowerCase().startsWith("data:")) {
+    const mimePart = str.slice(5).split(";")[0].split(",")[0].trim().toLowerCase();
+    let label = "Attached File";
+    let icon = "📎";
+    if (mimePart.includes("pdf")) {
+      label = "PDF Document";
+      icon = "📄";
+    } else if (mimePart.includes("sheet") || mimePart.includes("excel") || mimePart.includes("xls") || mimePart.includes("csv") || mimePart.includes("opendocument.spreadsheet")) {
+      label = "Spreadsheet";
+      icon = "📊";
+    } else if (mimePart.includes("presentation") || mimePart.includes("powerpoint") || mimePart.includes("ppt") || mimePart.includes("opendocument.presentation")) {
+      label = "Presentation";
+      icon = "📊";
+    } else if (mimePart.includes("word") || mimePart.includes("msword") || mimePart.includes("officedocument") || mimePart.includes("opendocument.text") || mimePart.includes("rtf") || mimePart.includes("pages") || mimePart === "application/document") {
+      label = "Word Document";
+      icon = "📄";
+    } else if (mimePart.startsWith("image/") || mimePart.includes("image") || mimePart.includes("png") || mimePart.includes("jpeg") || mimePart.includes("jpg") || mimePart.includes("gif") || mimePart.includes("webp") || mimePart.includes("svg") || mimePart.includes("bmp") || mimePart.includes("ico")) {
+      label = "Image File";
+      icon = "🖼️";
+    } else if (mimePart.startsWith("audio/") || mimePart.includes("audio")) {
+      label = "Audio File";
+      icon = "🎵";
+    } else if (mimePart.startsWith("video/") || mimePart.includes("video")) {
+      label = "Video File";
+      icon = "🎬";
+    } else if (mimePart.includes("zip") || mimePart.includes("archive") || mimePart.includes("tar") || mimePart.includes("gzip") || mimePart.includes("compressed") || mimePart.includes("rar") || mimePart.includes("7z")) {
+      label = "Archive File";
+      icon = "🗜️";
+    } else if (mimePart.startsWith("text/") || mimePart.includes("text") || mimePart.includes("plain") || mimePart.includes("json") || mimePart.includes("xml") || mimePart.includes("html") || mimePart.includes("md")) {
+      label = "Text Document";
+      icon = "📝";
+    }
+    return `${icon} ${prefix}${label} ↗`;
+  }
+
+  // HTTP/HTTPS or relative URL or domain string
+  let cleanUrl = str.split("?")[0].split("#")[0];
+  let noProto = cleanUrl.replace(/^https?:\/\//i, "").replace(/^www\./i, "").replace(/\/+$/, "");
+  if (!noProto) noProto = str;
+
+  const parts = noProto.split("/").filter(Boolean);
+  const lastPart = parts[parts.length - 1] || noProto;
+
+  let extracted = noProto;
+  const knownExtRegex = /\.(pdf|doc|docx|txt|rtf|pages|odt|png|jpg|jpeg|gif|webp|svg|bmp|ico|xls|xlsx|ods|csv|ppt|pptx|odp|zip|tar|gz|rar|7z|bz2|xz|tgz|mp3|wav|ogg|flac|m4a|aac|mp4|mov|avi|mkv|webm|flv|bin|exe|json|xml|html|htm|md|log|sql|apk|jar|dmg|iso)$/i;
+  const validFileRegex = /^[^\/]+\.[a-z][a-z0-9]{0,4}$/i;
+  if (knownExtRegex.test(lastPart) || (parts.length > 1 && validFileRegex.test(lastPart) && !lastPart.toLowerCase().endsWith(".com") && !lastPart.toLowerCase().endsWith(".org") && !lastPart.toLowerCase().endsWith(".net") && !lastPart.toLowerCase().endsWith(".io") && !lastPart.toLowerCase().endsWith(".space") && !lastPart.toLowerCase().endsWith(".co") && !lastPart.toLowerCase().endsWith(".gov") && !lastPart.toLowerCase().endsWith(".edu"))) {
+    extracted = lastPart;
+  }
+
+  if (extracted.length > 26) {
+    extracted = extracted.slice(0, 23) + "...";
+  }
+
+  let icon = "🌐";
+  if (/\.(pdf|doc|docx|rtf|pages|odt)$/i.test(lastPart)) {
+    icon = "📄";
+  } else if (/\.(png|jpg|jpeg|gif|webp|svg|bmp|ico)$/i.test(lastPart)) {
+    icon = "🖼️";
+  } else if (/\.(txt|md|csv|json|xml|html|htm|log)$/i.test(lastPart)) {
+    icon = "📝";
+  } else if (/\.(xls|xlsx|ods|csv|ppt|pptx|odp)$/i.test(lastPart)) {
+    icon = "📊";
+  } else if (/\.(zip|tar|gz|rar|7z|bz2|xz|tgz)$/i.test(lastPart)) {
+    icon = "🗜️";
+  } else if (/\.(mp3|wav|ogg|flac|m4a|aac)$/i.test(lastPart)) {
+    icon = "🎵";
+  } else if (/\.(mp4|mov|avi|mkv|webm|flv)$/i.test(lastPart)) {
+    icon = "🎬";
+  } else if (extracted === lastPart && (knownExtRegex.test(lastPart) || validFileRegex.test(lastPart))) {
+    icon = "📎";
+  }
+
+  return `${icon} ${prefix}${extracted} ↗`;
+}
+window.formatAttachmentLabel = formatAttachmentLabel;
 
 function openAttachment(url, filename) {
   if (!url) return;

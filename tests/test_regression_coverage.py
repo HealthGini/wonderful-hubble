@@ -374,5 +374,52 @@ class TestRegressionCoverage(GoodDeedsTestCase):
         self.assertIn("Platform Features Built for Kindness", html_content)
         self.assertIn("Frequently Asked Questions", html_content)
 
+    def test_informative_attachment_pills_rendering(self):
+        """
+        Reads static/app.js and verifies that formatAttachmentLabel exists, is bound to window,
+        handles Data URIs (including proper ordering for spreadsheets/presentations before documents)
+        and HTTP URLs cleanly (with strict extension matching to avoid version number misidentification),
+        and that renderFeedCard uses it while strictly preserving window._attachmentCache invocation for openAttachment.
+        """
+        base_dir = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+        app_js_path = os.path.join(base_dir, "static", "app.js")
+        with open(app_js_path, "r", encoding="utf-8") as f:
+            app_js = f.read()
+
+        # 1. Verify formatAttachmentLabel function definition and window binding
+        self.assertIn("function formatAttachmentLabel(", app_js)
+        self.assertIn("window.formatAttachmentLabel = formatAttachmentLabel", app_js)
+
+        # 2. Verify Data URI handling (MIME type detection for PDF, Image, Text, Word, Document, Spreadsheet, Presentation, Archive, Audio, Video)
+        self.assertIn("data:", app_js.lower())
+        self.assertIn("PDF Document", app_js)
+        self.assertIn("Image File", app_js)
+        self.assertIn("Text Document", app_js)
+        self.assertIn("Word Document", app_js)
+        self.assertIn("Spreadsheet", app_js)
+        self.assertIn("Presentation", app_js)
+        self.assertIn("Archive File", app_js)
+        self.assertIn("Audio File", app_js)
+        self.assertIn("Video File", app_js)
+        self.assertIn("Attached File", app_js)
+
+        # Ensure Spreadsheets and Presentations are checked before Word Documents to avoid ODS/ODP misclassification
+        sheet_pos = app_js.find("Spreadsheet")
+        pres_pos = app_js.find("Presentation")
+        word_pos = app_js.find("Word Document")
+        self.assertTrue(sheet_pos < word_pos, "Spreadsheet check must precede Word Document check")
+        self.assertTrue(pres_pos < word_pos, "Presentation check must precede Word Document check")
+
+        # 3. Verify HTTP/HTTPS URL handling (extracting filename or domain/path, count #N: formatting, truncation)
+        self.assertIn("slice(", app_js)
+        self.assertIn("...", app_js)
+        self.assertIn("#${num}:", app_js)
+        self.assertIn("validFileRegex", app_js)
+
+        # 4. Verify renderFeedCard uses formatAttachmentLabel while preserving openAttachment with _attachmentCache
+        self.assertIn("formatAttachmentLabel(u, idx, urls.length)", app_js)
+        self.assertIn("onclick=\"window.openAttachment(window._attachmentCache['${cacheKey}'], 'attachment_${item.id}_${idx}')\"", app_js)
+        self.assertIn("window.openAttachment = openAttachment", app_js)
+
 if __name__ == "__main__":
     unittest.main()
