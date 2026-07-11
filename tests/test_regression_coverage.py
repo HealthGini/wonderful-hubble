@@ -801,5 +801,18 @@ All 92+ tests run cleanly with `OK`.
             self.assertEqual(body["user"]["email"], "oauth_demo@gooddeeds.space")
             self.assertEqual(body["user"]["oauth_id"], "google_sub_888")
 
+    def test_option_a_visual_hierarchy(self):
+        """Verifies Option A (Distinct Visual Hierarchy) across static/index.html."""
+        base_dir = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+        index_path = os.path.join(base_dir, "static", "index.html")
+        with open(index_path, "r", encoding="utf-8") as f:
+            html = f.read()
+        self.assertIn("bg-amber-50 text-amber-900 border border-amber-200", html)
+        self.assertIn("bg-indigo-50 text-indigo-900 border border-indigo-200", html)
+        self.assertIn("text-[10px] text-amber-600", html)
+        self.assertIn("text-[10px] text-indigo-600", html)
+        self.assertIn("p-5 sm:p-6 rounded-2xl", html)
+        self.assertIn("id=\"community-creation-bar\"", html)
+
 if __name__ == "__main__":
     unittest.main()
