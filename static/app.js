@@ -119,12 +119,16 @@ function setupEventListeners() {
     });
   }
 
-  // Close Quick Nav dropdown when clicking outside
+  // Close Quick Nav and Profile dropdowns when clicking outside
   document.addEventListener("click", (e) => {
-    const container = document.getElementById("quick-nav-container");
-    if (container && !container.contains(e.target)) {
-      const dropdown = container.querySelector("div");
+    const quickContainer = document.getElementById("quick-nav-container");
+    if (quickContainer && !quickContainer.contains(e.target)) {
+      const dropdown = quickContainer.querySelector("div");
       if (dropdown) dropdown.classList.add("hidden");
+    }
+    const profileContainer = document.getElementById("profile-menu-container");
+    if (profileContainer && !profileContainer.contains(e.target)) {
+      closeProfileDropdown();
     }
   });
 
@@ -134,6 +138,13 @@ function setupEventListeners() {
       e.stopPropagation();
       const dropdown = document.querySelector("#quick-nav-container div");
       if (dropdown) dropdown.classList.toggle("hidden");
+    });
+  }
+
+  const profileMenuBtn = document.getElementById("profile-menu-btn");
+  if (profileMenuBtn) {
+    profileMenuBtn.addEventListener("click", (e) => {
+      toggleProfileDropdown(e);
     });
   }
 }
@@ -2606,6 +2617,17 @@ function closeMobileMenu() {
   if (menu) menu.classList.add("hidden");
 }
 
+function toggleProfileDropdown(e) {
+  if (e && e.stopPropagation) e.stopPropagation();
+  const dropdown = document.getElementById("profile-dropdown-menu");
+  if (dropdown) dropdown.classList.toggle("hidden");
+}
+
+function closeProfileDropdown() {
+  const dropdown = document.getElementById("profile-dropdown-menu");
+  if (dropdown) dropdown.classList.add("hidden");
+}
+
 window.presetLogin = presetLogin;
 window.handleLogin = handleLogin;
 window.handleSignup = handleSignup;
@@ -2625,6 +2647,8 @@ window.browseSourceFile = browseSourceFile;
 window.loadSpotlightView = loadSpotlightView;
 window.toggleMobileMenu = toggleMobileMenu;
 window.closeMobileMenu = closeMobileMenu;
+window.toggleProfileDropdown = toggleProfileDropdown;
+window.closeProfileDropdown = closeProfileDropdown;
 window.openGroupInviteModal = openGroupInviteModal;
 window.toggleGroupMembership = toggleGroupMembership;
 window.toggleMemberRole = toggleMemberRole;

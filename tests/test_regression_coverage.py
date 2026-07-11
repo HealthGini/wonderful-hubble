@@ -486,5 +486,58 @@ class TestRegressionCoverage(GoodDeedsTestCase):
         self.assertIn("onclick=\"window.openAttachment(window._attachmentCache['${cacheKey}'], 'attachment_${item.id}_${idx}')\"", app_js)
         self.assertIn("window.openAttachment = openAttachment", app_js)
 
+
+    def test_profile_dropdown_and_logout_structure(self):
+        """
+        Verifies consolidated Profile Dropdown structure in static/index.html and helper functions in static/app.js.
+        """
+        base_dir = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+        index_path = os.path.join(base_dir, "static", "index.html")
+        app_js_path = os.path.join(base_dir, "static", "app.js")
+
+        with open(index_path, "r", encoding="utf-8") as f:
+            html_content = f.read()
+
+        with open(app_js_path, "r", encoding="utf-8") as f:
+            app_js_content = f.read()
+
+        # 1. Verify static/index.html contains all required IDs
+        required_ids = [
+            'id="profile-menu-container"',
+            'id="profile-dropdown-menu"',
+            'id="profile-menu-btn"',
+            'id="nav-user-avatar"',
+            'id="nav-user-name"',
+            'id="nav-logout"'
+        ]
+        for elem_id in required_ids:
+            self.assertIn(elem_id, html_content)
+
+        # 2. Verify #nav-user-name and #nav-logout (with text Log Off or Log Out) are inside #profile-dropdown-menu container block
+        dropdown_start = html_content.find('id="profile-dropdown-menu"')
+        self.assertNotEqual(dropdown_start, -1, "#profile-dropdown-menu not found in index.html")
+        dropdown_end = html_content.find("</header>", dropdown_start)
+        dropdown_block = html_content[dropdown_start:dropdown_end]
+
+        self.assertIn('id="nav-user-name"', dropdown_block, "#nav-user-name should be inside #profile-dropdown-menu block")
+        self.assertIn('id="nav-logout"', dropdown_block, "#nav-logout should be inside #profile-dropdown-menu block")
+        self.assertTrue("Log Off" in dropdown_block or "Log Out" in dropdown_block, "Log Off or Log Out text should be inside #profile-dropdown-menu block")
+
+        # Verify #nav-user-name and #nav-logout are NOT outside #profile-dropdown-menu container block in navbar
+        self.assertEqual(html_content.count('id="nav-logout"'), 1)
+        self.assertEqual(html_content.count('id="nav-user-name"'), 1)
+
+        # Also verify that before #profile-dropdown-menu inside #nav-auth-user, neither #nav-user-name nor #nav-logout appear
+        nav_auth_user_start = html_content.find('id="nav-auth-user"')
+        before_dropdown = html_content[nav_auth_user_start:dropdown_start]
+        self.assertNotIn('id="nav-user-name"', before_dropdown)
+        self.assertNotIn('id="nav-logout"', before_dropdown)
+
+        # 3. Verify static/app.js exposes and references closeProfileDropdown and toggleProfileDropdown
+        self.assertIn("closeProfileDropdown", app_js_content)
+        self.assertIn("toggleProfileDropdown", app_js_content)
+        self.assertIn("window.closeProfileDropdown = closeProfileDropdown", app_js_content)
+        self.assertIn("window.toggleProfileDropdown = toggleProfileDropdown", app_js_content)
+
 if __name__ == "__main__":
     unittest.main()

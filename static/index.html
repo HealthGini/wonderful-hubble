@@ -126,14 +126,30 @@
               </div>
             </div>
             
-            <a href="/#/profile" class="flex flex-col items-center justify-center px-2 py-1 rounded-xl hover:bg-slate-100 transition shrink-0 touch-target max-w-[85px]" title="My Profile">
-              <img id="nav-user-avatar" src="" alt="User Avatar" class="w-9 h-9 rounded-full border-2 border-amber-500 object-cover shadow-sm">
-              <span id="nav-user-name" class="font-bold text-[11px] text-slate-800 truncate w-full text-center mt-0.5">Member</span>
-            </a>
-
-            <button onclick="logout()" class="px-3 py-2 rounded-xl font-bold text-xs bg-slate-100 text-slate-600 hover:bg-red-100 hover:text-red-700 transition">
-              Log Out
-            </button>
+            <!-- Consolidated Profile Dropdown -->
+            <div class="relative group" id="profile-menu-container">
+              <button id="profile-menu-btn" type="button" class="flex items-center space-x-1 p-1 rounded-full hover:bg-slate-100 transition focus:outline-none touch-target" aria-haspopup="true" aria-expanded="false" title="Profile Menu">
+                <img id="nav-user-avatar" src="" alt="User Avatar" class="w-9 h-9 rounded-full border-2 border-amber-500 object-cover shadow-sm">
+                <span aria-hidden="true" class="text-[10px] text-slate-400">▼</span>
+              </button>
+              
+              <div id="profile-dropdown-menu" class="absolute right-0 mt-1 w-56 bg-white border border-slate-200/80 rounded-2xl shadow-xl hidden group-hover:block z-50 py-2 animate-fadeIn text-left">
+                <div class="px-4 py-2 border-b border-slate-100">
+                  <p class="text-[10px] font-extrabold tracking-wider text-slate-400 uppercase">Signed in as</p>
+                  <p class="font-bold text-sm text-slate-800 truncate mt-0.5"><span id="nav-user-name" class="font-bold text-sm text-slate-800">Member</span></p>
+                </div>
+                <div class="py-1">
+                  <a href="/#/profile" onclick="closeProfileDropdown()" class="block px-4 py-2.5 text-sm font-bold text-slate-700 hover:bg-slate-50 transition flex items-center space-x-2">
+                    <span>👤</span><span>View My Profile →</span>
+                  </a>
+                </div>
+                <div class="border-t border-slate-100 pt-1">
+                  <button id="nav-logout" onclick="logout(); closeProfileDropdown();" class="w-full text-left px-4 py-2.5 text-sm font-bold text-red-600 hover:bg-red-50 transition flex items-center space-x-2">
+                    <span>🚪</span><span>Log Off</span>
+                  </button>
+                </div>
+              </div>
+            </div>
           </div>
         </div>
 
