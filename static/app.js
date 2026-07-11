@@ -34,6 +34,11 @@ let landingPreviewOffset = 0;
 let landingPreviewHasMore = false;
 let isLoadingMoreLandingPreview = false;
 
+let landingGroupFilter = "";
+let landingTypeFilter = "";
+let landingThemeFilter = "";
+let allGroupsCache = [];
+
 // Wizard temporary draft storage
 let draftPost = null;
 let draftCurateResources = null;
@@ -169,6 +174,7 @@ async function handleRoute() {
     }
     showView("view-landing");
     loadLandingPreview();
+    populateGroupFilterDropdown();
   } else if (path === "/feed") {
     showView("view-feed");
     loadFeed();
@@ -730,7 +736,10 @@ async function loadLandingPreview(isLoadMore = false) {
   let reqLimit = landingPreviewLimit;
   let reqOffset = landingPreviewOffset;
 
-  let url = `/feed?sort=smart&limit=${reqLimit}&offset=${reqOffset}`;
+  let url = `/feed?sort=smart&limit=${reqLimit}&offset=${reqOffset}&`;
+  if (landingGroupFilter) url += `group_id=${encodeURIComponent(landingGroupFilter)}&`;
+  if (landingTypeFilter) url += `filter_type=${encodeURIComponent(landingTypeFilter)}&`;
+  if (landingThemeFilter) url += `theme=${encodeURIComponent(landingThemeFilter)}&`;
 
   try {
     const data = await apiFetch(url);
@@ -1041,10 +1050,21 @@ function clearAllFilters() {
 
 async function populateGroupFilterDropdown() {
   const sel = document.getElementById("feed-group-select");
-  if (!sel) return;
+  const landingSel = document.getElementById("landing-group-select");
+  if (!sel && !landingSel) return;
   try {
     const data = await apiFetch("/groups");
     const groups = data.groups || [];
+    allGroupsCache = groups;
+    if (landingSel) {
+      let landingHtml = `<option value="">All Spaces</option>` +
+        groups.map(g => `<option value="${g.id}">👥 ${g.name}</option>`).join("");
+      landingSel.innerHTML = landingHtml;
+      if (landingGroupFilter) {
+        landingSel.value = landingGroupFilter;
+      }
+    }
+    if (!sel) return;
     let html = "";
     if (currentUser) {
       html += `<option value="my_spaces">⭐ My Spaces (All Joined)</option>`;
@@ -1589,6 +1609,7 @@ async function loadGroups(searchQuery = "") {
   try {
     const data = await apiFetch(url);
     const groups = data.groups || [];
+    allGroupsCache = groups;
 
     if (groups.length === 0) {
       container.innerHTML = `<p class="text-stone-500 font-bold text-xl col-span-3 text-center py-12">No community spaces match your filters.</p>`;
@@ -2596,6 +2617,84 @@ window.addCurateLinkField = addCurateLinkField;
 window.handleCurateFilesSelect = handleCurateFilesSelect;
 window.handleInviteAutocomplete = handleInviteAutocomplete;
 window.selectInviteMember = selectInviteMember;
+
+async function filterLandingByGroup(gid) {
+  landingGroupFilter = gid;
+  window.landingGroupFilter = gid;
+  const banner = document.getElementById("landing-space-info-banner");
+  if (!banner) return;
+  if (gid !== "" && gid !== null && gid !== undefined) {
+    let group = allGroupsCache.find(g => String(g.id) === String(gid));
+    if (!group) {
+      try {
+        const data = await apiFetch(`/groups/${gid}`);
+        if (data) group = data.group || data;
+      } catch (err) {
+        console.error("Failed to fetch group details for landing banner:", err);
+      }
+    }
+    if (group) {
+      const iconUrl = group.icon_url || "https://images.unsplash.com/photo-1529156069898-49953e39b3ac?w=150&auto=format&fit=crop&q=80";
+      const memberCount = group.member_count !== undefined ? group.member_count : (group.roster ? group.roster.length : (group.members ? group.members.length : 0));
+      const themesHtml = (group.themes || []).map(t => `<span class="px-3 py-1 bg-teal-950/60 text-teal-200 font-bold text-xs rounded-full border border-teal-700/50">${t}</span>`).join("");
+      banner.innerHTML = `
+        <div class="bg-gradient-to-r from-teal-900 via-teal-800 to-stone-900 p-6 sm:p-8 rounded-3xl text-white shadow-xl flex flex-col md:flex-row items-center justify-between gap-6 border-2 border-teal-600/50">
+          <div class="flex items-center space-x-5 max-w-2xl">
+            <img src="${iconUrl}" alt="${group.name || ''}" class="w-20 h-20 rounded-2xl object-cover border-2 border-teal-400 shadow-md shrink-0">
+            <div class="space-y-2">
+              <div class="flex items-baseline space-x-3">
+                <h3 class="text-2xl sm:text-3xl font-black tracking-tight">${group.name || ''}</h3>
+                <span class="text-xs font-bold text-teal-200">👥 ${memberCount} active members</span>
+              </div>
+              <p class="text-teal-50 font-medium text-sm sm:text-base leading-relaxed">${group.description || ''}</p>
+              <div class="flex flex-wrap gap-1.5 pt-1">
+                ${themesHtml}
+              </div>
+            </div>
+          </div>
+          <div class="shrink-0 w-full md:w-auto text-center">
+            <button type="button" onclick="showView('view-group-detail'); activeGroupId = ${group.id || gid}; loadGroupDetail(${group.id || gid}); navigateTo('/group/${group.id || gid}');" class="w-full md:w-auto px-6 py-3.5 bg-amber-500 hover:bg-amber-600 text-stone-950 font-black text-sm sm:text-base rounded-2xl shadow-lg transition touch-target flex items-center justify-center space-x-2">
+              <span>Enter Full Space (Chat, Roster & Resources) ↗</span>
+            </button>
+          </div>
+        </div>
+      `;
+      banner.classList.remove("hidden");
+    } else {
+      banner.classList.add("hidden");
+      banner.innerHTML = "";
+    }
+  } else {
+    banner.classList.add("hidden");
+    banner.innerHTML = "";
+  }
+  loadLandingPreview();
+}
+
+function filterLandingByType(type) {
+  landingTypeFilter = type;
+  loadLandingPreview();
+}
+
+function filterLandingByTheme(th) {
+  landingThemeFilter = th;
+  document.querySelectorAll(".landing-theme-pill").forEach(el => {
+    const onclickAttr = el.getAttribute("onclick") || "";
+    if (th !== "" && onclickAttr.includes(`'${th}'`)) {
+      el.className = "landing-theme-pill shrink-0 px-3.5 py-1.5 rounded-xl font-bold text-sm bg-amber-500 text-white shadow-sm transition touch-target";
+    } else if (th === "" && onclickAttr.includes("''")) {
+      el.className = "landing-theme-pill shrink-0 px-3.5 py-1.5 rounded-xl font-bold text-sm bg-slate-900 text-white transition touch-target shadow-sm";
+    } else {
+      el.className = "landing-theme-pill shrink-0 px-3.5 py-1.5 rounded-xl font-bold text-sm bg-slate-100 hover:bg-slate-200 text-slate-700 transition touch-target";
+    }
+  });
+  loadLandingPreview();
+}
+
+window.filterLandingByGroup = filterLandingByGroup;
+window.filterLandingByType = filterLandingByType;
+window.filterLandingByTheme = filterLandingByTheme;
+window.landingGroupFilter = landingGroupFilter;
 
 function formatAttachmentLabel(url, idx, totalCount) {
   const count = (totalCount !== undefined && totalCount !== null && !isNaN(Number(totalCount))) ? Number(totalCount) : 1;

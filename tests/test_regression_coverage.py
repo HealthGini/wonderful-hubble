@@ -7,6 +7,39 @@ from base_test import GoodDeedsTestCase
 
 class TestRegressionCoverage(GoodDeedsTestCase):
 
+    def test_landing_page_filters_and_readonly_space_banner(self):
+        """
+        Verifies landing page filter bar, group/type selects, theme pills bar,
+        and read-only space banner exist in static/index.html.
+        Verifies static/app.js exposes filterLandingByGroup, filterLandingByType,
+        filterLandingByTheme, and landingGroupFilter.
+        """
+        base_dir = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+        index_path = os.path.join(base_dir, "static", "index.html")
+        app_js_path = os.path.join(base_dir, "static", "app.js")
+
+        with open(index_path, "r", encoding="utf-8") as f:
+            html_content = f.read()
+
+        with open(app_js_path, "r", encoding="utf-8") as f:
+            app_js_content = f.read()
+
+        # HTML elements check
+        self.assertIn('id="landing-filter-bar"', html_content)
+        self.assertIn('id="landing-group-select"', html_content)
+        self.assertIn('id="landing-type-select"', html_content)
+        self.assertIn('id="landing-theme-pills-bar"', html_content)
+        self.assertIn('id="landing-space-info-banner"', html_content)
+
+        # JS exposure checks
+        self.assertIn("landingGroupFilter", app_js_content)
+        self.assertIn("filterLandingByGroup", app_js_content)
+        self.assertIn("filterLandingByType", app_js_content)
+        self.assertIn("filterLandingByTheme", app_js_content)
+        self.assertIn("window.filterLandingByGroup = filterLandingByGroup", app_js_content)
+        self.assertIn("window.filterLandingByType = filterLandingByType", app_js_content)
+        self.assertIn("window.filterLandingByTheme = filterLandingByTheme", app_js_content)
+
     def test_terminology_and_navbar_labels(self):
         """
         Loads static/index.html and static/app.js content.
