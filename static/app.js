@@ -327,6 +327,10 @@ async function apiFetch(endpoint, options = {}) {
   }
   options.headers = headers;
 
+  if (options.body && typeof options.body === 'object' && !(options.body instanceof Blob) && !(options.body instanceof FormData)) {
+    options.body = JSON.stringify(options.body);
+  }
+
   const res = await fetch(url, options);
   let data = {};
   try {
@@ -1636,6 +1640,7 @@ async function loadGroupDetail(gid) {
       else curateBox.classList.add("hidden");
     }
 
+    if (typeof renderGroupCalendar === "function") renderGroupCalendar();
     switchGroupTab("chat");
   } catch (err) {
     showToast("Space not found");
@@ -2659,3 +2664,406 @@ window.showView = showView;
 window.hideAllViews = hideAllViews;
 window.addPostLinkField = addPostLinkField;
 window.handlePostFilesSelect = handlePostFilesSelect;
+
+// ================== SPACE CALENDAR CONTROLLER & SCRAPING ==================
+window.currentCalendarYear = new Date().getFullYear();
+window.currentCalendarMonth = new Date().getMonth();
+window._cachedCalendarEvents = {};
+window._groupCalendarEvents = {};
+window._scrapedCalendarEvents = [];
+window._scrapedEventsPreview = [];
+
+async function renderGroupCalendar() {
+  if (!activeGroupData || !activeGroupData.id) return;
+  const grid = document.getElementById("calendar-days-grid");
+  if (!grid) return;
+  
+  if (window.currentCalendarYear === undefined || window.currentCalendarYear === null) {
+    window.currentCalendarYear = new Date().getFullYear();
+  }
+  if (window.currentCalendarMonth === undefined || window.currentCalendarMonth === null) {
+    window.currentCalendarMonth = new Date().getMonth();
+  }
+
+  const monthNames = ["January", "February", "March", "April", "May", "June", "July", "August", "September", "October", "November", "December"];
+  const header = document.getElementById("calendar-month-header");
+  if (header) {
+    header.textContent = `${monthNames[window.currentCalendarMonth]} ${window.currentCalendarYear}`;
+  }
+
+  const isGroupAdmin = activeGroupData.is_admin;
+  const isSiteAdmin = currentUser && currentUser.is_site_admin === 1;
+  const isAdmin = isGroupAdmin || isSiteAdmin;
+
+  const bar1 = document.getElementById("calendar-admin-action-bar");
+  const bar2 = document.getElementById("admin-calendar-actions");
+  if (bar1) {
+    if (isAdmin) bar1.classList.remove("hidden");
+    else bar1.classList.add("hidden");
+  }
+  if (bar2) {
+    if (isAdmin) bar2.classList.remove("hidden");
+    else bar2.classList.add("hidden");
+  }
+
+  let posts = [];
+  if (Array.isArray(activeGroupData.posts)) {
+    posts = activeGroupData.posts;
+  } else {
+    try {
+      const feedRes = await apiFetch(`/feed?group_id=${activeGroupData.id}&filter_type=POST`);
+      posts = feedRes.feed || [];
+    } catch (e) {
+      posts = [];
+    }
+  }
+
+  const resources = Array.isArray(activeGroupData.resources) ? activeGroupData.resources : [];
+  const eventsByDate = {};
+
+  posts.forEach(p => {
+    if (p.item_type === "POST" && p.post_subtype === "EVENT" && p.event_date) {
+      const dateStr = String(p.event_date).split("T")[0];
+      if (!eventsByDate[dateStr]) eventsByDate[dateStr] = [];
+      eventsByDate[dateStr].push({
+        id: p.id,
+        title: p.title || "Community Event",
+        event_date: dateStr,
+        time: p.time || "",
+        description: p.content || p.description || "",
+        resource_url: p.resource_url || "",
+        author_name: p.author_name || "Member",
+        type: "POST"
+      });
+    }
+  });
+
+  resources.forEach((r, idx) => {
+    if (r.event_date) {
+      const dateStr = String(r.event_date).split("T")[0];
+      if (!eventsByDate[dateStr]) eventsByDate[dateStr] = [];
+      eventsByDate[dateStr].push({
+        id: r.id || `res_${idx}`,
+        title: r.title || r.description || "Resource Event",
+        event_date: dateStr,
+        time: r.time || "",
+        description: r.description || r.title || "",
+        resource_url: r.url || "",
+        author_name: r.added_by_name || "Admin",
+        type: "RESOURCE"
+      });
+    }
+  });
+
+  window._cachedCalendarEvents = eventsByDate;
+  window._groupCalendarEvents = eventsByDate;
+
+  const firstDay = new Date(window.currentCalendarYear, window.currentCalendarMonth, 1).getDay();
+  const daysInMonth = new Date(window.currentCalendarYear, window.currentCalendarMonth + 1, 0).getDate();
+  const todayStr = new Date().toISOString().split("T")[0];
+
+  let html = "";
+  for (let i = 0; i < firstDay; i++) {
+    html += `<div class="p-2 min-h-[3rem] bg-stone-50/50 rounded-xl opacity-40 border border-transparent"></div>`;
+  }
+
+  for (let day = 1; day <= daysInMonth; day++) {
+    const dateStr = `${window.currentCalendarYear}-${String(window.currentCalendarMonth + 1).padStart(2, "0")}-${String(day).padStart(2, "0")}`;
+    const evList = eventsByDate[dateStr] || [];
+    const hasEvents = evList.length > 0;
+    const isToday = (dateStr === todayStr);
+
+    let cellClass = "p-2 min-h-[3.2rem] rounded-xl flex flex-col items-center justify-start border transition relative text-xs ";
+    if (hasEvents) {
+      cellClass += "bg-amber-50 hover:bg-amber-100 border-amber-300 cursor-pointer text-stone-900 font-bold shadow-sm";
+    } else if (isToday) {
+      cellClass += "bg-indigo-50/70 border-indigo-200 text-indigo-950 font-extrabold";
+    } else {
+      cellClass += "bg-stone-50/80 border-stone-100 text-stone-700 hover:bg-stone-100";
+    }
+
+    const clickAttr = hasEvents ? `onclick="showCalendarDayEvents('${dateStr}')"` : "";
+    html += `
+      <div class="${cellClass}" ${clickAttr}>
+        <span class="${isToday ? 'px-1.5 py-0.5 rounded-full bg-indigo-600 text-white font-black' : ''}">${day}</span>
+        ${hasEvents ? `<span class="mt-1 text-[11px] font-black bg-amber-500 text-white px-1.5 py-0.5 rounded-full flex items-center shadow-xs">📍 ${evList.length}</span>` : ""}
+      </div>
+    `;
+  }
+  grid.innerHTML = html;
+}
+
+function navigateGroupCalendar(offset) {
+  if (window.currentCalendarYear === undefined) window.currentCalendarYear = new Date().getFullYear();
+  if (window.currentCalendarMonth === undefined) window.currentCalendarMonth = new Date().getMonth();
+  
+  window.currentCalendarMonth += offset;
+  if (window.currentCalendarMonth > 11) {
+    window.currentCalendarMonth = 0;
+    window.currentCalendarYear++;
+  } else if (window.currentCalendarMonth < 0) {
+    window.currentCalendarMonth = 11;
+    window.currentCalendarYear--;
+  }
+  renderGroupCalendar();
+}
+
+function showCalendarDayEvents(dateStr) {
+  const modalTitle1 = document.getElementById("calendar-day-modal-title");
+  const modalTitle2 = document.getElementById("modal-calendar-day-header");
+  const listEl1 = document.getElementById("calendar-day-events-list");
+  const listEl2 = document.getElementById("modal-calendar-day-list");
+  
+  if (modalTitle1) modalTitle1.textContent = dateStr;
+  if (modalTitle2) modalTitle2.textContent = `Events on ${dateStr}`;
+
+  const evList = (window._cachedCalendarEvents && window._cachedCalendarEvents[dateStr]) || (window._groupCalendarEvents && window._groupCalendarEvents[dateStr]) || [];
+
+  let contentHtml = "";
+  if (evList.length === 0) {
+    contentHtml = `<p class="text-stone-500 font-bold py-6 text-center">No events scheduled for this day.</p>`;
+  } else {
+    window._attachmentCache = window._attachmentCache || {};
+    contentHtml = evList.map((ev, idx) => {
+      let attachmentHtml = "";
+      if (ev.resource_url) {
+        const cacheKey = `cal_${dateStr}_${ev.id}_${idx}`;
+        const filename = `cal_att_${ev.id}_${idx}`;
+        window._attachmentCache[cacheKey] = ev.resource_url;
+        attachmentHtml = `
+          <div class="mt-3 pt-2 border-t border-amber-200/60">
+            <button type="button" onclick="window.openAttachment(window._attachmentCache['${cacheKey}'], '${filename}')" class="inline-flex items-center space-x-2 px-4 py-2 rounded-xl bg-amber-100 hover:bg-amber-200 text-amber-950 font-bold text-xs border border-amber-300 transition touch-target shadow-sm">
+              <span>${formatAttachmentLabel(ev.resource_url, 0, 1)}</span>
+            </button>
+          </div>
+        `;
+      }
+      return `
+        <div class="bg-amber-50/70 p-5 rounded-2xl border border-amber-300 shadow-sm space-y-2 text-left">
+          <div class="flex items-center justify-between">
+            <h4 class="font-black text-stone-900 text-base">${ev.title}</h4>
+            ${ev.time ? `<span class="px-2.5 py-1 bg-amber-500 text-white font-extrabold text-xs rounded-full">${ev.time}</span>` : ""}
+          </div>
+          ${ev.description ? `<p class="text-stone-700 font-medium text-sm leading-relaxed whitespace-pre-line">${ev.description}</p>` : ""}
+          ${attachmentHtml}
+        </div>
+      `;
+    }).join("");
+  }
+
+  if (listEl1) listEl1.innerHTML = contentHtml;
+  if (listEl2 && listEl2 !== listEl1) listEl2.innerHTML = contentHtml;
+
+  openModal("modal-calendar-day");
+}
+
+function openAddCalendarEventModal() {
+  if (!activeGroupData || !activeGroupData.id) return;
+  const title1 = document.getElementById("add-event-title");
+  const title2 = document.getElementById("addevent-title");
+  const date1 = document.getElementById("add-event-date");
+  const date2 = document.getElementById("addevent-date");
+  const time1 = document.getElementById("add-event-time");
+  const time2 = document.getElementById("addevent-time");
+  const desc1 = document.getElementById("add-event-description");
+  const desc2 = document.getElementById("addevent-description");
+  const att1 = document.getElementById("add-event-attachment");
+  const att2 = document.getElementById("addevent-file");
+  const att3 = document.getElementById("addevent-file-data");
+
+  const today = new Date().toISOString().split("T")[0];
+
+  if (title1) title1.value = "";
+  if (title2) title2.value = "";
+  if (date1) date1.value = today;
+  if (date2) date2.value = today;
+  if (time1) time1.value = "";
+  if (time2) time2.value = "";
+  if (desc1) desc1.value = "";
+  if (desc2) desc2.value = "";
+  if (att1) att1.value = "";
+  if (att2) att2.value = "";
+  if (att3) att3.value = "";
+
+  openModal("modal-add-event");
+}
+const openAddEventModal = openAddCalendarEventModal;
+
+async function submitAddEventModal(event) {
+  if (event && event.preventDefault) event.preventDefault();
+  if (!activeGroupData || !activeGroupData.id) return;
+
+  const titleInput = document.getElementById("add-event-title") || document.getElementById("addevent-title");
+  const dateInput = document.getElementById("add-event-date") || document.getElementById("addevent-date");
+  const timeInput = document.getElementById("add-event-time") || document.getElementById("addevent-time");
+  const descInput = document.getElementById("add-event-description") || document.getElementById("addevent-description");
+  const attachInput = document.getElementById("add-event-attachment") || document.getElementById("addevent-file") || document.getElementById("addevent-file-data");
+
+  const title = titleInput ? titleInput.value.trim() : "";
+  const event_date = dateInput ? dateInput.value.trim() : "";
+  const time = timeInput ? timeInput.value.trim() : "";
+  let description = descInput ? descInput.value.trim() : "";
+  if (time && description && !description.includes(`Time: ${time}`)) {
+    description = `[Time: ${time}] ${description}`.trim();
+  } else if (time && !description) {
+    description = `[Time: ${time}]`;
+  }
+  const resource_url = attachInput ? attachInput.value.trim() : "";
+
+  if (!title || !event_date) {
+    showToast("Title and Event Date are required.");
+    return;
+  }
+
+  const payload = {
+    title: title,
+    theme: "Events",
+    content: description || title,
+    resource_url: resource_url,
+    post_subtype: "EVENT",
+    event_date: event_date,
+    group_ids: [activeGroupData.id]
+  };
+
+  try {
+    const res = await apiFetch("/api/posts", {
+      method: "POST",
+      body: payload
+    });
+    if (res.success) {
+      showToast("🎉 Calendar event added!");
+      closeModal("modal-add-event");
+      await renderGroupCalendar();
+      if (typeof renderGroupPosts === "function") renderGroupPosts();
+    }
+  } catch (err) {
+    showToast("❌ " + err.message);
+  }
+}
+
+async function handleCalendarPdfUpload(event) {
+  const file = event.target.files && event.target.files[0];
+  if (!file || !activeGroupData || !activeGroupData.id) return;
+
+  const reader = new FileReader();
+  reader.onload = async function(e) {
+    const b64Data = e.target.result;
+    try {
+      showToast("⏳ Scraping calendar events from PDF...");
+      const res = await apiFetch(`/api/groups/${activeGroupData.id}/scrape_calendar`, {
+        method: "POST",
+        body: { file_data: b64Data, resource_url: b64Data }
+      });
+      if (res.success && res.suggested_events && res.suggested_events.length > 0) {
+        window._scrapedCalendarEvents = res.suggested_events;
+        window._scrapedEventsPreview = res.suggested_events;
+        populateScrapePreviewModal(res.suggested_events);
+        openModal("modal-scrape-preview");
+      } else {
+        showToast("No events found in PDF.");
+      }
+    } catch (err) {
+      showToast("❌ " + err.message);
+    } finally {
+      if (event.target) event.target.value = "";
+    }
+  };
+  reader.readAsDataURL(file);
+}
+
+function populateScrapePreviewModal(suggested_events) {
+  const container = document.getElementById("scrape-preview-list");
+  if (!container) return;
+  if (!suggested_events || suggested_events.length === 0) {
+    container.innerHTML = `<p class="text-stone-500 font-bold text-center py-6">No date patterns found in this PDF document.</p>`;
+    return;
+  }
+  container.innerHTML = suggested_events.map((ev, idx) => `
+    <div class="bg-stone-50 p-4 rounded-2xl border border-stone-200 space-y-3 flex items-start space-x-3 text-left">
+      <input type="checkbox" id="scrape-chk-${idx}" checked class="scraped-event-checkbox mt-1.5 w-5 h-5 text-indigo-600 rounded focus:ring-indigo-500" data-index="${idx}">
+      <div class="flex-1 space-y-2">
+        <div class="grid grid-cols-1 sm:grid-cols-3 gap-2">
+          <div>
+            <label class="block text-[11px] font-bold text-stone-500 uppercase">Event Title</label>
+            <input type="text" id="scrape-title-${idx}" value="${ev.title || ''}" class="w-full px-2.5 py-1 rounded border border-stone-300 text-sm font-bold text-stone-900">
+          </div>
+          <div>
+            <label class="block text-[11px] font-bold text-stone-500 uppercase">Date (YYYY-MM-DD)</label>
+            <input type="date" id="scrape-date-${idx}" value="${ev.event_date || ''}" class="w-full px-2.5 py-1 rounded border border-stone-300 text-sm font-bold text-stone-900">
+          </div>
+          <div>
+            <label class="block text-[11px] font-bold text-stone-500 uppercase">Time</label>
+            <input type="text" id="scrape-time-${idx}" value="${ev.time || ''}" placeholder="10:00 AM" class="w-full px-2.5 py-1 rounded border border-stone-300 text-sm font-bold text-stone-900">
+          </div>
+        </div>
+        <div>
+          <label class="block text-[11px] font-bold text-stone-500 uppercase">Description</label>
+          <input type="text" id="scrape-desc-${idx}" value="${ev.description || ''}" class="w-full px-2.5 py-1 rounded border border-stone-300 text-sm text-stone-700">
+        </div>
+      </div>
+    </div>
+  `).join("");
+}
+
+async function confirmImportScrapedEvents() {
+  if (!activeGroupData || !activeGroupData.id) return;
+  const checkboxes = document.querySelectorAll(".scraped-event-checkbox:checked, [id^='scrape-chk-']:checked");
+  if (checkboxes.length === 0) {
+    showToast("Please select at least one event to import.");
+    return;
+  }
+
+  let importedCount = 0;
+  for (let i = 0; i < checkboxes.length; i++) {
+    const idx = checkboxes[i].getAttribute("data-index") || checkboxes[i].id.split("-").pop();
+    const titleEl = document.getElementById(`scrape-title-${idx}`);
+    const dateEl = document.getElementById(`scrape-date-${idx}`);
+    const timeEl = document.getElementById(`scrape-time-${idx}`);
+    const descEl = document.getElementById(`scrape-desc-${idx}`);
+
+    const title = titleEl ? titleEl.value.trim() : "Scraped Event";
+    const date = dateEl ? dateEl.value.trim() : "";
+    const time = timeEl ? timeEl.value.trim() : "";
+    const desc = descEl ? descEl.value.trim() : "";
+
+    if (!title || !date) continue;
+
+    let content = desc || title;
+    if (time && !content.includes(`Time: ${time}`)) {
+      content = `[Time: ${time}] ${content}`.trim();
+    }
+
+    try {
+      await apiFetch("/api/posts", {
+        method: "POST",
+        body: {
+          title: title,
+          theme: "Events",
+          content: content,
+          post_subtype: "EVENT",
+          event_date: date,
+          group_ids: [activeGroupData.id]
+        }
+      });
+      importedCount++;
+    } catch (e) {
+      console.error("Failed to import event:", e);
+    }
+  }
+
+  showToast(`🎉 Imported ${importedCount} calendar events!`);
+  closeModal("modal-scrape-preview");
+  await renderGroupCalendar();
+  if (typeof renderGroupPosts === "function") renderGroupPosts();
+}
+
+window.renderGroupCalendar = renderGroupCalendar;
+window.navigateGroupCalendar = navigateGroupCalendar;
+window.showCalendarDayEvents = showCalendarDayEvents;
+window.openAddCalendarEventModal = openAddCalendarEventModal;
+window.openAddEventModal = openAddEventModal;
+window.submitAddEventModal = submitAddEventModal;
+window.handleCalendarPdfUpload = handleCalendarPdfUpload;
+window.populateScrapePreviewModal = populateScrapePreviewModal;
+window.confirmImportScrapedEvents = confirmImportScrapedEvents;
+

@@ -7,6 +7,7 @@ reactions, comments, groups management, invitations, and the spotlight system.
 """
 
 import os
+import re
 import json
 import uuid
 import datetime
@@ -190,6 +191,109 @@ def fetch_enriched_items(where_clause, params, user_id=None, sort_mode="smart"):
     else:
         enriched.sort(key=lambda x: (x.get("created_at") or "", x.get("id") or 0), reverse=True)
     return enriched
+
+def parse_calendar_events_from_text(extracted_text: str) -> list:
+    if not extracted_text or not isinstance(extracted_text, str):
+        return []
+    
+    month_map = {
+        "jan": 1, "january": 1, "feb": 2, "february": 2, "mar": 3, "march": 3,
+        "apr": 4, "april": 4, "may": 5, "jun": 6, "june": 6, "jul": 7, "july": 7,
+        "aug": 8, "august": 8, "sep": 9, "sept": 9, "september": 9,
+        "oct": 10, "october": 10, "nov": 11, "november": 11, "dec": 12, "december": 12
+    }
+    
+    lines = [line.strip() for line in re.split(r'[\r\n]+', extracted_text) if line.strip()]
+    if not lines:
+        lines = [extracted_text.strip()]
+    
+    suggested_events = []
+    consumed = set()
+    
+    def extract_dates_from_chunk(chunk: str):
+        matches = []
+        # ISO YYYY-MM-DD
+        for m in re.finditer(r'\b(\d{4})-(\d{1,2})-(\d{1,2})\b', chunk):
+            try:
+                y, m_num, d = int(m.group(1)), int(m.group(2)), int(m.group(3))
+                matches.append((m.start(), m.end(), m.group(0), f"{y:04d}-{m_num:02d}-{d:02d}"))
+            except ValueError:
+                pass
+        # US MM/DD/YYYY or M/D/YY
+        for m in re.finditer(r'\b(\d{1,2})/(\d{1,2})/(\d{2,4})\b', chunk):
+            try:
+                m_num, d, y = int(m.group(1)), int(m.group(2)), int(m.group(3))
+                if y < 100:
+                    y += 2000
+                matches.append((m.start(), m.end(), m.group(0), f"{y:04d}-{m_num:02d}-{d:02d}"))
+            except ValueError:
+                pass
+        # Natural Month DD, YYYY or Month DD
+        for m in re.finditer(r'\b(January|February|March|April|May|June|July|August|September|October|November|December|Jan|Feb|Mar|Apr|Jun|Jul|Aug|Sep|Oct|Nov|Dec)\.?\s+(\d{1,2})(?:st|nd|rd|th)?(?:,\s*(\d{4}))?\b', chunk, re.IGNORECASE):
+            try:
+                month_str = m.group(1).lower().rstrip('.')
+                m_num = month_map.get(month_str, 1)
+                d = int(m.group(2))
+                y_str = m.group(3)
+                y = int(y_str) if y_str else 2026
+                matches.append((m.start(), m.end(), m.group(0), f"{y:04d}-{m_num:02d}-{d:02d}"))
+            except ValueError:
+                pass
+        matches.sort(key=lambda x: x[0])
+        filtered = []
+        for m in matches:
+            if not filtered or m[0] >= filtered[-1][1]:
+                filtered.append(m)
+        return filtered
+
+    for idx, line in enumerate(lines):
+        line_matches = extract_dates_from_chunk(line)
+        if not line_matches:
+            continue
+        
+        for m_idx, (m_start, m_end, raw_date, date_str) in enumerate(line_matches):
+            next_start = line_matches[m_idx + 1][0] if m_idx + 1 < len(line_matches) else len(line)
+            seg = line[m_start:next_start] if len(line_matches) > 1 else line
+            
+            time_match = re.search(r'\b(\d{1,2}(?::\d{2})?\s*(?:AM|PM|am|pm)|\d{1,2}:\d{2})\b', seg)
+            time_str = time_match.group(1).strip() if time_match else ""
+            
+            cleaned = seg
+            cleaned = re.sub(re.escape(raw_date), ' ', cleaned, count=1)
+            if time_str:
+                cleaned = re.sub(r'\b' + re.escape(time_str) + r'\b', ' ', cleaned, count=1)
+            cleaned = re.sub(r'\s+', ' ', cleaned).strip('- :;,.|()[]')
+            
+            if len(cleaned) < 3 and len(line_matches) == 1:
+                if idx + 1 < len(lines) and not extract_dates_from_chunk(lines[idx + 1]) and idx + 1 not in consumed:
+                    cleaned = lines[idx + 1].strip()
+                    consumed.add(idx + 1)
+                    if idx + 2 < len(lines) and not extract_dates_from_chunk(lines[idx + 2]) and idx + 2 not in consumed:
+                        cleaned = cleaned + " - " + lines[idx + 2].strip()
+                        consumed.add(idx + 2)
+                elif idx > 0 and not extract_dates_from_chunk(lines[idx - 1]):
+                    if not any(e["title"] == lines[idx - 1].strip() for e in suggested_events):
+                        cleaned = lines[idx - 1].strip()
+            
+            if not cleaned:
+                cleaned = "Community Event"
+            
+            title = cleaned.split(" - ")[0].split(": ")[0].strip() if (" - " in cleaned or ": " in cleaned) else cleaned
+            if len(title) > 60:
+                title = title[:57] + "..."
+            description = cleaned
+            
+            suggested_events.append({
+                "title": title,
+                "event_date": date_str,
+                "time": time_str,
+                "description": description
+            })
+        consumed.add(idx)
+
+    return suggested_events
+
+parse_scraped_calendar_events = parse_calendar_events_from_text
 
 # ================== MAIN API DISPATCHER ==================
 def handle_api_request(method, path, headers, body_bytes):
@@ -1127,6 +1231,35 @@ def handle_api_request(method, path, headers, body_bytes):
         conn.commit()
         conn.close()
         return json_response({"success": True, "message": msg, "group_id": gid, "action": action})
+
+    # SCRAPE CALENDAR FROM PDF/TEXT (Strict Admin Check)
+    if path_only.startswith("/api/groups/") and path_only.endswith("/scrape_calendar") and method == "POST":
+        if not user:
+            return error_response("Login required", 401)
+        parts = path_only.split("/")
+        if len(parts) < 4:
+            return error_response("Invalid group ID")
+        gid_str = parts[3]
+        try:
+            gid = int(gid_str)
+        except ValueError:
+            return error_response("Invalid group ID")
+
+        conn = get_db()
+        cursor = conn.cursor()
+        cursor.execute("SELECT is_admin FROM group_members WHERE group_id = ? AND user_id = ?", (gid, user["id"]))
+        admin_row = cursor.fetchone()
+        conn.close()
+
+        is_group_admin = (admin_row and admin_row["is_admin"] == 1)
+        is_site_admin = (user.get("is_site_admin") == 1)
+        if not (is_group_admin or is_site_admin):
+            return error_response("Only group Admins or Site Admins can scrape calendars for this group.", 403)
+
+        file_data = body.get("file_data") or body.get("resource_url") or body.get("url") or body.get("file") or (body.get("data", {}).get("file_data") if isinstance(body.get("data"), dict) else None) or ""
+        extracted_str = extract_resource_text(file_data)
+        suggested_events = parse_calendar_events_from_text(extracted_str)
+        return json_response({"success": True, "suggested_events": suggested_events})
 
     # ADD GROUP RESOURCE (Strict Admin Check)
     if path_only.startswith("/api/groups/") and path_only.endswith("/resources") and method == "POST":
