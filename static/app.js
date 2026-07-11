@@ -1106,6 +1106,8 @@ function selectKudosRecipient(id, username, email) {
   if (sugBox) sugBox.classList.add("hidden");
   updateKudosGroupCheckboxes();
 }
+window.handleKudosRecipientSearch = handleKudosRecipientSearch;
+window.selectKudosRecipient = selectKudosRecipient;
 
 document.addEventListener("click", e => {
   const sugBox = document.getElementById("kudos-recipient-suggestions");

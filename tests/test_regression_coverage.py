@@ -167,6 +167,7 @@ class TestRegressionCoverage(GoodDeedsTestCase):
         """
         Tests GET /api/users returns user list for autocomplete.
         Tests GET /api/groups/joined?target_user_id=<id> returns mutual groups shared with target user.
+        Tests frontend autocomplete attributes and container id across static/index.html and static/app.js.
         """
         status, _, body = self.make_request("GET", "/api/users")
         self.assertEqual(status, 200)
@@ -181,6 +182,32 @@ class TestRegressionCoverage(GoodDeedsTestCase):
         self.assertEqual(status, 200)
         self.assertIn("groups", body)
         self.assertIsInstance(body["groups"], list)
+
+        base_dir = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+        index_path = os.path.join(base_dir, "static", "index.html")
+        app_js_path = os.path.join(base_dir, "static", "app.js")
+
+        with open(index_path, "r", encoding="utf-8") as f:
+            html_content = f.read()
+
+        with open(app_js_path, "r", encoding="utf-8") as f:
+            app_js_content = f.read()
+
+        kudos_input_idx = html_content.find('id="kudos-recipient-input"')
+        self.assertNotEqual(kudos_input_idx, -1, "#kudos-recipient-input not found in index.html")
+        tag_start = html_content.rfind("<input", 0, kudos_input_idx)
+        tag_end = html_content.find(">", kudos_input_idx)
+        kudos_input_tag = html_content[tag_start:tag_end + 1]
+
+        self.assertIn('oninput="handleKudosRecipientSearch(this.value)"', kudos_input_tag)
+        self.assertIn('onfocus="handleKudosRecipientSearch(this.value)"', kudos_input_tag)
+        self.assertIn('id="kudos-recipient-suggestions"', html_content)
+
+        self.assertIn("kudos-recipient-suggestions", app_js_content)
+        self.assertIn("function handleKudosRecipientSearch", app_js_content)
+        self.assertIn("function selectKudosRecipient", app_js_content)
+        self.assertIn("window.handleKudosRecipientSearch = handleKudosRecipientSearch", app_js_content)
+        self.assertIn("window.selectKudosRecipient = selectKudosRecipient", app_js_content)
 
     def test_spotlight_accurate_statistics(self):
         """
