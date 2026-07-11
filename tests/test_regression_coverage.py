@@ -722,5 +722,84 @@ All 92+ tests run cleanly with `OK`.
         self.assertIn('onclick="openModal(\'modal-kudos\')"', html)
         self.assertIn('onclick="openModal(\'modal-post\')"', html)
 
+    def test_google_oauth_endpoint_and_schema(self):
+        """
+        Verifies OAuth / Google Sign-In schema, API endpoint error handling, frontend UI/controller elements, and full mock valid token verification flow.
+        """
+        # 1. Verify schema has oauth_provider and oauth_id
+        conn = self.database.get_db()
+        cursor = conn.cursor()
+        cursor.execute("PRAGMA table_info('users')")
+        cols = [r["name"] for r in cursor.fetchall()]
+        conn.close()
+        self.assertIn("oauth_provider", cols)
+        self.assertIn("oauth_id", cols)
+
+        # 2. POST /api/auth/oauth/google with empty/missing token returns 400
+        status, _, body = self.make_request("POST", "/api/auth/oauth/google", body={})
+        self.assertEqual(status, 400)
+        self.assertFalse(body.get("success", True))
+        self.assertIn("required", body.get("error", "").lower())
+
+        # 3. POST /api/auth/oauth/google with invalid token returns 401
+        status, _, body = self.make_request("POST", "/api/auth/oauth/google", body={"credential": "invalid_fake_token_123"})
+        self.assertEqual(status, 401)
+        self.assertFalse(body.get("success", True))
+        self.assertIn("invalid", body.get("error", "").lower())
+
+        # Also verify /auth/oauth/google path works (Requirement 2 / 4)
+        status, _, body = self.make_request("POST", "/auth/oauth/google", body={})
+        self.assertEqual(status, 400)
+        status, _, body = self.make_request("POST", "/auth/oauth/google", body={"credential": "invalid_fake_token_123"})
+        self.assertEqual(status, 401)
+
+        # 4. Check static/index.html elements
+        base_dir = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+        index_path = os.path.join(base_dir, "static", "index.html")
+        with open(index_path, "r", encoding="utf-8") as f:
+            html = f.read()
+        self.assertIn("triggerGoogleSignIn()", html)
+        self.assertIn("Continue with Google", html)
+        self.assertIn("or continue with email", html)
+        self.assertIn('id="btn-google-login"', html)
+        self.assertIn('id="btn-google-signup"', html)
+
+        # 5. Check static/app.js elements
+        app_js_path = os.path.join(base_dir, "static", "app.js")
+        with open(app_js_path, "r", encoding="utf-8") as f:
+            js = f.read()
+        self.assertIn("triggerGoogleSignIn", js)
+        self.assertIn("handleGoogleOauthResponse", js)
+
+        # 6. Verify valid token flow (mocked urllib.request.urlopen)
+        import json
+        from unittest.mock import patch, MagicMock
+        mock_payload = {
+            "email": "oauth_demo@gooddeeds.space",
+            "sub": "google_sub_888",
+            "name": "OAuth Demo",
+            "picture": "https://example.com/demo.jpg"
+        }
+        mock_resp = MagicMock()
+        mock_resp.read.return_value = json.dumps(mock_payload).encode("utf-8")
+        mock_resp.__enter__.return_value = mock_resp
+
+        with patch("urllib.request.urlopen", return_value=mock_resp):
+            status, _, body = self.make_request("POST", "/api/auth/oauth/google", body={"credential": "valid_mock_token"})
+            self.assertEqual(status, 200)
+            self.assertTrue(body.get("success"))
+            self.assertIn("token", body)
+            self.assertEqual(body["user"]["email"], "oauth_demo@gooddeeds.space")
+            self.assertEqual(body["user"]["username"], "OAuth_Demo")
+            self.assertEqual(body["user"]["oauth_provider"], "google")
+            self.assertEqual(body["user"]["oauth_id"], "google_sub_888")
+
+            # Second call for existing user login
+            status, _, body = self.make_request("POST", "/api/auth/oauth/google", body={"credential": "valid_mock_token"})
+            self.assertEqual(status, 200)
+            self.assertTrue(body.get("success"))
+            self.assertEqual(body["user"]["email"], "oauth_demo@gooddeeds.space")
+            self.assertEqual(body["user"]["oauth_id"], "google_sub_888")
+
 if __name__ == "__main__":
     unittest.main()

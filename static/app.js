@@ -448,6 +448,46 @@ function selectAvatar(url) {
   document.getElementById("sup-avatar").value = url;
 }
 
+async function triggerGoogleSignIn() {
+  if (window.google && google.accounts && google.accounts.id) {
+    google.accounts.id.prompt();
+  } else {
+    const token = prompt("Enter Google ID Token for local testing:");
+    if (token) {
+      handleGoogleOauthResponse({ credential: token });
+    }
+  }
+}
+
+async function handleGoogleOauthResponse(response) {
+  try {
+    const tokenStr = response.credential || response.id_token;
+    if (!tokenStr) return;
+    const data = await apiFetch("/auth/oauth/google", {
+      method: "POST",
+      body: { credential: tokenStr }
+    });
+    if (data && data.token && data.user) {
+      closeModal('modal-login');
+      closeModal('modal-signup');
+      currentToken = data.token;
+      localStorage.setItem("gd_token", currentToken);
+      currentUser = data.user;
+      if (typeof sessionPromise !== "undefined") {
+        sessionPromise = Promise.resolve();
+      }
+      updateAuthUI(currentUser);
+      showToast("Welcome, " + currentUser.username + "!");
+      if (typeof loadQuickNavGroups === "function") {
+        await loadQuickNavGroups();
+      }
+      navigateTo("/feed");
+    }
+  } catch (err) {
+    showToast("❌ " + (err.message || "Google Sign-In failed"));
+  }
+}
+
 async function handleSignup(e) {
   e.preventDefault();
   const email = document.getElementById("sup-email").value.trim();
@@ -2707,6 +2747,8 @@ function closeProfileDropdown() {
 }
 
 window.presetLogin = presetLogin;
+window.triggerGoogleSignIn = triggerGoogleSignIn;
+window.handleGoogleOauthResponse = handleGoogleOauthResponse;
 window.handleLogin = handleLogin;
 window.handleSignup = handleSignup;
 window.logout = logout;

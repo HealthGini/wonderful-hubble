@@ -16,6 +16,7 @@ import smtplib
 from email.mime.multipart import MIMEMultipart
 from email.mime.text import MIMEText
 from urllib.parse import parse_qs, urlparse
+import urllib.request
 from database import get_db, hash_password, get_user_stats, extract_resource_text
 
 def get_user_from_token(headers):
@@ -43,7 +44,7 @@ def get_user_from_token(headers):
     conn = get_db()
     cursor = conn.cursor()
     cursor.execute("""
-        SELECT u.id, u.email, u.username, u.phone, u.avatar_url, u.bio, u.is_site_admin
+        SELECT u.id, u.email, u.username, u.phone, u.avatar_url, u.bio, u.is_site_admin, u.oauth_provider, u.oauth_id
         FROM sessions s
         JOIN users u ON s.user_id = u.id
         WHERE s.token = ?
@@ -336,7 +337,7 @@ def handle_api_request(method, path, headers, body_bytes):
             token = str(uuid.uuid4())
             cursor.execute("INSERT INTO sessions (token, user_id) VALUES (?, ?)", (token, user_id))
             conn.commit()
-            cursor.execute("SELECT id, email, username, phone, avatar_url, bio, is_site_admin FROM users WHERE id = ?", (user_id,))
+            cursor.execute("SELECT id, email, username, phone, avatar_url, bio, is_site_admin, oauth_provider, oauth_id FROM users WHERE id = ?", (user_id,))
             new_user = dict(cursor.fetchone())
             conn.close()
             return json_response({"token": token, "user": new_user}, 201)
@@ -361,7 +362,7 @@ def handle_api_request(method, path, headers, body_bytes):
         conn = get_db()
         cursor = conn.cursor()
         cursor.execute("""
-            SELECT id, email, username, phone, avatar_url, bio, is_site_admin
+            SELECT id, email, username, phone, avatar_url, bio, is_site_admin, oauth_provider, oauth_id
             FROM users
             WHERE (LOWER(email) = LOWER(?) OR LOWER(username) = LOWER(?)) AND password_hash = ?
         """, (email, email, pw_hash))
@@ -375,6 +376,100 @@ def handle_api_request(method, path, headers, body_bytes):
         conn.commit()
         conn.close()
         return json_response({"token": token, "user": user_dict})
+
+    if path_only in ("/api/auth/oauth/google", "/auth/oauth/google") and method == "POST":
+        token_str = body.get("credential") or body.get("id_token")
+        if not token_str or not str(token_str).strip():
+            return error_response("Google ID token (credential) is required.", 400)
+        token_str = str(token_str).strip()
+
+        try:
+            url = f"https://oauth2.googleapis.com/tokeninfo?id_token={token_str}"
+            req = urllib.request.Request(url, headers={"User-Agent": "GoodDeeds/1.0"})
+            with urllib.request.urlopen(req, timeout=10.0) as resp:
+                payload_bytes = resp.read()
+                payload = json.loads(payload_bytes.decode("utf-8"))
+        except Exception:
+            return error_response("Invalid Google token or verification failed.", 401)
+
+        if not isinstance(payload, dict):
+            return error_response("Invalid Google token or verification failed.", 401)
+
+        email = payload.get("email")
+        oauth_id = payload.get("sub")
+        if not email or not oauth_id:
+            return error_response("Invalid Google token or verification failed.", 401)
+        email = str(email).strip()
+        oauth_id = str(oauth_id).strip()
+
+        name = payload.get("name") or payload.get("given_name") or email.split("@")[0]
+        avatar_url = payload.get("picture") or ""
+
+        conn = get_db()
+        cursor = conn.cursor()
+        try:
+            cursor.execute("""
+                SELECT id, email, username, phone, avatar_url, bio, is_site_admin, oauth_provider, oauth_id
+                FROM users
+                WHERE (oauth_provider = 'google' AND oauth_id = ?) OR LOWER(email) = LOWER(?)
+            """, (oauth_id, email))
+            existing_row = cursor.fetchone()
+            if existing_row:
+                user_dict = dict(existing_row)
+                new_avatar = user_dict.get("avatar_url") or ""
+                if (not new_avatar or not str(new_avatar).strip()) and avatar_url:
+                    new_avatar = avatar_url
+                    cursor.execute("""
+                        UPDATE users
+                        SET oauth_provider = 'google', oauth_id = ?, avatar_url = ?
+                        WHERE id = ?
+                    """, (oauth_id, new_avatar, user_dict["id"]))
+                else:
+                    cursor.execute("""
+                        UPDATE users
+                        SET oauth_provider = 'google', oauth_id = ?
+                        WHERE id = ?
+                    """, (oauth_id, user_dict["id"]))
+                conn.commit()
+                cursor.execute("""
+                    SELECT id, email, username, phone, avatar_url, bio, is_site_admin, oauth_provider, oauth_id
+                    FROM users WHERE id = ?
+                """, (user_dict["id"],))
+                user_dict = dict(cursor.fetchone())
+            else:
+                base_username = re.sub(r"[^a-zA-Z0-9_]", "_", str(name)).strip("_")
+                if not base_username:
+                    base_username = re.sub(r"[^a-zA-Z0-9_]", "_", email.split("@")[0]).strip("_") or "user"
+                username = base_username
+                counter = 1
+                while True:
+                    cursor.execute("SELECT 1 FROM users WHERE LOWER(username) = LOWER(?)", (username,))
+                    if not cursor.fetchone():
+                        break
+                    username = f"{base_username}_{counter}"
+                    counter += 1
+
+                bio = "Google Sign-In user"
+                cursor.execute("""
+                    INSERT INTO users (email, username, password_hash, avatar_url, bio, oauth_provider, oauth_id)
+                    VALUES (?, ?, 'OAUTH_GOOGLE', ?, ?, 'google', ?)
+                """, (email, username, avatar_url, bio, oauth_id))
+                user_id = cursor.lastrowid
+                conn.commit()
+                cursor.execute("""
+                    SELECT id, email, username, phone, avatar_url, bio, is_site_admin, oauth_provider, oauth_id
+                    FROM users WHERE id = ?
+                """, (user_id,))
+                user_dict = dict(cursor.fetchone())
+
+            token = str(uuid.uuid4())
+            cursor.execute("INSERT INTO sessions (token, user_id) VALUES (?, ?)", (token, user_dict["id"]))
+            conn.commit()
+            conn.close()
+            return json_response({"success": True, "token": token, "user": user_dict})
+        except Exception as e:
+            conn.close()
+            return error_response(f"Authentication failed: {str(e)}", 500)
 
     if path_only == "/api/auth/logout" and method == "POST":
         auth = headers.get("Authorization", "")
@@ -407,7 +502,7 @@ def handle_api_request(method, path, headers, body_bytes):
         else:
             cursor.execute("UPDATE users SET avatar_url = ?, bio = ? WHERE id = ?", (avatar_url, bio, user["id"]))
         conn.commit()
-        cursor.execute("SELECT id, email, username, phone, avatar_url, bio, is_site_admin FROM users WHERE id = ?", (user["id"],))
+        cursor.execute("SELECT id, email, username, phone, avatar_url, bio, is_site_admin, oauth_provider, oauth_id FROM users WHERE id = ?", (user["id"],))
         updated_user = dict(cursor.fetchone())
         conn.close()
         return json_response({"user": updated_user, "success": True})

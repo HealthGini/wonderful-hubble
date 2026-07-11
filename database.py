@@ -64,11 +64,21 @@ def init_db():
         avatar_url TEXT,
         bio TEXT,
         is_site_admin INTEGER DEFAULT 0,
+        oauth_provider TEXT NULL,
+        oauth_id TEXT NULL,
         created_at DATETIME DEFAULT CURRENT_TIMESTAMP
     )
     """)
     try:
         cursor.execute("ALTER TABLE users ADD COLUMN is_site_admin INTEGER DEFAULT 0")
+    except Exception:
+        pass
+    try:
+        cursor.execute("ALTER TABLE users ADD COLUMN oauth_provider TEXT")
+    except Exception:
+        pass
+    try:
+        cursor.execute("ALTER TABLE users ADD COLUMN oauth_id TEXT")
     except Exception:
         pass
 

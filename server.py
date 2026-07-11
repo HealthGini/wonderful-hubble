@@ -40,10 +40,10 @@ class GoodDeedsServerHandler(BaseHTTPRequestHandler):
         """
         Routes the request based on the path.
         
-        If the path starts with '/api/', it reads the body and delegates to
+        If the path starts with '/api/' or '/auth/', it reads the body and delegates to
         handlers.handle_api_request. Otherwise, it serves static files (GET only).
         """
-        if self.path.startswith("/api/"):
+        if self.path.startswith("/api/") or self.path.startswith("/auth/"):
             content_len = int(self.headers.get("Content-Length", 0))
             body_bytes = self.rfile.read(content_len) if content_len > 0 else b""
             try:
