@@ -669,5 +669,58 @@ All 92+ tests run cleanly with `OK`.
         self.assertEqual(event_item.get("event_date"), "2026-10-15")
         self.assertEqual(event_item.get("post_subtype"), "EVENT")
 
+    def test_cta_prominence_and_accessibility_enhancements(self):
+        """
+        Verifies that the new Community Creation Bar exists in #view-feed,
+        that the prominent action buttons are present in #mobile-menu and profile banner,
+        and that renderGroupKudos and renderGroupPosts include creation banners
+        while maintaining all navbar container IDs (#kudos-hub-container, #posts-hub-container,
+        #prof-open-kudos-btn, #prof-open-posts-btn).
+        """
+        base_dir = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+        index_path = os.path.join(base_dir, "static", "index.html")
+        app_js_path = os.path.join(base_dir, "static", "app.js")
+
+        with open(index_path, "r", encoding="utf-8") as f:
+            html = f.read()
+        with open(app_js_path, "r", encoding="utf-8") as f:
+            js = f.read()
+
+        # 1. Navbar containers preservation and styling upgrades
+        self.assertIn('id="kudos-hub-container"', html)
+        self.assertIn('id="posts-hub-container"', html)
+        self.assertIn('from-amber-500 to-yellow-500', html)
+        self.assertIn('from-indigo-600 to-violet-600', html)
+        self.assertIn('bg-amber-50/90', html)
+        self.assertIn('bg-indigo-50/90', html)
+
+        # 2. Mobile menu creation actions
+        self.assertIn('id="mobile-auth-actions"', html)
+        self.assertIn('id="mobile-menu-auth-actions"', html)
+        self.assertIn('✨ Give Public Kudos', html)
+        self.assertIn('✍️ Create New Post', html)
+        self.assertIn("closeMobileMenu(); openModal('modal-kudos')", html)
+        self.assertIn("closeMobileMenu(); openModal('modal-post')", html)
+
+        # 3. Community Feed Hero Creation Bar
+        self.assertIn('id="community-creation-bar"', html)
+        self.assertIn('Promote Goodness Today', html)
+
+        # 4. Contextual Space Details Banners and Header Actions
+        self.assertIn("group-kudos-creation-banner", js)
+        self.assertIn("✨ + Give Space Kudos", js)
+        self.assertIn("group-posts-creation-banner", js)
+        self.assertIn("✍️ + Share Space Post", js)
+
+        # 5. Profile Page & Landing Page Enhancements
+        self.assertIn('id="prof-open-kudos-btn"', html)
+        self.assertIn('id="prof-open-posts-btn"', html)
+        self.assertIn('✨ Give New Kudos', html)
+        self.assertIn('id="prof-actions"', html)
+        self.assertIn("presetKudosRecipient", js)
+        self.assertIn("🌟 Give Kudos to ${u.username}", js)
+        self.assertIn('onclick="openModal(\'modal-kudos\')"', html)
+        self.assertIn('onclick="openModal(\'modal-post\')"', html)
+
 if __name__ == "__main__":
     unittest.main()

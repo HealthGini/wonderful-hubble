@@ -372,17 +372,23 @@ async function checkSession() {
 function updateAuthUI(user) {
   const guestBox = document.getElementById("nav-auth-guest");
   const userBox = document.getElementById("nav-auth-user");
+  const mobileActions = document.getElementById("mobile-auth-actions");
+  const mobileMenuActions = document.getElementById("mobile-menu-auth-actions");
   if (!guestBox || !userBox) return;
 
   if (user) {
     guestBox.classList.add("hidden");
     userBox.classList.remove("hidden");
+    if (mobileActions) mobileActions.classList.remove("hidden");
+    if (mobileMenuActions) mobileMenuActions.classList.remove("hidden");
     document.getElementById("nav-user-name").textContent = user.username;
     document.getElementById("nav-user-avatar").src = user.avatar_url;
     currentGroupFilter = "my_spaces";
   } else {
     guestBox.classList.remove("hidden");
     userBox.classList.add("hidden");
+    if (mobileActions) mobileActions.classList.add("hidden");
+    if (mobileMenuActions) mobileMenuActions.classList.add("hidden");
     currentGroupFilter = "";
   }
   populateGroupFilterDropdown();
@@ -1106,8 +1112,15 @@ function selectKudosRecipient(id, username, email) {
   if (sugBox) sugBox.classList.add("hidden");
   updateKudosGroupCheckboxes();
 }
+function presetKudosRecipient(id, username, email = "") {
+  selectKudosRecipient(id, username, email);
+  setTimeout(() => {
+    selectKudosRecipient(id, username, email);
+  }, 50);
+}
 window.handleKudosRecipientSearch = handleKudosRecipientSearch;
 window.selectKudosRecipient = selectKudosRecipient;
+window.presetKudosRecipient = presetKudosRecipient;
 
 document.addEventListener("click", e => {
   const sugBox = document.getElementById("kudos-recipient-suggestions");
@@ -1623,14 +1636,16 @@ async function loadGroupDetail(gid) {
         </div>
       </div>
 
-      <div class="pt-4 md:pt-0 shrink-0 flex flex-col sm:flex-row gap-3 items-center">
+      <div class="pt-4 md:pt-0 shrink-0 flex flex-wrap sm:flex-row gap-3 items-center justify-end">
+        <button onclick="openModal('modal-kudos')" class="px-6 py-3.5 bg-gradient-to-r from-amber-500 to-yellow-500 hover:from-amber-600 hover:to-yellow-600 text-white font-black text-sm rounded-2xl shadow transition touch-target flex items-center space-x-1.5"><span>✨</span><span>Give Kudos</span></button>
+        <button onclick="openModal('modal-post')" class="px-6 py-3.5 bg-gradient-to-r from-indigo-600 to-violet-600 hover:from-indigo-700 hover:to-violet-700 text-white font-black text-sm rounded-2xl shadow transition touch-target flex items-center space-x-1.5"><span>✍️</span><span>Share Post</span></button>
         ${!currentUser ? `
           <button onclick="openModal('modal-login')" class="px-8 py-4 bg-amber-600 hover:bg-amber-700 text-white font-black text-lg rounded-2xl shadow transition touch-target">Log In to Join</button>
         ` : isMember ? `
-          <button onclick="openGroupInviteModal()" class="px-6 py-4 bg-indigo-600 hover:bg-indigo-700 text-white font-bold text-base rounded-2xl shadow transition touch-target flex items-center space-x-2"><span>💌</span><span>Invite Others to Join</span></button>
-          <button onclick="toggleGroupMembership(${gid}, 'leave')" class="px-6 py-4 bg-stone-200 hover:bg-red-100 hover:text-red-700 text-stone-700 font-black text-base rounded-2xl transition touch-target">Leave Space</button>
+          <button onclick="openGroupInviteModal()" class="px-6 py-3.5 bg-indigo-600 hover:bg-indigo-700 text-white font-bold text-sm rounded-2xl shadow transition touch-target flex items-center space-x-2"><span>💌</span><span>Invite Others to Join</span></button>
+          <button onclick="toggleGroupMembership(${gid}, 'leave')" class="px-6 py-3.5 bg-stone-200 hover:bg-red-100 hover:text-red-700 text-stone-700 font-black text-sm rounded-2xl transition touch-target">Leave Space</button>
         ` : `
-          <button onclick="toggleGroupMembership(${gid}, 'join')" class="px-8 py-4 bg-teal-800 hover:bg-teal-900 text-white font-black text-xl rounded-2xl shadow-lg transition touch-target">+ Join Space Free</button>
+          <button onclick="toggleGroupMembership(${gid}, 'join')" class="px-8 py-3.5 bg-teal-800 hover:bg-teal-900 text-white font-black text-base rounded-2xl shadow-lg transition touch-target">+ Join Space Free</button>
         `}
       </div>
     `;
@@ -1685,6 +1700,26 @@ function switchGroupTab(tabName) {
 async function renderGroupKudos() {
   const container = document.getElementById("group-kudos-list");
   if (!container || !activeGroupId) return;
+  const parent = container.parentNode;
+  if (parent) {
+    let banner = document.getElementById("group-kudos-creation-banner");
+    if (!banner) {
+      banner = document.createElement("div");
+      banner.id = "group-kudos-creation-banner";
+      parent.insertBefore(banner, container);
+    }
+    const spaceName = activeGroupData ? activeGroupData.name : 'this space';
+    banner.className = "bg-gradient-to-r from-amber-500/10 via-white to-amber-500/10 p-6 rounded-3xl border border-amber-200/80 shadow-sm flex flex-col sm:flex-row items-center justify-between gap-4 mb-6";
+    banner.innerHTML = `
+      <div class="space-y-1 text-center sm:text-left">
+        <h3 class="text-lg font-black text-slate-900">Recognize Space Members</h3>
+        <p class="text-sm font-medium text-slate-600">Celebrate contributions and kindness within ${spaceName}.</p>
+      </div>
+      <button onclick="openModal('modal-kudos')" class="px-6 py-3 rounded-2xl font-black text-sm bg-gradient-to-r from-amber-500 to-yellow-500 hover:from-amber-600 hover:to-yellow-600 text-white shadow-md transition touch-target flex items-center space-x-2 shrink-0">
+        <span>✨ + Give Space Kudos</span>
+      </button>
+    `;
+  }
   container.innerHTML = `<p class="text-stone-500 font-bold text-center py-8">Loading Kudos...</p>`;
   try {
     const data = await apiFetch(`/feed?group_id=${activeGroupId}&filter_type=KUDOS`);
@@ -1702,6 +1737,26 @@ async function renderGroupKudos() {
 async function renderGroupPosts() {
   const container = document.getElementById("group-posts-list");
   if (!container || !activeGroupId) return;
+  const parent = container.parentNode;
+  if (parent) {
+    let banner = document.getElementById("group-posts-creation-banner");
+    if (!banner) {
+      banner = document.createElement("div");
+      banner.id = "group-posts-creation-banner";
+      parent.insertBefore(banner, container);
+    }
+    const spaceName = activeGroupData ? activeGroupData.name : 'this space';
+    banner.className = "bg-gradient-to-r from-indigo-600/10 via-white to-indigo-600/10 p-6 rounded-3xl border border-indigo-200/80 shadow-sm flex flex-col sm:flex-row items-center justify-between gap-4 mb-6";
+    banner.innerHTML = `
+      <div class="space-y-1 text-center sm:text-left">
+        <h3 class="text-lg font-black text-slate-900">Share with Space Members</h3>
+        <p class="text-sm font-medium text-slate-600">Post discussions, stories, or events to ${spaceName}.</p>
+      </div>
+      <button onclick="openModal('modal-post')" class="px-6 py-3 rounded-2xl font-black text-sm bg-gradient-to-r from-indigo-600 to-violet-600 hover:from-indigo-700 hover:to-violet-700 text-white shadow-md transition touch-target flex items-center space-x-2 shrink-0">
+        <span>✍️ + Share Space Post</span>
+      </button>
+    `;
+  }
   container.innerHTML = `<p class="text-stone-500 font-bold text-center py-8">Loading Posts...</p>`;
   try {
     const data = await apiFetch(`/feed?group_id=${activeGroupId}&filter_type=POST`);
@@ -2023,11 +2078,27 @@ async function loadUserProfile(targetId) {
     if (bioEl) bioEl.textContent = u.bio ? `"${u.bio}"` : "No bio added yet.";
 
     const editBox = document.getElementById("prof-edit-btn-box");
+    const actionsBox = document.getElementById("prof-actions");
     if (editBox) {
       if (currentUser && currentUser.id === u.id) {
         editBox.classList.remove("hidden");
       } else {
         editBox.classList.add("hidden");
+      }
+    }
+    if (actionsBox) {
+      if (currentUser && currentUser.id !== u.id) {
+        actionsBox.classList.remove("hidden");
+        const safeName = (u.username || "").replace(/'/g, "\\'");
+        const safeEmail = (u.email || "").replace(/'/g, "\\'");
+        actionsBox.innerHTML = `
+          <button onclick="openModal('modal-kudos'); presetKudosRecipient(${u.id}, '${safeName}', '${safeEmail}')" class="px-8 py-4 bg-gradient-to-r from-amber-500 to-yellow-500 hover:from-amber-600 hover:to-yellow-600 text-white font-black text-lg rounded-2xl shadow-lg shadow-amber-500/30 transition touch-target flex items-center space-x-2">
+            <span>🌟 Give Kudos to ${u.username}</span>
+          </button>
+        `;
+      } else {
+        actionsBox.classList.add("hidden");
+        actionsBox.innerHTML = "";
       }
     }
 
