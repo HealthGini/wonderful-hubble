@@ -870,11 +870,20 @@ async function loadFeed(isLoadMore = false, isReload = false) {
           if (gSel) gSel.value = "";
           return loadFeed(isLoadMore, isReload);
         }
+        let emptyTitle = "No Posts or Kudos Found";
+        let emptySubtitle = "No posts or kudos match your active filter selection.";
+        if (currentTypeFilter === "KUDOS") {
+          emptyTitle = "No Kudos Found";
+          emptySubtitle = "No gratitude kudos match your active filter selection.";
+        } else if (currentTypeFilter === "POST") {
+          emptyTitle = "No Posts Found";
+          emptySubtitle = "No community posts match your active filter selection.";
+        }
         container.innerHTML = `
           <div class="bg-white p-12 rounded-3xl border border-slate-200 text-center space-y-3">
             <div class="text-5xl">🕊️</div>
-            <h3 class="text-2xl font-bold text-slate-800">No Posts or Kudos Found</h3>
-            <p class="text-base text-slate-500 font-medium">No posts or kudos match your active filter selection.</p>
+            <h3 class="text-2xl font-bold text-slate-800">${emptyTitle}</h3>
+            <p class="text-base text-slate-500 font-medium">${emptySubtitle}</p>
             <button onclick="clearAllFilters()" class="px-6 py-3 bg-amber-500 hover:bg-amber-600 text-white font-bold rounded-xl shadow-sm transition">Reset All Filters</button>
           </div>
         `;

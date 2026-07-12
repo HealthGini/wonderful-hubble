@@ -898,5 +898,25 @@ All 92+ tests run cleanly with `OK`.
         self.assertIn(".toLocaleString()", js)
 
 
+    def test_dynamic_empty_feed_state_by_item_type(self):
+        """
+        Asserts that static/app.js checks currentTypeFilter === "KUDOS" and
+        currentTypeFilter === "POST" and dynamically sets required title and subtitle
+        strings for empty feed state across all three states (KUDOS, POST, and default/empty).
+        """
+        base_dir = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+        app_js_path = os.path.join(base_dir, "static", "app.js")
+        with open(app_js_path, "r", encoding="utf-8") as f:
+            js = f.read()
+
+        self.assertIn('currentTypeFilter === "KUDOS"', js)
+        self.assertIn('currentTypeFilter === "POST"', js)
+        self.assertIn("No Kudos Found", js)
+        self.assertIn("No gratitude kudos match your active filter selection.", js)
+        self.assertIn("No Posts Found", js)
+        self.assertIn("No community posts match your active filter selection.", js)
+        self.assertIn("No Posts or Kudos Found", js)
+        self.assertIn("No posts or kudos match your active filter selection.", js)
+
 if __name__ == "__main__":
     unittest.main()
