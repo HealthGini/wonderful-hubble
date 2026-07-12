@@ -164,7 +164,7 @@ function setupEventListeners() {
     regBtn.addEventListener("click", registerPasskey);
   }
 
-  document.querySelectorAll("#btn-passkey-login").forEach(btn => {
+  document.querySelectorAll(".btn-passkey-login").forEach(btn => {
     btn.addEventListener("click", loginWithPasskey);
   });
 }
@@ -305,6 +305,9 @@ function openModal(modalId) {
     if (modalId === "modal-kudos") populateKudosModal();
     if (modalId === "modal-post") populatePostModal();
     if (modalId === "modal-edit-profile") populateEditProfileModal();
+    if (modalId === "modal-login" || modalId === "modal-signup") {
+      adjustPasskeyButtonsSupport();
+    }
     dlg.showModal();
   }
 }
@@ -2247,6 +2250,7 @@ async function loadUserProfile(targetId) {
     if (postsBtn) {
       postsBtn.setAttribute("onclick", `filterFeedByMyPosts('authored', ${u.id})`);
     }
+    adjustPasskeyButtonsSupport();
   } catch (err) {
     console.error("loadUserProfile error:", err);
   }
@@ -3411,6 +3415,10 @@ function formatAuthenticationResponse(cred) {
 }
 
 async function registerPasskey() {
+  if (!window.PublicKeyCredential || !navigator.credentials) {
+    showToast("❌ Passkeys require a secure context (HTTPS or localhost). Please enable HTTPS or access via localhost.", "error");
+    return;
+  }
   try {
     showToast("Requesting registration challenge...");
     const options = await apiFetch("/auth/webauthn/register/challenge", { method: "POST" });
@@ -3446,6 +3454,10 @@ async function registerPasskey() {
 }
 
 async function loginWithPasskey() {
+  if (!window.PublicKeyCredential || !navigator.credentials) {
+    showToast("❌ Passkeys require a secure context (HTTPS or localhost). Please enable HTTPS or access via localhost.", "error");
+    return;
+  }
   try {
     let usernameOrEmail = "";
     const loginModal = document.getElementById("modal-login");
@@ -3509,4 +3521,19 @@ async function loginWithPasskey() {
 
 window.registerPasskey = registerPasskey;
 window.loginWithPasskey = loginWithPasskey;
+
+function adjustPasskeyButtonsSupport() {
+  if (!window.PublicKeyCredential || !navigator.credentials) {
+    const buttons = [
+      ...document.querySelectorAll(".btn-passkey-login"),
+      document.getElementById("btn-register-passkey")
+    ].filter(Boolean);
+    
+    buttons.forEach(btn => {
+      btn.disabled = true;
+      btn.classList.add("opacity-50", "cursor-not-allowed");
+      btn.title = "Passkeys require a secure context (HTTPS or localhost)";
+    });
+  }
+}
 

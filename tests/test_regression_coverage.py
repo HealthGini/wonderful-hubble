@@ -1140,5 +1140,48 @@ All 92+ tests run cleanly with `OK`.
         self.assertIsNone(cursor.fetchone())
         conn.close()
 
+    def test_passkey_guard_checks_and_cleanup(self):
+        """
+        Verifies that:
+        1. static/index.html does not feature duplicate id="btn-passkey-login" attributes.
+        2. static/index.html features class="btn-passkey-login" instead.
+        3. static/app.js contains the secure context guard checks in loginWithPasskey and registerPasskey.
+        4. static/app.js event listener binding uses document.querySelectorAll(".btn-passkey-login").
+        """
+        base_dir = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+        index_path = os.path.join(base_dir, "static", "index.html")
+        app_js_path = os.path.join(base_dir, "static", "app.js")
+
+        with open(index_path, "r", encoding="utf-8") as f:
+            html = f.read()
+
+        with open(app_js_path, "r", encoding="utf-8") as f:
+            js = f.read()
+
+        # 1. Assert no id="btn-passkey-login" in HTML
+        self.assertNotIn('id="btn-passkey-login"', html)
+
+        # 2. Assert class="btn-passkey-login" is present in HTML
+        self.assertIn('btn-passkey-login', html)
+
+        # 3. Assert guard checks in JS
+        guard_str = "if (!window.PublicKeyCredential || !navigator.credentials)"
+        self.assertIn(guard_str, js)
+        
+        # Verify it is in loginWithPasskey
+        login_idx = js.find("async function loginWithPasskey()")
+        self.assertNotEqual(login_idx, -1)
+        login_block = js[login_idx:login_idx + 500]
+        self.assertIn(guard_str, login_block)
+
+        # Verify it is in registerPasskey
+        register_idx = js.find("async function registerPasskey()")
+        self.assertNotEqual(register_idx, -1)
+        register_block = js[register_idx:register_idx + 500]
+        self.assertIn(guard_str, register_block)
+
+        # 4. Assert event listener binding uses querySelectorAll(".btn-passkey-login")
+        self.assertIn('document.querySelectorAll(".btn-passkey-login")', js)
+
 if __name__ == "__main__":
     unittest.main()
