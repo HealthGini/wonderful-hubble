@@ -890,12 +890,28 @@ All 92+ tests run cleanly with `OK`.
         self.assertIn('id="stat-acts-of-kindness"', html)
         self.assertIn('id="stat-community-members"', html)
         self.assertIn('id="stat-active-spaces"', html)
+        self.assertNotIn("1,420+", html)
+        acts_start = html.find('id="stat-acts-of-kindness"')
+        self.assertNotEqual(acts_start, -1)
+        acts_end = html.find("</div>", acts_start)
+        self.assertNotIn("1,420+", html[acts_start:acts_end])
 
         with open(app_js_path, "r", encoding="utf-8") as f:
             js = f.read()
         self.assertIn("loadPlatformStats", js)
         self.assertIn('apiFetch("/stats")', js)
         self.assertIn(".toLocaleString()", js)
+        self.assertNotIn("1,420+", js)
+
+        init_start = js.find("async function initApp()")
+        self.assertNotEqual(init_start, -1)
+        init_end = js.find("if (document.readyState", init_start)
+        self.assertIn("loadPlatformStats()", js[init_start:init_end])
+
+        stats_start = js.find("async function loadPlatformStats()")
+        self.assertNotEqual(stats_start, -1)
+        stats_end = js.find("window.loadPlatformStats = loadPlatformStats;", stats_start)
+        self.assertNotIn("1,420+", js[stats_start:stats_end])
 
 
     def test_dynamic_empty_feed_state_by_item_type(self):

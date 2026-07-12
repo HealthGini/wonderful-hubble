@@ -70,6 +70,11 @@ async function initApp() {
   } catch (err) {
     console.error("QuickNav init error:", err);
   }
+  try {
+    loadPlatformStats();
+  } catch (err) {
+    console.error("Platform stats init error:", err);
+  }
   await handleRoute();
 }
 
@@ -745,9 +750,9 @@ async function loadPlatformStats() {
     const elActs = document.getElementById("stat-acts-of-kindness");
     const elMembers = document.getElementById("stat-community-members");
     const elSpaces = document.getElementById("stat-active-spaces");
-    if (elActs && !elActs.textContent.trim()) elActs.textContent = "1,420+";
-    if (elMembers && !elMembers.textContent.trim()) elMembers.textContent = "4+";
-    if (elSpaces && !elSpaces.textContent.trim()) elSpaces.textContent = "3+";
+    if (elActs && (!elActs.textContent.trim() || elActs.textContent === "...")) elActs.textContent = "0";
+    if (elMembers && (!elMembers.textContent.trim() || elMembers.textContent === "...")) elMembers.textContent = "0";
+    if (elSpaces && (!elSpaces.textContent.trim() || elSpaces.textContent === "...")) elSpaces.textContent = "0";
   }
 }
 window.loadPlatformStats = loadPlatformStats;
