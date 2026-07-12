@@ -17,7 +17,7 @@ from email.mime.multipart import MIMEMultipart
 from email.mime.text import MIMEText
 from urllib.parse import parse_qs, urlparse
 import urllib.request
-from database import get_db, hash_password, get_user_stats, extract_resource_text
+from database import get_db, hash_password, get_user_stats, extract_resource_text, get_platform_stats
 
 def get_user_from_token(headers):
     """
@@ -312,6 +312,11 @@ def handle_api_request(method, path, headers, body_bytes):
             pass
 
     user = get_user_from_token(headers)
+
+    # ================== PLATFORM STATS ENDPOINTS ==================
+    if path_only in ("/api/stats", "/api/landing_stats", "/stats", "/landing_stats") and method == "GET":
+        stats = get_platform_stats()
+        return json_response({"success": True, "stats": stats})
 
     # ================== AUTH ENDPOINTS ==================
     if path_only == "/api/auth/signup" and method == "POST":

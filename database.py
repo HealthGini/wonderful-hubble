@@ -549,6 +549,44 @@ def get_user_stats(user_id: int) -> dict:
     }
 
 
+def get_platform_stats() -> dict:
+    """
+    Returns exact real-time platform statistics across the SQLite database.
+    """
+    conn = get_db()
+    cursor = conn.cursor()
+
+    cursor.execute("SELECT COUNT(*) as cnt FROM feed_items WHERE item_type = 'KUDOS'")
+    acts_of_kindness = cursor.fetchone()["cnt"]
+
+    cursor.execute("SELECT COUNT(*) as cnt FROM users")
+    community_members = cursor.fetchone()["cnt"]
+
+    cursor.execute("SELECT COUNT(*) as cnt FROM groups")
+    active_spaces = cursor.fetchone()["cnt"]
+
+    cursor.execute("SELECT COUNT(*) as cnt FROM feed_items WHERE item_type = 'POST'")
+    total_posts = cursor.fetchone()["cnt"]
+
+    cursor.execute("SELECT COUNT(*) as cnt FROM reactions")
+    total_reactions = cursor.fetchone()["cnt"]
+
+    cursor.execute("SELECT COUNT(*) as cnt FROM comments")
+    total_comments = cursor.fetchone()["cnt"]
+
+    conn.close()
+
+    return {
+        "acts_of_kindness": acts_of_kindness,
+        "community_members": community_members,
+        "active_spaces": active_spaces,
+        "total_posts": total_posts,
+        "total_reactions": total_reactions,
+        "total_comments": total_comments
+    }
+
+
 if __name__ == "__main__":
     init_db()
     print(f"Database initialized successfully at {DB_PATH}.")
+

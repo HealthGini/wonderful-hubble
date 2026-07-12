@@ -216,13 +216,21 @@
                 <p class="text-xs text-indigo-200 mt-1.5 font-bold">— Kudos given by Maya Lin</p>
               </div>
             </div>
-            <div class="grid grid-cols-2 gap-3 pt-1">
+            <div id="landing-platform-stats-grid" class="grid grid-cols-2 gap-3 pt-1">
               <div class="bg-white/5 p-4 rounded-2xl border border-white/10 text-center">
-                <div class="text-3xl font-black tracking-tight text-white">1,420+</div>
+                <div id="stat-acts-of-kindness" class="text-3xl font-black tracking-tight text-white">1,420+</div>
                 <div class="text-[11px] font-extrabold text-indigo-200 uppercase tracking-wider mt-1">Acts of Kindness</div>
               </div>
               <div class="bg-white/5 p-4 rounded-2xl border border-white/10 text-center">
-                <div class="text-3xl font-black tracking-tight text-emerald-400">100%</div>
+                <div id="stat-community-members" class="text-3xl font-black tracking-tight text-amber-400">4+</div>
+                <div class="text-[11px] font-extrabold text-indigo-200 uppercase tracking-wider mt-1">Community Members</div>
+              </div>
+              <div class="bg-white/5 p-4 rounded-2xl border border-white/10 text-center">
+                <div id="stat-active-spaces" class="text-3xl font-black tracking-tight text-indigo-300">3+</div>
+                <div class="text-[11px] font-extrabold text-indigo-200 uppercase tracking-wider mt-1">Active Spaces</div>
+              </div>
+              <div class="bg-white/5 p-4 rounded-2xl border border-white/10 text-center">
+                <div id="stat-free-open" class="text-3xl font-black tracking-tight text-emerald-400">100%</div>
                 <div class="text-[11px] font-extrabold text-indigo-200 uppercase tracking-wider mt-1">Free & Open Space</div>
               </div>
             </div>
@@ -745,14 +753,6 @@
           </button>
           <button id="prof-open-posts-btn" onclick="filterFeedByMyPosts('authored')" class="px-6 py-3 bg-indigo-600 hover:bg-indigo-700 text-white font-bold rounded-xl shadow-sm transition touch-target">
             📝 Open Posts
-          </button>
-        </div>
-        <div class="border-t border-slate-200/60 pt-4 mt-2 flex flex-wrap justify-center gap-4">
-          <button onclick="openModal('modal-kudos')" class="px-6 py-3 bg-gradient-to-r from-amber-500 to-yellow-500 hover:from-amber-600 hover:to-yellow-600 text-white font-black rounded-xl shadow-md transition touch-target flex items-center space-x-2">
-            <span>✨ Give New Kudos</span>
-          </button>
-          <button onclick="openModal('modal-post')" class="px-6 py-3 bg-gradient-to-r from-indigo-600 to-violet-600 hover:from-indigo-700 hover:to-violet-700 text-white font-black rounded-xl shadow-md transition touch-target flex items-center space-x-2">
-            <span>✍️ Create New Post</span>
           </button>
         </div>
       </div>

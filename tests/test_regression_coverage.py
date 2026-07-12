@@ -748,7 +748,7 @@ All 92+ tests run cleanly with `OK`.
         # 5. Profile Page & Landing Page Enhancements
         self.assertIn('id="prof-open-kudos-btn"', html)
         self.assertIn('id="prof-open-posts-btn"', html)
-        self.assertIn('✨ Give New Kudos', html)
+        self.assertNotIn('✨ Give New Kudos', html)
         self.assertIn('id="prof-actions"', html)
         self.assertIn("presetKudosRecipient", js)
         self.assertIn("🌟 Give Kudos to ${u.username}", js)
@@ -846,6 +846,57 @@ All 92+ tests run cleanly with `OK`.
         self.assertIn("text-[10px] text-indigo-600", html)
         self.assertIn("p-5 sm:p-6 rounded-2xl", html)
         self.assertIn("id=\"community-creation-bar\"", html)
+
+    def test_platform_stats_endpoint_and_dynamic_rendering(self):
+        """
+        Verifies GET /api/stats returns status 200, success=True, and exact counts matching direct SQLite queries.
+        Also verifies static/index.html and static/app.js have proper elements and dynamic loader functions.
+        """
+        import sqlite3
+        from database import DB_PATH
+        conn = sqlite3.connect(DB_PATH)
+        cursor = conn.cursor()
+        cursor.execute("SELECT COUNT(*) FROM feed_items WHERE item_type = 'KUDOS'")
+        db_kudos = cursor.fetchone()[0]
+        cursor.execute("SELECT COUNT(*) FROM users")
+        db_users = cursor.fetchone()[0]
+        cursor.execute("SELECT COUNT(*) FROM groups")
+        db_groups = cursor.fetchone()[0]
+        cursor.execute("SELECT COUNT(*) FROM feed_items WHERE item_type = 'POST'")
+        db_posts = cursor.fetchone()[0]
+        cursor.execute("SELECT COUNT(*) FROM reactions")
+        db_reactions = cursor.fetchone()[0]
+        cursor.execute("SELECT COUNT(*) FROM comments")
+        db_comments = cursor.fetchone()[0]
+        conn.close()
+
+        status, _, body = self.make_request("GET", "/api/stats")
+        self.assertEqual(status, 200)
+        self.assertTrue(body.get("success"))
+        stats = body.get("stats", {})
+        self.assertEqual(stats.get("acts_of_kindness"), db_kudos)
+        self.assertEqual(stats.get("community_members"), db_users)
+        self.assertEqual(stats.get("active_spaces"), db_groups)
+        self.assertEqual(stats.get("total_posts"), db_posts)
+        self.assertEqual(stats.get("total_reactions"), db_reactions)
+        self.assertEqual(stats.get("total_comments"), db_comments)
+
+        base_dir = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+        index_path = os.path.join(base_dir, "static", "index.html")
+        app_js_path = os.path.join(base_dir, "static", "app.js")
+
+        with open(index_path, "r", encoding="utf-8") as f:
+            html = f.read()
+        self.assertIn('id="stat-acts-of-kindness"', html)
+        self.assertIn('id="stat-community-members"', html)
+        self.assertIn('id="stat-active-spaces"', html)
+
+        with open(app_js_path, "r", encoding="utf-8") as f:
+            js = f.read()
+        self.assertIn("loadPlatformStats", js)
+        self.assertIn('apiFetch("/stats")', js)
+        self.assertIn(".toLocaleString()", js)
+
 
 if __name__ == "__main__":
     unittest.main()

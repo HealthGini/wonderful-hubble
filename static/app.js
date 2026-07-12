@@ -175,6 +175,7 @@ async function handleRoute() {
     showView("view-landing");
     loadLandingPreview();
     populateGroupFilterDropdown();
+    loadPlatformStats();
   } else if (path === "/feed") {
     showView("view-feed");
     loadFeed();
@@ -721,6 +722,35 @@ function renderFeedCard(item, isProfileView = false) {
 }
 
 /* ================= FEED CARDS LOADING & FILTERING ================= */
+
+async function loadPlatformStats() {
+  try {
+    const res = await apiFetch("/stats");
+    if (res && res.success && res.stats) {
+      const elActs = document.getElementById("stat-acts-of-kindness");
+      const elMembers = document.getElementById("stat-community-members");
+      const elSpaces = document.getElementById("stat-active-spaces");
+      if (elActs && res.stats.acts_of_kindness !== undefined) {
+        elActs.textContent = Number(res.stats.acts_of_kindness).toLocaleString();
+      }
+      if (elMembers && res.stats.community_members !== undefined) {
+        elMembers.textContent = Number(res.stats.community_members).toLocaleString();
+      }
+      if (elSpaces && res.stats.active_spaces !== undefined) {
+        elSpaces.textContent = Number(res.stats.active_spaces).toLocaleString();
+      }
+    }
+  } catch (err) {
+    console.warn("Could not load dynamic platform stats, keeping default fallbacks.", err);
+    const elActs = document.getElementById("stat-acts-of-kindness");
+    const elMembers = document.getElementById("stat-community-members");
+    const elSpaces = document.getElementById("stat-active-spaces");
+    if (elActs && !elActs.textContent.trim()) elActs.textContent = "1,420+";
+    if (elMembers && !elMembers.textContent.trim()) elMembers.textContent = "4+";
+    if (elSpaces && !elSpaces.textContent.trim()) elSpaces.textContent = "3+";
+  }
+}
+window.loadPlatformStats = loadPlatformStats;
 
 async function loadLandingPreview(isLoadMore = false) {
   const container = document.getElementById("landing-public-feed-preview") || document.getElementById("landing-preview-feed");
