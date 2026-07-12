@@ -1208,5 +1208,27 @@ All 92+ tests run cleanly with `OK`.
         self.assertIn("opacity-70", func_body)
         self.assertIn("Passkeys require a secure context (HTTPS or localhost) - Click for details", func_body)
 
+    def test_toast_visibility_inside_dialog(self):
+        """
+        Asserts that static/app.js's showToast checks for dialog[open] and moves the toast element.
+        """
+        base_dir = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+        app_js_path = os.path.join(base_dir, "static", "app.js")
+
+        with open(app_js_path, "r", encoding="utf-8") as f:
+            js = f.read()
+
+        # Find showToast function
+        func_start = js.find("function showToast(msg)")
+        self.assertNotEqual(func_start, -1, "showToast not found in app.js")
+
+        # Get the function body
+        func_body = js[func_start:func_start + 600]
+
+        # Assertions
+        self.assertIn('querySelector("dialog[open]")', func_body)
+        self.assertIn('appendChild(toast)', func_body)
+        self.assertIn('document.body.appendChild(toast)', func_body)
+
 if __name__ == "__main__":
     unittest.main()

@@ -325,6 +325,14 @@ function switchModal(fromId, toId) {
 function showToast(msg) {
   const toast = document.getElementById("toast-popup");
   if (!toast) return;
+  
+  const activeDialog = document.querySelector("dialog[open]");
+  if (activeDialog) {
+    activeDialog.appendChild(toast);
+  } else {
+    document.body.appendChild(toast);
+  }
+
   toast.textContent = msg;
   toast.classList.remove("hidden");
   setTimeout(() => {
