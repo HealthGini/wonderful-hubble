@@ -157,6 +157,16 @@ function setupEventListeners() {
       toggleProfileDropdown(e);
     });
   }
+
+  // Passkey Event Listeners
+  const regBtn = document.getElementById("btn-register-passkey");
+  if (regBtn) {
+    regBtn.addEventListener("click", registerPasskey);
+  }
+
+  document.querySelectorAll("#btn-passkey-login").forEach(btn => {
+    btn.addEventListener("click", loginWithPasskey);
+  });
 }
 
 async function handleRoute() {
@@ -3324,4 +3334,179 @@ window.submitAddEventModal = submitAddEventModal;
 window.handleCalendarPdfUpload = handleCalendarPdfUpload;
 window.populateScrapePreviewModal = populateScrapePreviewModal;
 window.confirmImportScrapedEvents = confirmImportScrapedEvents;
+
+// ================== WEBAUTHN / PASSKEY CONTROLLER ==================
+
+function bufferFromBase64url(base64url) {
+  let base64 = base64url.replace(/-/g, '+').replace(/_/g, '/');
+  while (base64.length % 4) {
+    base64 += '=';
+  }
+  const raw = window.atob(base64);
+  const buffer = new Uint8Array(raw.length);
+  for (let i = 0; i < raw.length; i++) {
+    buffer[i] = raw.charCodeAt(i);
+  }
+  return buffer.buffer;
+}
+
+function bufferToBase64url(buffer) {
+  const bytes = new Uint8Array(buffer);
+  let binary = '';
+  for (let i = 0; i < bytes.byteLength; i++) {
+    binary += String.fromCharCode(bytes[i]);
+  }
+  const base64 = window.btoa(binary);
+  return base64.replace(/\+/g, '-').replace(/\//g, '_').replace(/=/g, '');
+}
+
+function prepareRegistrationOptions(options) {
+  const pk = options.publicKey;
+  pk.challenge = bufferFromBase64url(pk.challenge);
+  pk.user.id = bufferFromBase64url(pk.user.id);
+  if (pk.excludeCredentials) {
+    pk.excludeCredentials.forEach(cred => {
+      cred.id = bufferFromBase64url(cred.id);
+    });
+  }
+  return options;
+}
+
+function prepareAuthenticationOptions(options) {
+  const pk = options.publicKey;
+  pk.challenge = bufferFromBase64url(pk.challenge);
+  if (pk.allowCredentials) {
+    pk.allowCredentials.forEach(cred => {
+      cred.id = bufferFromBase64url(cred.id);
+    });
+  }
+  return options;
+}
+
+function formatRegistrationResponse(cred) {
+  return {
+    id: cred.id,
+    rawId: bufferToBase64url(cred.rawId),
+    type: cred.type,
+    response: {
+      clientDataJSON: bufferToBase64url(cred.response.clientDataJSON),
+      attestationObject: bufferToBase64url(cred.response.attestationObject),
+      transports: cred.response.getTransports ? cred.response.getTransports() : []
+    }
+  };
+}
+
+function formatAuthenticationResponse(cred) {
+  return {
+    id: cred.id,
+    rawId: bufferToBase64url(cred.rawId),
+    type: cred.type,
+    response: {
+      clientDataJSON: bufferToBase64url(cred.response.clientDataJSON),
+      authenticatorData: bufferToBase64url(cred.response.authenticatorData),
+      signature: bufferToBase64url(cred.response.signature),
+      userHandle: cred.response.userHandle ? bufferToBase64url(cred.response.userHandle) : null
+    }
+  };
+}
+
+async function registerPasskey() {
+  try {
+    showToast("Requesting registration challenge...");
+    const options = await apiFetch("/auth/webauthn/register/challenge", { method: "POST" });
+    if (!options || !options.publicKey) {
+      throw new Error(options.error || "Failed to get registration options");
+    }
+    
+    prepareRegistrationOptions(options);
+    
+    showToast("Please interact with your authenticator...");
+    const credential = await navigator.credentials.create({
+      publicKey: options.publicKey
+    });
+    
+    const formatted = formatRegistrationResponse(credential);
+    formatted.deviceName = navigator.userAgent.substring(0, 50); // Simple device name
+    
+    showToast("Verifying passkey registration...");
+    const verifyResult = await apiFetch("/auth/webauthn/register/verify", {
+      method: "POST",
+      body: formatted
+    });
+    
+    if (verifyResult && verifyResult.success) {
+      showToast("🎉 Passkey registered successfully!");
+    } else {
+      throw new Error(verifyResult.error || "Verification failed");
+    }
+  } catch (err) {
+    console.error("Passkey registration error:", err);
+    showToast("❌ Passkey registration failed: " + err.message, "error");
+  }
+}
+
+async function loginWithPasskey() {
+  try {
+    let usernameOrEmail = "";
+    const loginModal = document.getElementById("modal-login");
+    const signupModal = document.getElementById("modal-signup");
+    
+    if (loginModal && loginModal.open) {
+      const emailInput = document.getElementById("login-email");
+      if (emailInput && emailInput.value) {
+        usernameOrEmail = emailInput.value.trim();
+      }
+    } else if (signupModal && signupModal.open) {
+      const emailInput = document.getElementById("sup-email");
+      if (emailInput && emailInput.value) {
+        usernameOrEmail = emailInput.value.trim();
+      }
+    }
+    
+    showToast("Requesting authentication challenge...");
+    const options = await apiFetch("/auth/webauthn/login/challenge", {
+      method: "POST",
+      body: { username: usernameOrEmail, email: usernameOrEmail }
+    });
+    if (!options || !options.publicKey) {
+      throw new Error(options.error || "Failed to get authentication options");
+    }
+    
+    prepareAuthenticationOptions(options);
+    
+    showToast("Please interact with your authenticator...");
+    const assertion = await navigator.credentials.get({
+      publicKey: options.publicKey
+    });
+    
+    const formatted = formatAuthenticationResponse(assertion);
+    
+    showToast("Verifying login...");
+    const loginResult = await apiFetch("/auth/webauthn/login/verify", {
+      method: "POST",
+      body: formatted
+    });
+    
+    if (loginResult && loginResult.token) {
+      currentToken = loginResult.token;
+      localStorage.setItem("gd_token", currentToken);
+      currentUser = loginResult.user;
+      
+      showToast("🎉 Logged in successfully with Passkey!");
+      closeModal("modal-login");
+      closeModal("modal-signup");
+      
+      updateAuthUI(currentUser);
+      window.location.hash = "#/feed";
+    } else {
+      throw new Error(loginResult.error || "Login verification failed");
+    }
+  } catch (err) {
+    console.error("Passkey login error:", err);
+    showToast("❌ Passkey login failed: " + err.message, "error");
+  }
+}
+
+window.registerPasskey = registerPasskey;
+window.loginWithPasskey = loginWithPasskey;
 

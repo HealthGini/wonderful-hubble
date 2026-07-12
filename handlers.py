@@ -19,6 +19,66 @@ from urllib.parse import parse_qs, urlparse
 import urllib.request
 from database import get_db, hash_password, get_user_stats, extract_resource_text, get_platform_stats
 
+from fido2.server import Fido2Server
+from fido2.webauthn import (
+    PublicKeyCredentialRpEntity,
+    PublicKeyCredentialUserEntity,
+    AttestedCredentialData,
+    RegistrationResponse,
+    AuthenticationResponse,
+    AuthenticatorData
+)
+import pickle
+import base64
+import dataclasses
+from enum import Enum
+
+def base64url_encode(data: bytes) -> str:
+    return base64.urlsafe_b64encode(data).decode('utf-8').rstrip('=')
+
+def base64url_decode(s: str) -> bytes:
+    s = str(s)
+    s += '=' * (4 - len(s) % 4)
+    return base64.urlsafe_b64decode(s)
+
+def serializable_fido_dict(obj):
+    if isinstance(obj, bytes):
+        return base64url_encode(obj)
+    elif isinstance(obj, Enum):
+        return obj.value
+    elif isinstance(obj, dict):
+        return {k: serializable_fido_dict(v) for k, v in obj.items() if v is not None}
+    elif isinstance(obj, (list, tuple)):
+        return [serializable_fido_dict(x) for x in obj]
+    return obj
+
+def to_camel_case(snake_str):
+    components = snake_str.split('_')
+    return components[0] + ''.join(x.title() for x in components[1:])
+
+def camel_case_keys(obj):
+    if isinstance(obj, dict):
+        new_dict = {}
+        for k, v in obj.items():
+            new_key = to_camel_case(k)
+            new_dict[new_key] = camel_case_keys(v)
+        return new_dict
+    elif isinstance(obj, list):
+        return [camel_case_keys(x) for x in obj]
+    return obj
+
+def get_fido_server(headers):
+    origin = headers.get("Origin") or headers.get("origin")
+    if not origin:
+        host = headers.get("Host") or headers.get("host") or "localhost:8080"
+        scheme = "http" if "localhost" in host else "https"
+        origin = f"{scheme}://{host}"
+    
+    parsed_origin = urlparse(origin)
+    rp_id = parsed_origin.hostname or "localhost"
+    rp = PublicKeyCredentialRpEntity(id=rp_id, name="GoodDeeds.space")
+    return Fido2Server(rp)
+
 def get_user_from_token(headers):
     """
     Authenticates a user based on the Bearer token in the Authorization header.
@@ -319,6 +379,297 @@ def handle_api_request(method, path, headers, body_bytes):
         return json_response({"success": True, "stats": stats})
 
     # ================== AUTH ENDPOINTS ==================
+    # 1. WebAuthn Registration Challenge
+    if path_only == "/api/auth/webauthn/register/challenge" and method == "POST":
+        if not user:
+            return error_response("Login required", 401)
+        
+        conn = get_db()
+        cursor = conn.cursor()
+        
+        # Cleanup expired challenges
+        cursor.execute("DELETE FROM webauthn_challenges WHERE created_at < datetime('now', '-5 minutes')")
+        
+        # Fetch existing credentials to exclude them
+        cursor.execute("SELECT public_key FROM passkeys WHERE user_id = ?", (user["id"],))
+        exclude_credentials = []
+        for r in cursor.fetchall():
+            try:
+                cred = AttestedCredentialData(r["public_key"])
+                exclude_credentials.append(cred)
+            except Exception:
+                pass
+        
+        server = get_fido_server(headers)
+        user_entity = PublicKeyCredentialUserEntity(
+            id=str(user["id"]).encode("utf-8"),
+            name=user["email"],
+            display_name=user["username"]
+        )
+        
+        try:
+            options, state = server.register_begin(
+                user_entity,
+                credentials=exclude_credentials
+            )
+        except Exception as e:
+            conn.close()
+            return error_response(f"Failed to begin registration: {e}", 400)
+        
+        challenge_str = base64url_encode(options.public_key.challenge)
+        state_bytes = pickle.dumps(state)
+        
+        try:
+            cursor.execute("""
+                INSERT INTO webauthn_challenges (challenge, user_id, state)
+                VALUES (?, ?, ?)
+            """, (challenge_str, user["id"], state_bytes))
+            conn.commit()
+        except Exception as e:
+            conn.close()
+            return error_response(f"Database error: {e}", 500)
+            
+        conn.close()
+        
+        options_dict = camel_case_keys(serializable_fido_dict(dataclasses.asdict(options)))
+        return json_response(options_dict)
+
+    # 2. WebAuthn Registration Verify
+    if path_only == "/api/auth/webauthn/register/verify" and method == "POST":
+        if not user:
+            return error_response("Login required", 401)
+        
+        try:
+            client_data_json = base64url_decode(body.get("response", {}).get("clientDataJSON", ""))
+            client_data = json.loads(client_data_json.decode("utf-8"))
+            challenge_str = client_data.get("challenge")
+        except Exception:
+            return error_response("Invalid clientDataJSON", 400)
+            
+        if not challenge_str:
+            return error_response("Challenge missing from clientDataJSON", 400)
+            
+        conn = get_db()
+        cursor = conn.cursor()
+        
+        # Look up challenge and verify not expired
+        cursor.execute("""
+            SELECT user_id, state FROM webauthn_challenges
+            WHERE challenge = ? AND created_at >= datetime('now', '-5 minutes')
+        """, (challenge_str,))
+        row = cursor.fetchone()
+        if not row:
+            # Check if it exists but expired
+            cursor.execute("SELECT user_id FROM webauthn_challenges WHERE challenge = ?", (challenge_str,))
+            exists_expired = cursor.fetchone()
+            if exists_expired:
+                cursor.execute("DELETE FROM webauthn_challenges WHERE challenge = ?", (challenge_str,))
+                conn.commit()
+                conn.close()
+                return error_response("Challenge expired.", 400)
+            conn.close()
+            return error_response("Registration challenge not found or expired.", 400)
+            
+        if row["user_id"] != user["id"]:
+            conn.close()
+            return error_response("User mismatch.", 400)
+            
+        state = pickle.loads(row["state"])
+        server = get_fido_server(headers)
+        
+        try:
+            reg_resp = RegistrationResponse.from_dict(body)
+            auth_data = server.register_complete(state, reg_resp)
+            cred_data = auth_data.credential_data
+        except Exception as e:
+            conn.close()
+            return error_response(f"Verification failed: {str(e)}", 400)
+            
+        cred_id_str = base64url_encode(cred_data.credential_id)
+        pub_key_bytes = bytes(cred_data)
+        device_name = body.get("deviceName", "Unknown Device")
+        if len(device_name) > 50:
+            device_name = device_name[:50]
+            
+        try:
+            cursor.execute("""
+                INSERT INTO passkeys (credential_id, user_id, public_key, sign_count, device_name)
+                VALUES (?, ?, ?, ?, ?)
+            """, (cred_id_str, user["id"], pub_key_bytes, auth_data.counter, device_name))
+            cursor.execute("DELETE FROM webauthn_challenges WHERE challenge = ?", (challenge_str,))
+            conn.commit()
+        except sqlite3.IntegrityError:
+            conn.rollback()
+            conn.close()
+            return error_response("Credential already registered.", 400)
+        except Exception as e:
+            conn.rollback()
+            conn.close()
+            return error_response(f"Database error: {e}", 500)
+            
+        conn.close()
+        return json_response({"success": True})
+
+    # 3. WebAuthn Login Challenge
+    if path_only == "/api/auth/webauthn/login/challenge" and method == "POST":
+        username_or_email = body.get("username") or body.get("email") or ""
+        username_or_email = username_or_email.strip()
+        
+        conn = get_db()
+        cursor = conn.cursor()
+        
+        # Cleanup expired challenges
+        cursor.execute("DELETE FROM webauthn_challenges WHERE created_at < datetime('now', '-5 minutes')")
+        
+        credentials = []
+        user_id = None
+        
+        if username_or_email:
+            cursor.execute("""
+                SELECT id FROM users
+                WHERE LOWER(email) = LOWER(?) OR LOWER(username) = LOWER(?)
+            """, (username_or_email, username_or_email))
+            row = cursor.fetchone()
+            if row:
+                user_id = row["id"]
+                cursor.execute("SELECT public_key FROM passkeys WHERE user_id = ?", (user_id,))
+                for r in cursor.fetchall():
+                    try:
+                        credentials.append(AttestedCredentialData(r["public_key"]))
+                    except Exception:
+                        pass
+            else:
+                conn.close()
+                return error_response("User not found", 404)
+                
+        server = get_fido_server(headers)
+        try:
+            options, state = server.authenticate_begin(credentials=credentials)
+        except Exception as e:
+            conn.close()
+            return error_response(f"Failed to begin authentication: {e}", 400)
+        
+        challenge_str = base64url_encode(options.public_key.challenge)
+        state_bytes = pickle.dumps(state)
+        
+        try:
+            cursor.execute("""
+                INSERT INTO webauthn_challenges (challenge, user_id, state)
+                VALUES (?, ?, ?)
+            """, (challenge_str, user_id, state_bytes))
+            conn.commit()
+        except Exception as e:
+            conn.close()
+            return error_response(f"Database error: {e}", 500)
+            
+        conn.close()
+        
+        options_dict = camel_case_keys(serializable_fido_dict(dataclasses.asdict(options)))
+        return json_response(options_dict)
+
+    # 4. WebAuthn Login Verify
+    if path_only == "/api/auth/webauthn/login/verify" and method == "POST":
+        try:
+            client_data_json = base64url_decode(body.get("response", {}).get("clientDataJSON", ""))
+            client_data = json.loads(client_data_json.decode("utf-8"))
+            challenge_str = client_data.get("challenge")
+        except Exception:
+            return error_response("Invalid clientDataJSON", 400)
+            
+        if not challenge_str:
+            return error_response("Challenge missing from clientDataJSON", 400)
+            
+        conn = get_db()
+        cursor = conn.cursor()
+        
+        # Look up challenge and verify not expired
+        cursor.execute("""
+            SELECT user_id, state FROM webauthn_challenges
+            WHERE challenge = ? AND created_at >= datetime('now', '-5 minutes')
+        """, (challenge_str,))
+        challenge_row = cursor.fetchone()
+        if not challenge_row:
+            # Check if expired
+            cursor.execute("SELECT user_id FROM webauthn_challenges WHERE challenge = ?", (challenge_str,))
+            exists_expired = cursor.fetchone()
+            if exists_expired:
+                cursor.execute("DELETE FROM webauthn_challenges WHERE challenge = ?", (challenge_str,))
+                conn.commit()
+                conn.close()
+                return error_response("Challenge expired.", 400)
+            conn.close()
+            return error_response("Login challenge not found or expired.", 400)
+            
+        state = pickle.loads(challenge_row["state"])
+        
+        cred_id_b64 = body.get("id")
+        if not cred_id_b64:
+            conn.close()
+            return error_response("Credential ID missing", 400)
+            
+        cursor.execute("""
+            SELECT user_id, public_key, sign_count FROM passkeys
+            WHERE credential_id = ?
+        """, (cred_id_b64,))
+        passkey_row = cursor.fetchone()
+        if not passkey_row:
+            conn.close()
+            return error_response("Passkey not registered on this server.", 401)
+            
+        target_user_id = passkey_row["user_id"]
+        stored_sign_count = passkey_row["sign_count"]
+        
+        if challenge_row["user_id"] is not None and challenge_row["user_id"] != target_user_id:
+            conn.close()
+            return error_response("User mismatch.", 400)
+            
+        cred = AttestedCredentialData(passkey_row["public_key"])
+        server = get_fido_server(headers)
+        
+        try:
+            assert_resp = AuthenticationResponse.from_dict(body)
+            server.authenticate_complete(state, [cred], assert_resp)
+            
+            # Robust counter retrieval
+            try:
+                new_sign_count = assert_resp.response.authenticator_data.counter
+            except Exception:
+                auth_data_bytes = base64url_decode(body.get("response", {}).get("authenticatorData", ""))
+                auth_data = AuthenticatorData(auth_data_bytes)
+                new_sign_count = auth_data.counter
+                
+        except Exception as e:
+            conn.close()
+            return error_response(f"Verification failed: {str(e)}", 401)
+            
+        if new_sign_count > 0 and new_sign_count <= stored_sign_count:
+            conn.close()
+            return error_response("Signature counter verification failed (possible replay attack).", 401)
+            
+        try:
+            cursor.execute("""
+                UPDATE passkeys SET sign_count = ? WHERE credential_id = ?
+            """, (new_sign_count, cred_id_b64))
+            cursor.execute("DELETE FROM webauthn_challenges WHERE challenge = ?", (challenge_str,))
+            
+            token = str(uuid.uuid4())
+            cursor.execute("INSERT INTO sessions (token, user_id) VALUES (?, ?)", (token, target_user_id))
+            
+            cursor.execute("""
+                SELECT id, email, username, phone, avatar_url, bio, is_site_admin, oauth_provider, oauth_id
+                FROM users WHERE id = ?
+            """, (target_user_id,))
+            user_dict = dict(cursor.fetchone())
+            
+            conn.commit()
+        except Exception as e:
+            conn.rollback()
+            conn.close()
+            return error_response(f"Database error during login: {e}", 500)
+            
+        conn.close()
+        return json_response({"token": token, "user": user_dict, "success": True})
+
     if path_only == "/api/auth/signup" and method == "POST":
         email = body.get("email", "").strip()
         username = body.get("username", "").strip()

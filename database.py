@@ -262,6 +262,30 @@ def init_db():
     )
     """)
 
+    # 14. Passkeys (WebAuthn Credentials)
+    cursor.execute("""
+    CREATE TABLE IF NOT EXISTS passkeys (
+        credential_id TEXT PRIMARY KEY,
+        user_id INTEGER NOT NULL,
+        public_key BLOB NOT NULL,
+        sign_count INTEGER NOT NULL DEFAULT 0,
+        device_name TEXT,
+        created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+        FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
+    )
+    """)
+
+    # 15. WebAuthn Challenges (Temporary)
+    cursor.execute("""
+    CREATE TABLE IF NOT EXISTS webauthn_challenges (
+        challenge TEXT PRIMARY KEY,
+        user_id INTEGER,
+        state BLOB NOT NULL,
+        created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+        FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
+    )
+    """)
+
     # Check if we need to seed demo data
     cursor.execute("SELECT COUNT(*) as count FROM users")
     if cursor.fetchone()["count"] == 0:

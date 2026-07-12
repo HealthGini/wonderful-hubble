@@ -4,6 +4,17 @@ import base64
 import datetime
 import unittest
 from base_test import GoodDeedsTestCase
+from unittest.mock import patch, MagicMock
+import pickle
+import json
+from handlers import base64url_encode, base64url_decode
+
+class MockAttestedCredentialData:
+    def __init__(self, credential_id, public_key_bytes):
+        self.credential_id = credential_id
+        self.public_key_bytes = public_key_bytes
+    def __bytes__(self):
+        return self.public_key_bytes
 
 class TestRegressionCoverage(GoodDeedsTestCase):
 
@@ -933,6 +944,201 @@ All 92+ tests run cleanly with `OK`.
         self.assertIn("No community posts match your active filter selection.", js)
         self.assertIn("No Posts or Kudos Found", js)
         self.assertIn("No posts or kudos match your active filter selection.", js)
+
+    def test_passkeys_schema(self):
+        """
+        Verifies that passkeys and webauthn_challenges tables are successfully initialized on startup.
+        """
+        conn = self.database.get_db()
+        cursor = conn.cursor()
+        
+        # Check passkeys table
+        cursor.execute("PRAGMA table_info('passkeys')")
+        passkeys_cols = {r["name"]: r["type"] for r in cursor.fetchall()}
+        self.assertIn("user_id", passkeys_cols)
+        self.assertIn("credential_id", passkeys_cols)
+        self.assertIn("public_key", passkeys_cols)
+        self.assertIn("sign_count", passkeys_cols)
+        self.assertIn("device_name", passkeys_cols)
+        self.assertIn("created_at", passkeys_cols)
+        
+        # Check webauthn_challenges table
+        cursor.execute("PRAGMA table_info('webauthn_challenges')")
+        challenges_cols = {r["name"]: r["type"] for r in cursor.fetchall()}
+        self.assertIn("user_id", challenges_cols)
+        self.assertIn("challenge", challenges_cols)
+        self.assertIn("state", challenges_cols)
+        self.assertIn("created_at", challenges_cols)
+        
+        conn.close()
+
+    @patch("handlers.Fido2Server")
+    @patch("handlers.RegistrationResponse")
+    def test_passkey_registration_flow(self, mock_reg_resp_class, mock_fido_server_class):
+        """
+        Verifies WebAuthn registration options generation and verification logic.
+        """
+        mock_server = MagicMock()
+        mock_fido_server_class.return_value = mock_server
+        
+        from fido2.webauthn import PublicKeyCredentialCreationOptions, PublicKeyCredentialRpEntity, PublicKeyCredentialUserEntity, CredentialCreationOptions
+        mock_pk_options = PublicKeyCredentialCreationOptions(
+            rp=PublicKeyCredentialRpEntity(name="Test", id="localhost"),
+            user=PublicKeyCredentialUserEntity(name="maya@gooddeeds.space", id=b"1", display_name="Maya_Lin"),
+            challenge=b"mock_challenge_bytes_1234567890",
+            pub_key_cred_params=[]
+        )
+        mock_options = CredentialCreationOptions(public_key=mock_pk_options)
+        mock_state = {"mock_state_key": "mock_state_value"}
+        mock_server.register_begin.return_value = (mock_options, mock_state)
+        
+        token = self.get_token("maya@gooddeeds.space")
+        headers = self.get_auth_headers(token)
+        
+        status, _, body = self.make_request("POST", "/api/auth/webauthn/register/challenge", headers=headers)
+        self.assertEqual(status, 200)
+        self.assertIn("publicKey", body)
+        self.assertEqual(body["publicKey"]["challenge"], base64url_encode(b"mock_challenge_bytes_1234567890"))
+        
+        conn = self.database.get_db()
+        cursor = conn.cursor()
+        cursor.execute("SELECT * FROM webauthn_challenges WHERE user_id = 1")
+        row = cursor.fetchone()
+        self.assertIsNotNone(row)
+        self.assertEqual(row["challenge"], base64url_encode(b"mock_challenge_bytes_1234567890"))
+        stored_state = pickle.loads(row["state"])
+        self.assertEqual(stored_state, mock_state)
+        conn.close()
+        
+        # Mock RegistrationResponse.from_dict
+        mock_reg_resp = MagicMock()
+        mock_reg_resp_class.from_dict.return_value = mock_reg_resp
+        
+        mock_auth_data = MagicMock()
+        mock_cred_data = MockAttestedCredentialData(b"mock_credential_id_bytes", b"mock_serialized_pubkey")
+        mock_auth_data.credential_data = mock_cred_data
+        mock_auth_data.counter = 42
+        mock_server.register_complete.return_value = mock_auth_data
+        
+        verify_payload = {
+            "id": "mock_id",
+            "rawId": "mock_raw_id",
+            "type": "public-key",
+            "response": {
+                "clientDataJSON": base64url_encode(json.dumps({
+                    "challenge": base64url_encode(b"mock_challenge_bytes_1234567890"),
+                    "origin": "http://localhost",
+                    "type": "webauthn.create"
+                }).encode()),
+                "attestationObject": "mock_attestation",
+                "transports": []
+            },
+            "deviceName": "Test Device"
+        }
+        
+        status, _, body = self.make_request("POST", "/api/auth/webauthn/register/verify", headers=headers, body=verify_payload)
+        self.assertEqual(status, 200, f"Body: {body}")
+        self.assertTrue(body.get("success"))
+        
+        conn = self.database.get_db()
+        cursor = conn.cursor()
+        cursor.execute("SELECT * FROM passkeys WHERE user_id = 1")
+        pk_row = cursor.fetchone()
+        self.assertIsNotNone(pk_row)
+        self.assertEqual(pk_row["credential_id"], base64url_encode(b"mock_credential_id_bytes"))
+        self.assertEqual(pk_row["public_key"], b"mock_serialized_pubkey")
+        self.assertEqual(pk_row["sign_count"], 42)
+        self.assertEqual(pk_row["device_name"], "Test Device")
+        
+        cursor.execute("SELECT * FROM webauthn_challenges WHERE user_id = 1")
+        self.assertIsNone(cursor.fetchone())
+        conn.close()
+
+    @patch("handlers.Fido2Server")
+    @patch("handlers.AuthenticationResponse")
+    @patch("handlers.AuthenticatorData")
+    @patch("handlers.AttestedCredentialData")
+    def test_passkey_login_flow(self, mock_attested_cred_class, mock_auth_data_class, mock_auth_resp_class, mock_fido_server_class):
+        """
+        Verifies WebAuthn authentication options generation and verification logic.
+        """
+        conn = self.database.get_db()
+        cursor = conn.cursor()
+        mock_pubkey_bytes = b"mock_pubkey_bytes_xyz"
+        cred_id_str = base64url_encode(b"login_mock_cred_id")
+        cursor.execute("""
+            INSERT INTO passkeys (user_id, credential_id, public_key, sign_count, device_name)
+            VALUES (1, ?, ?, 10, 'Maya Phone')
+        """, (cred_id_str, mock_pubkey_bytes))
+        conn.commit()
+        conn.close()
+        
+        mock_server = MagicMock()
+        mock_fido_server_class.return_value = mock_server
+        
+        from fido2.webauthn import PublicKeyCredentialRequestOptions, CredentialRequestOptions
+        mock_pk_req_options = PublicKeyCredentialRequestOptions(
+            challenge=b"login_mock_challenge_bytes",
+            rp_id="localhost"
+        )
+        mock_req_options = CredentialRequestOptions(public_key=mock_pk_req_options)
+        mock_login_state = {"login_state_key": "login_state_value"}
+        mock_server.authenticate_begin.return_value = (mock_req_options, mock_login_state)
+        
+        status, _, body = self.make_request("POST", "/api/auth/webauthn/login/challenge", body={"username": "Maya_Lin"})
+        self.assertEqual(status, 200)
+        self.assertIn("publicKey", body)
+        self.assertEqual(body["publicKey"]["challenge"], base64url_encode(b"login_mock_challenge_bytes"))
+        
+        conn = self.database.get_db()
+        cursor = conn.cursor()
+        cursor.execute("SELECT * FROM webauthn_challenges WHERE user_id = 1")
+        row = cursor.fetchone()
+        self.assertIsNotNone(row)
+        self.assertEqual(row["challenge"], base64url_encode(b"login_mock_challenge_bytes"))
+        conn.close()
+        
+        # Mock AuthenticationResponse.from_dict
+        mock_auth_resp = MagicMock()
+        mock_auth_resp.response.authenticator_data.counter = 15
+        mock_auth_resp_class.from_dict.return_value = mock_auth_resp
+        
+        mock_server.authenticate_complete.return_value = None
+        
+        mock_auth_data = MagicMock()
+        mock_auth_data.counter = 15
+        mock_auth_data_class.return_value = mock_auth_data
+        
+        login_verify_payload = {
+            "id": cred_id_str,
+            "rawId": cred_id_str,
+            "type": "public-key",
+            "response": {
+                "clientDataJSON": base64url_encode(json.dumps({
+                    "challenge": base64url_encode(b"login_mock_challenge_bytes"),
+                    "origin": "http://localhost",
+                    "type": "webauthn.get"
+                }).encode()),
+                "authenticatorData": base64url_encode(b"mock_auth_data_bytes"),
+                "signature": base64url_encode(b"mock_signature"),
+                "userHandle": base64url_encode(b"1")
+            }
+        }
+        
+        status, _, body = self.make_request("POST", "/api/auth/webauthn/login/verify", body=login_verify_payload)
+        self.assertEqual(status, 200, f"Body: {body}")
+        self.assertTrue(body.get("success"))
+        self.assertIn("token", body)
+        self.assertEqual(body["user"]["id"], 1)
+        
+        conn = self.database.get_db()
+        cursor = conn.cursor()
+        cursor.execute("SELECT sign_count FROM passkeys WHERE credential_id = ?", (cred_id_str,))
+        self.assertEqual(cursor.fetchone()["sign_count"], 15)
+        
+        cursor.execute("SELECT * FROM webauthn_challenges WHERE challenge = ?", (base64url_encode(b"login_mock_challenge_bytes"),))
+        self.assertIsNone(cursor.fetchone())
+        conn.close()
 
 if __name__ == "__main__":
     unittest.main()
