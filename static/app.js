@@ -3530,9 +3530,8 @@ function adjustPasskeyButtonsSupport() {
     ].filter(Boolean);
     
     buttons.forEach(btn => {
-      btn.disabled = true;
-      btn.classList.add("opacity-50", "cursor-not-allowed");
-      btn.title = "Passkeys require a secure context (HTTPS or localhost)";
+      btn.classList.add("opacity-70");
+      btn.title = "Passkeys require a secure context (HTTPS or localhost) - Click for details";
     });
   }
 }

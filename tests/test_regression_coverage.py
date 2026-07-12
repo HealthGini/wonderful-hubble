@@ -1183,5 +1183,30 @@ All 92+ tests run cleanly with `OK`.
         # 4. Assert event listener binding uses querySelectorAll(".btn-passkey-login")
         self.assertIn('document.querySelectorAll(".btn-passkey-login")', js)
 
+    def test_passkey_buttons_not_disabled_in_insecure_context(self):
+        """
+        Asserts that static/app.js does not disable Passkey buttons in adjustPasskeyButtonsSupport,
+        but instead keeps them clickable, visually inactive (opacity-70), and updates their title.
+        """
+        base_dir = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+        app_js_path = os.path.join(base_dir, "static", "app.js")
+
+        with open(app_js_path, "r", encoding="utf-8") as f:
+            js = f.read()
+
+        # Find adjustPasskeyButtonsSupport function
+        func_start = js.find("function adjustPasskeyButtonsSupport()")
+        self.assertNotEqual(func_start, -1, "adjustPasskeyButtonsSupport not found in app.js")
+        
+        # Get the function body
+        func_body = js[func_start:func_start + 500]
+
+        # Assertions
+        self.assertNotIn("btn.disabled = true", func_body)
+        self.assertNotIn("btn.disabled=true", func_body)
+        self.assertNotIn("cursor-not-allowed", func_body)
+        self.assertIn("opacity-70", func_body)
+        self.assertIn("Passkeys require a secure context (HTTPS or localhost) - Click for details", func_body)
+
 if __name__ == "__main__":
     unittest.main()
