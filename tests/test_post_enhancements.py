@@ -11,7 +11,6 @@ class TestPostEnhancements(BaseTestCase):
         new_themes = [
             ("Wellness", "Wellness Post Title", "Content focused on daily wellness habits."),
             ("Mindfulness", "Mindfulness Post Title", "Content focused on meditation and grounding."),
-            ("Spiritual", "Spiritual Post Title", "Content focused on spiritual growth and peace.")
         ]
 
         for theme_name, title, content in new_themes:
@@ -32,7 +31,7 @@ class TestPostEnhancements(BaseTestCase):
         token = self.get_token("maya@gooddeeds.space")
         headers = self.get_auth_headers(token)
 
-        new_themes = ["Wellness", "Mindfulness", "Spiritual"]
+        new_themes = ["Wellness", "Mindfulness"]
         created_items = {}
 
         for theme_name in new_themes:

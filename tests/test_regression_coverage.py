@@ -57,7 +57,7 @@ class TestRegressionCoverage(GoodDeedsTestCase):
         Asserts that user-facing labels use "Spaces", "Kudos", and "Posts" without "Group", "Groups", or "Hub".
         Asserts #feed-search-input placeholder is "Search Kudos, Posts, Events and Resources...".
         Asserts #feed-sort-select dropdown is completely absent from HTML.
-        Asserts #theme-pills-bar includes the exact 11 topic pills in order.
+        Asserts #theme-pills-bar includes the exact 9 topic pills in order.
         """
         base_dir = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
         index_path = os.path.join(base_dir, "static", "index.html")
@@ -84,10 +84,10 @@ class TestRegressionCoverage(GoodDeedsTestCase):
         # Assert #feed-sort-select dropdown is completely absent
         self.assertNotIn('id="feed-sort-select"', html_content)
 
-        # Assert #theme-pills-bar includes the exact 11 topic pills in order
+        # Assert #theme-pills-bar includes the exact 9 topic pills in order
         expected_pills = [
             'All', 'Inspiring Story', 'Mental Health', 'Wellness',
-            'Mindfulness', 'Spiritual', 'Suicide Prevention', 'Educational',
+            'Mindfulness', 'Educational',
             'Community Service', 'Events', 'Resources'
         ]
         self.assertIn('id="theme-pills-bar"', html_content)
@@ -108,8 +108,8 @@ class TestRegressionCoverage(GoodDeedsTestCase):
 
     def test_theme_order_and_space_categories(self):
         """
-        Asserts #post-input-theme and #res-theme dropdowns in static/index.html contain exact 8 options in specified order.
-        Asserts #cgrp-theme select element in static/index.html contains exact 5 options.
+        Asserts #post-input-theme and #res-theme dropdowns in static/index.html contain exact 6 options in specified order.
+        Asserts #cgrp-theme select element in static/index.html contains exact 4 options.
         """
         base_dir = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
         index_path = os.path.join(base_dir, "static", "index.html")
@@ -117,9 +117,9 @@ class TestRegressionCoverage(GoodDeedsTestCase):
         with open(index_path, "r", encoding="utf-8") as f:
             html_content = f.read()
 
-        expected_8_options = [
+        expected_post_res_options = [
             "Inspiring Story", "Mental Health", "Wellness", "Mindfulness",
-            "Spiritual", "Suicide Prevention", "Educational", "Community Service"
+            "Educational", "Community Service"
         ]
 
         for element_id in ["post-input-theme", "res-theme"]:
@@ -129,13 +129,13 @@ class TestRegressionCoverage(GoodDeedsTestCase):
             segment = html_content[start_pos:end_pos]
             
             last_pos = 0
-            for opt in expected_8_options:
+            for opt in expected_post_res_options:
                 pos = segment.find(opt, last_pos)
                 self.assertNotEqual(pos, -1, f"Option '{opt}' not found in order in #{element_id}")
                 last_pos = pos
 
-        expected_5_options = [
-            "Mental Health", "Wellness", "Spiritual", "Education", "Community Service"
+        expected_space_options = [
+            "Mental Health", "Wellness", "Education", "Community Service"
         ]
         self.assertIn('id="cgrp-theme"', html_content)
         start_pos = html_content.find('id="cgrp-theme"')
@@ -143,7 +143,7 @@ class TestRegressionCoverage(GoodDeedsTestCase):
         cgrp_segment = html_content[start_pos:end_pos]
 
         last_pos = 0
-        for opt in expected_5_options:
+        for opt in expected_space_options:
             pos = cgrp_segment.find(opt, last_pos)
             self.assertNotEqual(pos, -1, f"Option '{opt}' not found in order in #cgrp-theme")
             last_pos = pos

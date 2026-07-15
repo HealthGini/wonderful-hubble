@@ -1192,7 +1192,7 @@ def handle_api_request(method, path, headers, body_bytes):
         post_subtype = body.get("post_subtype", "").strip().upper()
         event_date = body.get("event_date", "").strip()
 
-        VALID_THEMES = {"Inspiring Story", "Mental Health", "Wellness", "Mindfulness", "Spiritual", "Suicide Prevention", "Educational", "Community Service", "Events", "Resources", "Inspiring Stories", "Education", "Community Services", "Community Resources", "Inspiring Stories & Wisdom", "Mental Health & Peer Listening", "Education & Skill Building", "Community Services & Mutual Aid", "Upcoming Community Events", "General Community Resources"}
+        VALID_THEMES = {"Inspiring Story", "Mental Health", "Wellness", "Mindfulness", "Educational", "Community Service", "Events", "Resources", "Inspiring Stories", "Education", "Community Services", "Community Resources", "Inspiring Stories & Wisdom", "Mental Health & Peer Listening", "Education & Skill Building", "Community Services & Mutual Aid", "Upcoming Community Events", "General Community Resources"}
 
         if not title or not theme or not content:
             return error_response("Title, theme, and content are required.")
