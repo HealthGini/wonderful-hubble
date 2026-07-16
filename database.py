@@ -11,6 +11,7 @@ import json
 import os
 import base64
 import re
+import zlib
 from datetime import datetime
 
 # Ensure DB is created next to this script by default unless DB_PATH is set
@@ -76,34 +77,24 @@ def extract_resource_text(resource_url) -> str:
         except Exception:
             pass
 
-    extracted = []
+    extracted_chunks = []
     b64_data = None
-    mime_type = ""
 
     if url.startswith("data:"):
         parts = url.split(",", 1)
         if len(parts) == 2:
-            header, content = parts
-            mime_type = header.split(":")[1].split(";")[0] if ":" in header else ""
-            cleaned_content = content.strip().replace(" ", "").replace("\n", "").replace("\r", "")
-            if ";base64" in header or not header:
-                try:
-                    pad = len(cleaned_content) % 4
-                    if pad:
-                        cleaned_content += "=" * (4 - pad)
-                    b64_data = base64.b64decode(cleaned_content)
-                except Exception:
-                    try:
-                        import urllib.parse
-                        b64_data = urllib.parse.unquote_to_bytes(content)
-                    except Exception:
-                        b64_data = content.encode("utf-8", errors="ignore")
-            else:
+            content = parts[1].strip().replace(" ", "").replace("\n", "").replace("\r", "")
+            try:
+                pad = len(content) % 4
+                if pad:
+                    content += "=" * (4 - pad)
+                b64_data = base64.b64decode(content)
+            except Exception:
                 try:
                     import urllib.parse
-                    b64_data = urllib.parse.unquote_to_bytes(content)
+                    b64_data = urllib.parse.unquote_to_bytes(parts[1])
                 except Exception:
-                    b64_data = content.encode("utf-8", errors="ignore")
+                    b64_data = parts[1].encode("utf-8", errors="ignore")
     else:
         try:
             if not (url.startswith("http://") or url.startswith("https://") or url.startswith("/")):
@@ -115,47 +106,40 @@ def extract_resource_text(resource_url) -> str:
 
     if b64_data:
         try:
-            text_str = b64_data.decode("utf-8", errors="ignore").strip()
-            if text_str:
-                if text_str.startswith("{") or text_str.startswith("["):
-                    try:
-                        parsed_json = json.loads(text_str)
-                        sub = extract_resource_text(parsed_json)
-                        if sub:
-                            extracted.append(sub)
-                        else:
-                            extracted.append(text_str)
-                    except Exception:
-                        extracted.append(text_str)
-                else:
-                    extracted.append(text_str)
+            utf_text = b64_data.decode("utf-8", errors="ignore").strip()
+            if utf_text and any(c.isalnum() for c in utf_text):
+                extracted_chunks.append(utf_text)
         except Exception:
             pass
 
         try:
-            pdf_str = b64_data.decode("latin1", errors="ignore")
-            pdf_texts = re.findall(r"\((.*?)\)", pdf_str)
-            if pdf_texts:
-                for pt in pdf_texts:
-                    cleaned_pt = pt.strip()
-                    if cleaned_pt:
-                        extracted.append(cleaned_pt)
-            
-            words = re.findall(r"\b[A-Za-z0-9_.-]{2,}\b", pdf_str)
-            if words:
-                extracted.append(" ".join(words))
+            stream_matches = re.findall(rb'stream[\r\n]+(.*?)[\r\n]+endstream', b64_data, re.DOTALL)
+            for s in stream_matches:
+                dec = None
+                for wbits in [zlib.MAX_WBITS, -zlib.MAX_WBITS, 16 + zlib.MAX_WBITS]:
+                    try:
+                        dec = zlib.decompress(s, wbits)
+                        break
+                    except Exception:
+                        pass
+                if dec:
+                    try:
+                        dec_str = dec.decode("latin1", errors="ignore")
+                        pts = re.findall(r"\((.*?)\)", dec_str)
+                        if pts:
+                            extracted_chunks.append(" ".join([p for p in pts if p.strip()]))
+                        words = re.findall(r"[A-Za-z0-9_.:/-]{2,}", dec_str)
+                        if words:
+                            extracted_chunks.append(" ".join(words))
+                    except Exception:
+                        pass
         except Exception:
             pass
 
-    seen = set()
-    unique_parts = []
-    for token in " ".join(extracted).split():
-        if token not in seen:
-            seen.add(token)
-            unique_parts.append(token)
-
-    res = " ".join(unique_parts).strip()
-    return res if res else url
+    if extracted_chunks:
+        full_text = "\n".join(extracted_chunks)
+        return full_text.strip()
+    return url
 
 def init_db():
     """
@@ -396,10 +380,9 @@ def init_db():
         for row in cursor.fetchall():
             row_id = row["id"]
             res_url = row["resource_url"]
-            ext_text = row["extracted_text"]
-            ext_str = str(ext_text or "").strip()
-            if not ext_str or ext_str.startswith("[") or ext_str.startswith("{"):
-                new_text = extract_resource_text(res_url)
+            ext_str = str(row["extracted_text"] or "").strip()
+            new_text = extract_resource_text(res_url)
+            if new_text and new_text != ext_str:
                 cursor.execute("UPDATE feed_items SET extracted_text = ? WHERE id = ?", (new_text, row_id))
     except Exception:
         pass
@@ -412,10 +395,9 @@ def init_db():
         for row in cursor.fetchall():
             row_id = row["id"]
             res_url = row["r_url"]
-            ext_text = row["extracted_text"]
-            ext_str = str(ext_text or "").strip()
-            if not ext_str or ext_str.startswith("[") or ext_str.startswith("{"):
-                new_text = extract_resource_text(res_url)
+            ext_str = str(row["extracted_text"] or "").strip()
+            new_text = extract_resource_text(res_url)
+            if new_text and new_text != ext_str:
                 cursor.execute("UPDATE group_resources SET extracted_text = ? WHERE id = ?", (new_text, row_id))
     except Exception:
         pass
