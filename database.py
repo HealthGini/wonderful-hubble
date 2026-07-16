@@ -138,7 +138,8 @@ def extract_resource_text(resource_url) -> str:
 
     if extracted_chunks:
         full_text = "\n".join(extracted_chunks)
-        return full_text.strip()
+        sanitized = re.sub(r'[\x00-\x08\x0b\x0c\x0e-\x1f\x7f-\x9f]', ' ', full_text)
+        return re.sub(r'\s+', ' ', sanitized).strip()
     return url
 
 def init_db():
