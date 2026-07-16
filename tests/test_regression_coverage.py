@@ -1230,5 +1230,50 @@ All 92+ tests run cleanly with `OK`.
         self.assertIn('appendChild(toast)', func_body)
         self.assertIn('document.body.appendChild(toast)', func_body)
 
-if __name__ == "__main__":
-    unittest.main()
+
+
+
+    def test_pdf_attachment_json_array_search_and_reindexing(self):
+        token = self.get_token("maya@gooddeeds.space")
+        headers = self.get_auth_headers(token)
+
+        pdf_binary = b"%PDF-1.4 (Pierce Community PDF Attachment) %%EOF"
+        b64_pdf = base64.b64encode(pdf_binary).decode("utf-8")
+        data_uri = f"data:application/pdf;base64,{b64_pdf}"
+        json_array_url = json.dumps([data_uri])
+
+        post_data = {
+            "title": "Pierce PDF Attachment Test",
+            "theme": "Educational",
+            "content": "Testing search for Pierce in PDF attachments",
+            "resource_url": json_array_url
+        }
+        status, _, body = self.make_request("POST", "/api/posts", headers=headers, body=post_data)
+        self.assertEqual(status, 201)
+        post_id = body.get("item", {}).get("id") or body.get("post", {}).get("id")
+        self.assertIsNotNone(post_id)
+
+        from database import get_db, init_db
+        conn = get_db()
+        cursor = conn.cursor()
+        cursor.execute("SELECT extracted_text FROM feed_items WHERE id = ?", (post_id,))
+        row = cursor.fetchone()
+        self.assertIsNotNone(row)
+        self.assertIn("Pierce", row["extracted_text"])
+
+        status, _, feed_body = self.make_request("GET", "/api/feed?search=Pierce")
+        self.assertEqual(status, 200)
+        feed_items = feed_body.get("feed", [])
+        matching_item = next((item for item in feed_items if item.get("id") == post_id), None)
+        self.assertIsNotNone(matching_item, "Created post containing Pierce was not returned in GET /api/feed?search=Pierce")
+
+        cursor.execute("UPDATE feed_items SET extracted_text = ? WHERE id = ?", (json_array_url, post_id))
+        conn.commit()
+
+        init_db()
+
+        cursor.execute("SELECT extracted_text FROM feed_items WHERE id = ?", (post_id,))
+        reindexed_row = cursor.fetchone()
+        conn.close()
+        self.assertIsNotNone(reindexed_row)
+        self.assertIn("Pierce", reindexed_row["extracted_text"])

@@ -1187,7 +1187,11 @@ def handle_api_request(method, path, headers, body_bytes):
         title = body.get("title", "").strip()
         theme = body.get("theme", "").strip()
         content = body.get("content", "").strip()
-        resource_url = body.get("resource_url", "").strip()
+        raw_res_url = body.get("resource_url", "")
+        if isinstance(raw_res_url, (list, dict)):
+            resource_url = json.dumps(raw_res_url)
+        else:
+            resource_url = str(raw_res_url or "").strip()
         group_ids = body.get("group_ids", [])
         post_subtype = body.get("post_subtype", "").strip().upper()
         event_date = body.get("event_date", "").strip()
