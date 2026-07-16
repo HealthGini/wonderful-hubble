@@ -88,7 +88,7 @@ class TestRegressionCoverage(GoodDeedsTestCase):
         expected_pills = [
             'All', 'Inspiring Story', 'Mental Health', 'Wellness',
             'Mindfulness', 'Educational',
-            'Community Service', 'Events', 'Resources'
+            'General', 'Events', 'Resources'
         ]
         self.assertIn('id="theme-pills-bar"', html_content)
         for pill in expected_pills:
@@ -119,7 +119,7 @@ class TestRegressionCoverage(GoodDeedsTestCase):
 
         expected_post_res_options = [
             "Inspiring Story", "Mental Health", "Wellness", "Mindfulness",
-            "Educational", "Community Service"
+            "Educational", "General"
         ]
 
         for element_id in ["post-input-theme", "res-theme"]:
@@ -135,7 +135,7 @@ class TestRegressionCoverage(GoodDeedsTestCase):
                 last_pos = pos
 
         expected_space_options = [
-            "Mental Health", "Wellness", "Education", "Community Service"
+            "Mental Health", "Wellness", "Education", "General"
         ]
         self.assertIn('id="cgrp-theme"', html_content)
         start_pos = html_content.find('id="cgrp-theme"')

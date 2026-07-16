@@ -82,7 +82,7 @@ class TestIntegrationFixes(BaseTestCase):
         self.assertIn('placeholder="Search Kudos, Posts, Events and Resources..."', html_content)
         self.assertNotIn('id="feed-sort-select"', html_content)
         self.assertIn('id="theme-pills-bar"', html_content)
-        for topic in ["All", "✨ Inspiring Story", "🌱 Mental Health", "🌿 Wellness", "🧘 Mindfulness", "🎓 Educational", "🤝 Community Service", "📅 Events", "📎 Resources"]:
+        for topic in ["All", "✨ Inspiring Story", "🌱 Mental Health", "🌿 Wellness", "🧘 Mindfulness", "🎓 Educational", "🤝 General", "📅 Events", "📎 Resources"]:
             self.assertIn(topic, html_content)
 
         # 3. Create Post Modal
@@ -90,7 +90,7 @@ class TestIntegrationFixes(BaseTestCase):
         self.assertTrue('name="post_subtype"' in html_content or 'name="post-subtype"' in html_content)
         self.assertIn('id="post-event-date-container"', html_content)
         self.assertIn('id="post-input-theme"', html_content)
-        for th in ["Inspiring Story", "Mental Health", "Wellness", "Mindfulness", "Educational", "Community Service"]:
+        for th in ["Inspiring Story", "Mental Health", "Wellness", "Mindfulness", "Educational", "General"]:
             self.assertIn(f'value="{th}"', html_content)
         self.assertIn('Files', html_content)
         self.assertIn('*(Attach downloadable guides, flyers, or images)*', html_content)
@@ -107,7 +107,7 @@ class TestIntegrationFixes(BaseTestCase):
 
         # 6. Create Community Space Modal
         self.assertIn('<select id="cgrp-theme"', html_content)
-        for space_cat in ["Mental Health", "Wellness", "Education", "Community Service"]:
+        for space_cat in ["Mental Health", "Wellness", "Education", "General"]:
             self.assertIn(f'value="{space_cat}"', html_content)
 
         # 7. Space Detail Tabs & Cards
