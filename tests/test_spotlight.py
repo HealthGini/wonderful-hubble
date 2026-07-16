@@ -73,11 +73,11 @@ class TestSpotlight(BaseTestCase):
         # G1: "Mental Health First Aid..." (PDF, Theme: Mental Health)
         # G1: "Free Online Mindfulness..." (URL, Theme: Mental Health)
         # G2: "Comprehensive Resume..." (PDF, Theme: Education)
-        # G3: "Local Mutual Aid..." (PDF, Theme: Community Services)
+        # G3: "Local Mutual Aid..." (PDF, Theme: General)
         
         self.assertIn("Mental Health", valuable_res)
         self.assertIn("Education", valuable_res)
-        self.assertIn("Community Services", valuable_res)
+        self.assertIn("General", valuable_res)
 
         # Check sorting by saves within a theme (Mental Health has 2 resources)
         # val_map = [184, 156, 142, ...]

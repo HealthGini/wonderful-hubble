@@ -320,7 +320,7 @@ def seed_data(cursor):
     groups = [
         ("🌱 Mental Health & Peer Listening", "A safe, confidential space for emotional encouragement, stress reduction, and mental health wellness across all walks of life.", json.dumps(["Mental Health", "Community Resources"]), "https://images.unsplash.com/photo-1529156069898-49953e39b3ac?auto=format&fit=crop&w=200&q=80"),
         ("🎓 Education, Tutoring & Skill Share", "Connecting experienced professionals, students, and retirees for academic tutoring, career advice, and mutual skill exchange.", json.dumps(["Education", "Events"]), "https://images.unsplash.com/photo-1517486808906-6ca8b3f04846?auto=format&fit=crop&w=200&q=80"),
-        ("🤝 Community Action & Mutual Aid", "Local mutual aid network organizing neighborhood cleanups, food pantries, senior center visits, and volunteer assistance.", json.dumps(["Community Services", "Inspiring Stories"]), "https://images.unsplash.com/photo-1593113598332-cd288d649433?auto=format&fit=crop&w=200&q=80")
+        ("🤝 Community Action & Mutual Aid", "Local mutual aid network organizing neighborhood cleanups, food pantries, senior center visits, and volunteer assistance.", json.dumps(["General", "Inspiring Stories"]), "https://images.unsplash.com/photo-1593113598332-cd288d649433?auto=format&fit=crop&w=200&q=80")
     ]
     cursor.executemany("INSERT INTO groups (name, description, themes, icon_url) VALUES (?, ?, ?, ?)", groups)
 
@@ -345,7 +345,7 @@ def seed_data(cursor):
         (1, "Mental Health First Aid & Grounding Handbook", "https://example.com/grounding_guide.pdf", "PDF", "Mental Health", 3),
         (1, "Free Online Mindfulness & Audio Meditations", "https://example.com/mindfulness", "URL", "Mental Health", 3),
         (2, "Comprehensive Resume & Career Mentorship Guide", "https://example.com/resume_guide.pdf", "PDF", "Education", 1),
-        (3, "Local Mutual Aid Network & Volunteer Map", "https://example.com/volunteer_map.pdf", "PDF", "Community Services", 2)
+        (3, "Local Mutual Aid Network & Volunteer Map", "https://example.com/volunteer_map.pdf", "PDF", "General", 2)
     ]
     cursor.executemany("INSERT INTO group_resources (group_id, title, url, resource_type, theme, added_by) VALUES (?, ?, ?, ?, ?, ?)", resources)
 
