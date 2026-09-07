@@ -47,9 +47,11 @@ class TestRegressionCoverage(GoodDeedsTestCase):
         self.assertIn("filterLandingByGroup", app_js_content)
         self.assertIn("filterLandingByType", app_js_content)
         self.assertIn("filterLandingByTheme", app_js_content)
+        self.assertIn("filterLandingByFormat", app_js_content)
         self.assertIn("window.filterLandingByGroup = filterLandingByGroup", app_js_content)
         self.assertIn("window.filterLandingByType = filterLandingByType", app_js_content)
         self.assertIn("window.filterLandingByTheme = filterLandingByTheme", app_js_content)
+        self.assertIn("window.filterLandingByFormat = filterLandingByFormat", app_js_content)
 
     def test_terminology_and_navbar_labels(self):
         """
@@ -57,7 +59,7 @@ class TestRegressionCoverage(GoodDeedsTestCase):
         Asserts that user-facing labels use "Spaces", "Kudos", and "Posts" without "Group", "Groups", or "Hub".
         Asserts #feed-search-input placeholder is "Search Kudos, Posts, Events and Resources...".
         Asserts #feed-sort-select dropdown is completely absent from HTML.
-        Asserts #theme-pills-bar includes the exact 9 topic pills in order.
+        Asserts #theme-pills-bar includes the 4 pillar topic pills and format pills.
         """
         base_dir = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
         index_path = os.path.join(base_dir, "static", "index.html")
@@ -79,26 +81,27 @@ class TestRegressionCoverage(GoodDeedsTestCase):
         self.assertNotIn("Posts Hub", html_content)
 
         # Assert #feed-search-input placeholder
-        self.assertIn('placeholder="Search Kudos, Posts, Events and Resources..."', html_content)
+        self.assertIn('placeholder="Search Kudos, Posts, Events, Resources, or Username..."', html_content)
 
         # Assert #feed-sort-select dropdown is completely absent
         self.assertNotIn('id="feed-sort-select"', html_content)
 
-        # Assert #theme-pills-bar includes the exact 9 topic pills in order
+        # Assert #theme-pills-bar includes the 4 pillar topic pills in order
         expected_pills = [
-            'All', 'Inspiring Story', 'Mental Health', 'Wellness',
-            'Mindfulness', 'Educational',
-            'General', 'Events', 'Resources'
+            'All', 'Inspiring Stories', 'Wellbeing & Care', 'Skills & Learning',
+            'Community & Action'
         ]
         self.assertIn('id="theme-pills-bar"', html_content)
         for pill in expected_pills:
             self.assertIn(pill, html_content)
+        self.assertIn('Events', html_content)
+        self.assertIn('Resources', html_content)
 
         # Verify order of topic pills in html_content inside theme-pills-bar
         pills_bar_start = html_content.find('id="theme-pills-bar"')
         self.assertNotEqual(pills_bar_start, -1)
-        pills_bar_end = html_content.find('</div>', pills_bar_start)
-        pills_segment = html_content[pills_bar_start:pills_bar_end]
+        feed_cards_start = html_content.find('id="feed-items-container"', pills_bar_start)
+        pills_segment = html_content[pills_bar_start:feed_cards_start]
 
         last_pos = 0
         for pill in expected_pills:
@@ -106,9 +109,12 @@ class TestRegressionCoverage(GoodDeedsTestCase):
             self.assertNotEqual(pos, -1, f"Pill '{pill}' not found in expected order in theme-pills-bar")
             last_pos = pos
 
+        self.assertIn('Events', pills_segment)
+        self.assertIn('Resources', pills_segment)
+
     def test_theme_order_and_space_categories(self):
         """
-        Asserts #post-input-theme and #res-theme dropdowns in static/index.html contain exact 6 options in specified order.
+        Asserts #post-input-theme and #res-theme dropdowns in static/index.html contain exact 4 options in specified order.
         Asserts #cgrp-theme select element in static/index.html contains exact 4 options.
         """
         base_dir = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
@@ -118,8 +124,7 @@ class TestRegressionCoverage(GoodDeedsTestCase):
             html_content = f.read()
 
         expected_post_res_options = [
-            "Inspiring Story", "Mental Health", "Wellness", "Mindfulness",
-            "Educational", "General"
+            "Inspiring Stories", "Wellbeing & Care", "Skills & Learning", "Community & Action"
         ]
 
         for element_id in ["post-input-theme", "res-theme"]:
@@ -135,7 +140,7 @@ class TestRegressionCoverage(GoodDeedsTestCase):
                 last_pos = pos
 
         expected_space_options = [
-            "Mental Health", "Wellness", "Education", "General"
+            "Inspiring Stories", "Wellbeing & Care", "Skills & Learning", "Community & Action"
         ]
         self.assertIn('id="cgrp-theme"', html_content)
         start_pos = html_content.find('id="cgrp-theme"')
@@ -337,11 +342,19 @@ class TestRegressionCoverage(GoodDeedsTestCase):
         self.assertIn("id=\"group-resources-list\"", html)
         self.assertIn("id=\"admin-curate-box\"", html)
         self.assertIn("id=\"group-resources-list\" class=\"flex flex-col space-y-4\"", html)
+        
+        # Verify that the Add Space Resources form is removed from inside gcontent-resources tab
+        gcontent_res_start = html.find('id="gcontent-resources"')
+        gcontent_res_end = html.find('</div>', gcontent_res_start + 1)
+        gcontent_res_block = html[gcontent_res_start:gcontent_res_end + 6]
+        self.assertNotIn("Add Space Resources", gcontent_res_block)
 
         with open(app_path, "r", encoding="utf-8") as f:
             js = f.read()
         self.assertIn("\"resources\"", js)
         self.assertIn("renderGroupResources", js)
+        self.assertIn("formatResourceSummary", js)
+        self.assertIn("window.formatResourceSummary = formatResourceSummary", js)
         self.assertIn("_attachmentCache", js)
         self.assertIn("openAttachment", js)
         self.assertIn("formatAttachmentLabel", js)
@@ -499,18 +512,19 @@ class TestRegressionCoverage(GoodDeedsTestCase):
         self.assertIn("endpoint.startsWith(\"/api/\")", app_js)
 
     def test_homepage_vision_features_and_faq_sections(self):
-        """Verifies landing vision, features showcase, FAQ, and CTA sections exist in static/index.html."""
+        """Verifies landing vision section exists while features showcase, FAQ, and CTA sections are removed from home page in static/index.html."""
         base_dir = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
         index_path = os.path.join(base_dir, "static", "index.html")
         with open(index_path, "r", encoding="utf-8") as f:
             html_content = f.read()
         self.assertIn("id=\"landing-vision-section\"", html_content)
-        self.assertIn("id=\"landing-features-section\"", html_content)
-        self.assertIn("id=\"landing-faq-section\"", html_content)
-        self.assertIn("id=\"landing-cta-section\"", html_content)
         self.assertIn("Why Join GoodDeeds.space?", html_content)
-        self.assertIn("Platform Features Built for Kindness", html_content)
-        self.assertIn("Frequently Asked Questions", html_content)
+        self.assertNotIn("id=\"landing-features-section\"", html_content)
+        self.assertNotIn("id=\"landing-faq-section\"", html_content)
+        self.assertNotIn("id=\"landing-cta-section\"", html_content)
+        self.assertNotIn("Platform Features Built for Kindness", html_content)
+        self.assertNotIn("Frequently Asked Questions", html_content)
+        self.assertNotIn("Ready to Ripple Positivity in Your Community?", html_content)
 
     def test_informative_attachment_pills_rendering(self):
         """
@@ -659,13 +673,38 @@ All 92+ tests run cleanly with `OK`.
         self.assertIn('id="group-calendar-widget"', html)
         self.assertIn('id="calendar-days-grid"', html)
         self.assertIn('id="btn-add-calendar-event"', html)
-        self.assertIn('id="admin-calendar-pdf-upload"', html)
+        self.assertNotIn('id="admin-calendar-pdf-upload"', html)
         self.assertIn('id="modal-calendar-day"', html)
+        self.assertIn('id="btn-toggle-calendar"', html)
 
         with open(app_js_path, "r", encoding="utf-8") as f:
             js = f.read()
         self.assertIn("renderGroupCalendar", js)
         self.assertIn("navigateGroupCalendar", js)
+        self.assertIn("toggleCalendarWidget", js)
+
+    def test_collapsible_calendar_widget_feature(self):
+        """
+        Verifies that the calendar widget in space details view is collapsible to grant more space to tabs, feeds, and posts.
+        Asserts toggle buttons (#btn-toggle-calendar, #btn-collapse-calendar), main content column (#group-main-content-col),
+        sidebar (#group-calendar-sidebar), and controller functions (toggleCalendarWidget, updateCalendarCollapseUI) exist.
+        """
+        base_dir = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+        index_path = os.path.join(base_dir, "static", "index.html")
+        app_js_path = os.path.join(base_dir, "static", "app.js")
+
+        with open(index_path, "r", encoding="utf-8") as f:
+            html = f.read()
+        self.assertIn('id="btn-toggle-calendar"', html)
+        self.assertIn('id="btn-collapse-calendar"', html)
+        self.assertIn('id="group-main-content-col"', html)
+        self.assertIn('id="group-calendar-sidebar"', html)
+
+        with open(app_js_path, "r", encoding="utf-8") as f:
+            js = f.read()
+        self.assertIn("toggleCalendarWidget", js)
+        self.assertIn("updateCalendarCollapseUI", js)
+        self.assertIn("window.toggleCalendarWidget = toggleCalendarWidget", js)
 
     def test_calendar_pdf_scraping_endpoint(self):
         """
@@ -1277,3 +1316,751 @@ All 92+ tests run cleanly with `OK`.
         conn.close()
         self.assertIsNotNone(reindexed_row)
         self.assertIn("Pierce", reindexed_row["extracted_text"])
+
+    def test_modern_softer_young_adult_redesign(self):
+        """
+        Verifies modern, softer aesthetics and humane touch across the application:
+        - Plus Jakarta Sans and Outfit Google Fonts imported in style.css and index.html
+        - Warm porcelain eggshell background (#faf9f6)
+        - Rounded 24px/3xl card architecture and pill buttons
+        - Softer ambient card glows for Kudos and Posts
+        """
+        base_dir = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+        index_path = os.path.join(base_dir, "static", "index.html")
+        style_path = os.path.join(base_dir, "static", "style.css")
+        app_path = os.path.join(base_dir, "static", "app.js")
+
+        with open(index_path, "r", encoding="utf-8") as f:
+            html = f.read()
+        with open(style_path, "r", encoding="utf-8") as f:
+            css = f.read()
+        with open(app_path, "r", encoding="utf-8") as f:
+            js = f.read()
+
+        self.assertIn("Plus Jakarta Sans", html)
+        self.assertIn("Outfit", html)
+        self.assertIn("Plus Jakarta Sans", css)
+        self.assertIn("Outfit", css)
+        self.assertIn("#faf9f6", html)
+        self.assertIn("rounded-3xl", html)
+        self.assertIn(".kudos-card", css)
+        self.assertIn(".post-card", css)
+        self.assertIn("rounded-full", html)
+
+    def test_topic_and_format_dual_pill_filtering(self):
+        """
+        Verifies that topic and format filtering are supported on the backend /api/feed endpoint
+        and in the UI via distinct labeled capsules and format pills (filterByFormat / filterLandingByFormat).
+        """
+        # Test backend format filtering for EVENT
+        status, _, body = self.make_request("GET", "/api/feed?subtype=EVENT")
+        self.assertEqual(status, 200)
+        self.assertIn("feed", body)
+        for item in body["feed"]:
+            if item["item_type"] == "POST":
+                self.assertTrue(item.get("post_subtype") == "EVENT" or bool(item.get("event_date")))
+
+        # Test backend format filtering for RESOURCE
+        status, _, body = self.make_request("GET", "/api/feed?subtype=RESOURCE")
+        self.assertEqual(status, 200)
+        self.assertIn("feed", body)
+        for item in body["feed"]:
+            if item["item_type"] == "POST":
+                self.assertTrue(item.get("post_subtype") == "RESOURCE" or bool(item.get("resource_url")))
+
+        # Verify UI markup has both Topic and Format labeled capsules
+        base_dir = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+        index_path = os.path.join(base_dir, "static", "index.html")
+        app_js_path = os.path.join(base_dir, "static", "app.js")
+
+        with open(index_path, "r", encoding="utf-8") as f:
+            html = f.read()
+        with open(app_js_path, "r", encoding="utf-8") as f:
+            js = f.read()
+
+        self.assertIn("Topic:", html)
+        self.assertIn("Type:", html)
+        self.assertIn("filterByFormat('EVENT')", html)
+        self.assertIn("filterByFormat('RESOURCE')", html)
+        self.assertIn("filterLandingByFormat('EVENT')", html)
+        self.assertIn("filterLandingByFormat('RESOURCE')", html)
+        self.assertIn("window.filterByFormat = filterByFormat", js)
+        self.assertIn("window.filterLandingByFormat = filterLandingByFormat", js)
+
+        # Verify toggle behavior in filterByTheme and filterLandingByTheme
+        self.assertIn("currentTheme === th", js)
+        self.assertIn("landingThemeFilter === th", js)
+
+        # Verify on-demand collapsible toggle buttons and functions
+        self.assertIn('id="btn-toggle-theme-pills"', html)
+        self.assertIn('id="btn-toggle-landing-theme-pills"', html)
+        self.assertIn("window.toggleThemePillsBar = toggleThemePillsBar", js)
+        self.assertIn("window.toggleLandingThemePillsBar = toggleLandingThemePillsBar", js)
+
+    def test_feed_search_by_username_and_hint(self):
+        """
+        Verifies that /api/feed?search=<username> correctly searches and filters items by author
+        and recipient username, and checks that #feed-search-input placeholder includes Username.
+        """
+        # 1. Search by author username 'Maya_Lin'
+        status, _, body = self.make_request("GET", "/api/feed?search=Maya_Lin")
+        self.assertEqual(status, 200)
+        feed = body.get("feed", [])
+        self.assertTrue(len(feed) > 0)
+        for item in feed:
+            author_or_recip_or_content = (
+                "maya_lin" in item.get("author_name", "").lower() or
+                "maya_lin" in item.get("recipient_name", "").lower() or
+                "maya" in item.get("content", "").lower() or
+                "maya" in item.get("title", "").lower()
+            )
+            self.assertTrue(author_or_recip_or_content)
+
+        # 2. Search with @ prefix '@Elena'
+        status, _, body = self.make_request("GET", "/api/feed?search=@Elena")
+        self.assertEqual(status, 200)
+        feed = body.get("feed", [])
+        self.assertTrue(len(feed) > 0)
+        for item in feed:
+            author_or_recip_or_content = (
+                "elena" in item.get("author_name", "").lower() or
+                "elena" in item.get("recipient_name", "").lower() or
+                "elena" in item.get("content", "").lower() or
+                "elena" in item.get("title", "").lower()
+            )
+            self.assertTrue(author_or_recip_or_content)
+
+        # 3. Check placeholder in index.html
+        base_dir = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+        index_path = os.path.join(base_dir, "static", "index.html")
+        with open(index_path, "r", encoding="utf-8") as f:
+            html = f.read()
+        self.assertIn('placeholder="Search Kudos, Posts, Events, Resources, or Username..."', html)
+
+    def test_feed_monthly_winner_tags_removed(self):
+        """
+        Verifies that "Monthly Winner" tags and emojis are removed from feed cards in static/app.js.
+        """
+        base_dir = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+        app_path = os.path.join(base_dir, "static", "app.js")
+        with open(app_path, "r", encoding="utf-8") as f:
+            js = f.read()
+
+        feed_card_func_start = js.find("function renderFeedCard")
+        feed_card_func_end = js.find("function loadFeed", feed_card_func_start)
+        feed_card_code = js[feed_card_func_start:feed_card_func_end]
+
+        self.assertNotIn("Monthly Winner", feed_card_code)
+        self.assertNotIn("👑", feed_card_code)
+
+    def test_hall_of_fame_hidden_from_navigation_and_routed_to_feed(self):
+        """
+        Verifies that Hall of Fame is hidden from both desktop navbar and mobile drawer,
+        and that spotlight/halloffame hash routes redirect to /feed.
+        """
+        base_dir = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+        index_path = os.path.join(base_dir, "static", "index.html")
+        app_path = os.path.join(base_dir, "static", "app.js")
+
+        with open(index_path, "r", encoding="utf-8") as f:
+            html = f.read()
+        with open(app_path, "r", encoding="utf-8") as f:
+            js = f.read()
+
+        # Check desktop navbar
+        main_nav_start = html.find('<nav class="hidden lg:flex')
+        main_nav_end = html.find('</nav>', main_nav_start)
+        main_nav_html = html[main_nav_start:main_nav_end]
+        self.assertNotIn("Hall of Fame", main_nav_html)
+        self.assertNotIn("/#/spotlight", main_nav_html)
+
+        # Check mobile drawer
+        mobile_menu_start = html.find('id="mobile-menu"')
+        mobile_menu_end = html.find('</header>', mobile_menu_start)
+        mobile_menu_html = html[mobile_menu_start:mobile_menu_end]
+        self.assertNotIn("Hall of Fame", mobile_menu_html)
+        self.assertNotIn("/#/spotlight", mobile_menu_html)
+
+        # Check routing redirects to /feed
+        self.assertIn('window.location.hash = "#/feed"', js)
+        route_handler_start = js.find("function handleRoute()")
+        route_handler_end = js.find("function navigateTo", route_handler_start)
+        route_handler_code = js[route_handler_start:route_handler_end]
+        self.assertIn('path === "/spotlight"', route_handler_code)
+        self.assertIn('window.location.hash = "#/feed"', route_handler_code)
+
+    def test_search_input_clear_button_single_icon_rendering(self):
+        """
+        Verifies that browser-native search cancel buttons are disabled in style.css
+        to prevent duplicate overlapping cross marks on the search input, and verifies
+        the single clear button #feed-search-clear-btn is bound in index.html and app.js.
+        """
+        base_dir = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+        style_path = os.path.join(base_dir, "static", "style.css")
+        index_path = os.path.join(base_dir, "static", "index.html")
+        app_path = os.path.join(base_dir, "static", "app.js")
+
+        with open(style_path, "r", encoding="utf-8") as f:
+            css = f.read()
+        with open(index_path, "r", encoding="utf-8") as f:
+            html = f.read()
+        with open(app_path, "r", encoding="utf-8") as f:
+            js = f.read()
+
+        # Check CSS disables native webkit search cancel button
+        self.assertIn("::-webkit-search-cancel-button", css)
+        self.assertIn("display: none", css)
+
+        # Check single custom clear button exists in HTML
+        self.assertIn('id="feed-search-clear-btn"', html)
+        self.assertIn('onclick="clearFeedSearchInput()"', html)
+
+        # Check JS binding for clearing
+        self.assertIn("window.clearFeedSearchInput = clearFeedSearchInput", js)
+
+    def test_modal_dismissal_cross_buttons_accessibility_and_placement(self):
+        """
+        Verifies that modal close/dismissal buttons are prominent, accessible (w-10 h-10 touch targets),
+        and positioned cleanly at the top-right without colliding with header subtext.
+        """
+        base_dir = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+        index_path = os.path.join(base_dir, "static", "index.html")
+        with open(index_path, "r", encoding="utf-8") as f:
+            html = f.read()
+
+        # Check modal-kudos top-right dismissal button
+        self.assertIn("onclick=\"closeModal('modal-kudos')\"", html)
+        self.assertIn("absolute top-4 right-4 sm:top-6 sm:right-6 w-10 h-10 rounded-full", html)
+
+        # Check modal-post top-right dismissal button
+        self.assertIn("onclick=\"closeModal('modal-post')\"", html)
+
+        # Check modal-login, modal-signup, modal-create-group
+        for modal_id in ["modal-login", "modal-signup", "modal-create-group", "modal-edit-profile", "modal-support", "modal-tos"]:
+            self.assertIn(f"onclick=\"closeModal('{modal_id}')\"", html)
+
+    def test_group_chat_messages_ordered_most_recent_first(self):
+        """
+        Verifies that space chat messages are returned in descending chronological order (most recent at the top)
+        from GET /api/groups/<id>/chat and GET /api/groups/<id>, and that app.js unshifts new messages.
+        """
+        token = self.get_token("maya@gooddeeds.space")
+        headers = self.get_auth_headers(token)
+
+        # Post message 1
+        msg1 = {"message": "Older Message A"}
+        self.make_request("POST", "/api/groups/1/chat", headers=headers, body=msg1)
+
+        # Post message 2
+        msg2 = {"message": "Newer Message B"}
+        self.make_request("POST", "/api/groups/1/chat", headers=headers, body=msg2)
+
+        # Query GET /api/groups/1/chat
+        status, _, body = self.make_request("GET", "/api/groups/1/chat", headers=headers)
+        self.assertEqual(status, 200)
+        messages = body.get("messages", [])
+        self.assertGreaterEqual(len(messages), 2)
+        self.assertEqual(messages[0]["message"], "Newer Message B")
+        self.assertEqual(messages[1]["message"], "Older Message A")
+
+        # Check frontend app.js unshifts new messages
+        base_dir = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+        app_path = os.path.join(base_dir, "static", "app.js")
+        with open(app_path, "r", encoding="utf-8") as f:
+            js = f.read()
+        self.assertIn("activeGroupData.chat_messages.unshift(data.message)", js)
+
+    def test_auto_tag_current_space_for_kudos_and_posts(self):
+        """
+        Verifies that when giving Kudos or writing Posts within a Space context,
+        the corresponding Space is automatically tagged/checked by default in app.js.
+        """
+        base_dir = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+        app_path = os.path.join(base_dir, "static", "app.js")
+        with open(app_path, "r", encoding="utf-8") as f:
+            js = f.read()
+
+        # Check getCurrentSpaceContextId implementation and window binding
+        self.assertIn("function getCurrentSpaceContextId()", js)
+        self.assertIn("window.getCurrentSpaceContextId = getCurrentSpaceContextId", js)
+
+        # Check auto-checked Space logic in populateGroupCheckboxes for Post modal
+        self.assertIn("const isChecked = (currentSpaceId && parseInt(currentSpaceId) === g.id) ? \"checked\" : \"\";", js)
+
+        # Check auto-checked Space logic in updateKudosGroupCheckboxes for Kudos modal
+        self.assertIn("const isChecked = (currentSpaceId && parseInt(currentSpaceId) === g.id) ? \"checked\" : \"\";", js)
+
+        # Check that post theme adapts to current space theme if available
+        self.assertIn("const spaceTheme = activeGroupData.theme || (activeGroupData.themes && activeGroupData.themes[0])", js)
+
+        # Check that submitting Kudos or Posts from inside a space refreshes space details
+        self.assertIn("if (window.location.hash.startsWith(\"#/group/\"))", js)
+        self.assertIn("loadGroupDetail(activeGroupId)", js)
+
+    def test_upload_pdf_calendar_capability_removed_from_ui(self):
+        """
+        Verifies that 'Upload PDF Calendar' button, file input, and scraped events preview modal
+        are removed from user-facing static/index.html.
+        """
+        base_dir = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+        index_path = os.path.join(base_dir, "static", "index.html")
+        with open(index_path, "r", encoding="utf-8") as f:
+            html = f.read()
+
+        self.assertNotIn("Upload PDF Calendar", html)
+        self.assertNotIn('id="admin-calendar-pdf-upload"', html)
+        self.assertNotIn('id="calendar-pdf-input"', html)
+        self.assertNotIn('id="modal-scrape-preview"', html)
+
+    def test_add_calendar_event_multi_attachment_support(self):
+        """
+        Verifies that modal-add-event supports multiple URL links and file attachments,
+        mirroring the creation flow in modal-post.
+        """
+        base_dir = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+        index_path = os.path.join(base_dir, "static", "index.html")
+        app_path = os.path.join(base_dir, "static", "app.js")
+
+        with open(index_path, "r", encoding="utf-8") as f:
+            html = f.read()
+        with open(app_path, "r", encoding="utf-8") as f:
+            js = f.read()
+
+        # Check multi-link and file upload UI in modal-add-event
+        self.assertIn('id="add-event-links-list"', html)
+        self.assertIn('onclick="addEventLinkField()"', html)
+        self.assertIn('id="add-event-file-input"', html)
+        self.assertIn('id="add-event-files-preview"', html)
+        self.assertIn('onchange="handleAddEventFilesSelect(event)"', html)
+
+        # Check JavaScript functions and window bindings
+        self.assertIn("function addEventLinkField", js)
+        self.assertIn("function handleAddEventFilesSelect(e)", js)
+        self.assertIn("window.addEventLinkField = addEventLinkField", js)
+        self.assertIn("window.handleAddEventFilesSelect = handleAddEventFilesSelect", js)
+
+        # Check backend support for multiple attachments in POST /api/posts for EVENT
+        token = self.get_token("maya@gooddeeds.space")
+        headers = self.get_auth_headers(token)
+
+        multi_attachments = [
+            "https://example.com/agenda.pdf",
+            "data:text/plain;name=guidelines.txt;base64,VGhpcyBpcyBhIHRlc3QgZ3VpZGU="
+        ]
+
+        future_date_1 = (datetime.date.today() + datetime.timedelta(days=7)).isoformat()
+        payload = {
+            "title": "Community Workshop with Multiple Attachments",
+            "theme": "Events",
+            "content": "A test workshop with links and files.",
+            "attachments": multi_attachments,
+            "post_subtype": "EVENT",
+            "event_date": future_date_1,
+            "group_ids": [1]
+        }
+
+        status, _, body = self.make_request("POST", "/api/posts", headers=headers, body=payload)
+        self.assertEqual(status, 201)
+        item = body.get("item") or body.get("post", {})
+        self.assertEqual(item.get("post_subtype"), "EVENT")
+        self.assertIn("https://example.com/agenda.pdf", item.get("resource_url", ""))
+        self.assertIn("guidelines.txt", item.get("resource_url", ""))
+
+    def test_calendar_event_cell_indicator_legibility(self):
+        """
+        Verifies that calendar day cells with events render clean, unclipped event indicator badges
+        and dots with clear font styling and no cramped wrapping.
+        """
+        base_dir = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+        app_path = os.path.join(base_dir, "static", "app.js")
+        with open(app_path, "r", encoding="utf-8") as f:
+            js = f.read()
+
+        # Check clean dot indicators and clear event count badge
+        self.assertIn("bg-amber-200/90 px-1.5 py-0.5 rounded-md", js)
+        self.assertIn("${evList.length} ${evList.length === 1 ? 'event' : 'events'}", js)
+        self.assertIn("dotsHtml", js)
+        self.assertIn("w-1.5 h-1.5 rounded-full bg-amber-500 shadow-xs", js)
+        self.assertNotIn("📍 ${evList.length}", js)
+
+    def test_calendar_event_edit_and_delete_permissions_and_url_rendering(self):
+        """
+        Verifies that calendar events can be edited and deleted by their author (and admins),
+        and that URLs embedded in descriptions or resource_url render consistently.
+        """
+        base_dir = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+        app_path = os.path.join(base_dir, "static", "app.js")
+        with open(app_path, "r", encoding="utf-8") as f:
+            js = f.read()
+
+        # Check frontend bindings and handlers
+        self.assertIn("function openEditCalendarEventModal(", js)
+        self.assertIn("function deleteCalendarEvent(", js)
+        self.assertIn("window.openEditCalendarEventModal = openEditCalendarEventModal", js)
+        self.assertIn("window.deleteCalendarEvent = deleteCalendarEvent", js)
+
+        # Check URL extraction from description for unified pill rendering
+        self.assertIn("urlRegex", js)
+        self.assertIn("embeddedUrls", js)
+
+        # Authenticate author (Maya, user 1) and non-author (Elena, user 3)
+        token_author = self.get_token("maya@gooddeeds.space")
+        headers_author = self.get_auth_headers(token_author)
+        token_other = self.get_token("elena@gooddeeds.space")
+        headers_other = self.get_auth_headers(token_other)
+
+        # 1. Create a test event
+        future_date_2 = (datetime.date.today() + datetime.timedelta(days=10)).isoformat()
+        future_date_3 = (datetime.date.today() + datetime.timedelta(days=11)).isoformat()
+        create_payload = {
+            "title": "Author Editable Event",
+            "theme": "Events",
+            "content": "Initial description with [Time: 11:00 AM] https://example.com/details",
+            "post_subtype": "EVENT",
+            "event_date": future_date_2,
+            "group_ids": [1]
+        }
+        status, _, body = self.make_request("POST", "/api/posts", headers=headers_author, body=create_payload)
+        self.assertEqual(status, 201)
+        item = body.get("item") or body.get("post", {})
+        event_id = item["id"]
+
+        # 2. Non-author cannot edit or delete the event
+        status, _, _ = self.make_request("PUT", f"/api/posts/{event_id}", headers=headers_other, body={"title": "Hacked Title"})
+        self.assertEqual(status, 403)
+        status, _, _ = self.make_request("DELETE", f"/api/posts/{event_id}", headers=headers_other)
+        self.assertEqual(status, 403)
+
+        # 3. Author can edit the event via PUT /api/posts/<id>
+        update_payload = {
+            "title": "Updated Author Event Title",
+            "theme": "Events",
+            "content": "Updated description",
+            "event_date": future_date_3,
+            "resource_url": "https://example.com/updated-link"
+        }
+        status, _, body = self.make_request("PUT", f"/api/posts/{event_id}", headers=headers_author, body=update_payload)
+        self.assertEqual(status, 200)
+        updated_item = body.get("item") or body.get("post", {})
+        self.assertEqual(updated_item.get("title"), "Updated Author Event Title")
+        self.assertEqual(updated_item.get("event_date"), future_date_3)
+
+        # 4. Author can delete the event via DELETE /api/posts/<id>
+        status, _, body = self.make_request("DELETE", f"/api/posts/{event_id}", headers=headers_author)
+        self.assertEqual(status, 200)
+        self.assertTrue(body.get("success"))
+
+    def test_view_profile_layout_and_hierarchy(self):
+        """
+        Verifies that view-profile layout has properly closed header container div,
+        ensuring statistics section and discovery banner are not squished into flex-row.
+        """
+        base_dir = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+        index_path = os.path.join(base_dir, "static", "index.html")
+        with open(index_path, "r", encoding="utf-8") as f:
+            html = f.read()
+
+        # Extract view-profile section
+        prof_start = html.find('id="view-profile"')
+        self.assertNotEqual(prof_start, -1)
+        prof_end = html.find('</section>', prof_start)
+        self.assertNotEqual(prof_end, -1)
+        prof_html = html[prof_start:prof_end]
+
+        # Verify prof-edit-btn-box is inside a closed header card
+        header_end_idx = prof_html.find('id="prof-stats-section"')
+        self.assertNotEqual(header_end_idx, -1)
+        header_snippet = prof_html[:header_end_idx]
+
+        # Count opening and closing divs before stats section
+        open_divs = header_snippet.count("<div")
+        close_divs = header_snippet.count("</div>")
+        self.assertEqual(open_divs, close_divs, "Profile header div must be closed before stats section")
+
+    def test_space_header_members_list_link_button(self):
+        """
+        Verifies that Space detail header removes duplicate Give Kudos and Share Post buttons,
+        and features a direct link button to the Members List (roster tab).
+        """
+        base_dir = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+        app_path = os.path.join(base_dir, "static", "app.js")
+        with open(app_path, "r", encoding="utf-8") as f:
+            js = f.read()
+
+        # Check that space header container includes Members List button
+        self.assertIn('id="btn-space-members-link"', js)
+        self.assertIn("switchGroupTab('roster')", js)
+        self.assertIn("Members List", js)
+
+        # Check that headerContainer.innerHTML does not have modal-kudos or modal-post buttons in the top header
+        header_block_start = js.find("headerContainer.innerHTML = inviteBannerHtml +")
+        self.assertNotEqual(header_block_start, -1)
+        header_block_end = js.find("curateBox =", header_block_start)
+        self.assertNotEqual(header_block_end, -1)
+        header_snippet = js[header_block_start:header_block_end]
+
+        self.assertNotIn("openModal('modal-kudos')", header_snippet)
+        self.assertNotIn("openModal('modal-post')", header_snippet)
+
+        index_path = os.path.join(base_dir, "static", "index.html")
+        with open(index_path, "r", encoding="utf-8") as f:
+            html = f.read()
+
+        # Check that Members List tab button is removed from the tablist
+        self.assertNotIn('id="gtab-roster"', html)
+        self.assertIn('id="gcontent-roster"', html)
+
+    def test_leave_space_compact_button_and_confirmation(self):
+        """
+        Verifies that the Leave Space button is rendered as a compact secondary button
+        and that toggleGroupMembership asks for confirmation before executing the leave action.
+        """
+        base_dir = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+        app_path = os.path.join(base_dir, "static", "app.js")
+        with open(app_path, "r", encoding="utf-8") as f:
+            js = f.read()
+
+        # Check Leave Space button styling (compact text-xs, rounded-xl)
+        self.assertIn('id="btn-leave-space"', js)
+        self.assertIn('text-xs rounded-xl', js)
+
+        # Check toggleGroupMembership confirmation prompt for 'leave' action
+        self.assertIn('if (action === "leave")', js)
+        self.assertIn('confirm(', js)
+        self.assertIn('Are you sure you want to leave', js)
+
+    def test_space_chat_board_tab_label(self):
+        """
+        Verifies that the Space chat tab and header are labeled '💬 Chat Board'
+        instead of 'Common Chat Board'.
+        """
+        base_dir = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+        index_path = os.path.join(base_dir, "static", "index.html")
+        with open(index_path, "r", encoding="utf-8") as f:
+            html = f.read()
+
+        self.assertIn("💬 Chat Board", html)
+        self.assertNotIn("Common Chat Board", html)
+
+    def test_user_and_content_moderation_features(self):
+        """
+        Verifies all three moderation and safety features:
+        1. Direct Admin Controls (comment/chat message deletion, member kick/ban, user account ban/suspension).
+        2. Community Content Reporting & Admin Queue (#view-moderation, #modal-report-content, POST /api/reports, GET /api/admin/reports, POST /api/admin/reports/<id>/resolve).
+        3. Automated Safety Guardrails (keyword spam filter and rate limiting).
+        """
+        base_dir = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+        index_path = os.path.join(base_dir, "static", "index.html")
+        app_path = os.path.join(base_dir, "static", "app.js")
+        with open(index_path, "r", encoding="utf-8") as f:
+            html = f.read()
+        with open(app_path, "r", encoding="utf-8") as f:
+            js = f.read()
+
+        # Check frontend elements and window bindings
+        self.assertIn('id="view-moderation"', html)
+        self.assertIn('id="modal-report-content"', html)
+        self.assertIn('id="nav-moderation-link"', html)
+        self.assertIn("window.deleteComment = deleteComment", js)
+        self.assertIn("window.deleteGroupChatMessage = deleteGroupChatMessage", js)
+        self.assertIn("window.toggleUserBan = toggleUserBan", js)
+        self.assertIn("window.kickGroupMember = kickGroupMember", js)
+        self.assertIn("window.openReportModal = openReportModal", js)
+        self.assertIn("window.submitContentReport = submitContentReport", js)
+        self.assertIn("window.loadModerationQueue = loadModerationQueue", js)
+        self.assertIn("window.resolveReport = resolveReport", js)
+
+        # Authenticate Site Admin (Maya, user 1) and regular user (Elena, user 3)
+        token_admin = self.get_token("maya@gooddeeds.space")
+        headers_admin = self.get_auth_headers(token_admin)
+        token_user = self.get_token("elena@gooddeeds.space")
+        headers_user = self.get_auth_headers(token_user)
+
+        # Step 3: Verify Automated Keyword Filter blocks spam post
+        spam_post = {
+            "title": "Spam Post",
+            "theme": "General",
+            "content": "Click here to buy cheap viagra and crypto airdrop scam!",
+            "group_ids": [1]
+        }
+        status, _, body = self.make_request("POST", "/api/posts", headers=headers_user, body=spam_post)
+        self.assertEqual(status, 400)
+        self.assertIn("blocked", body.get("error", "").lower())
+
+        # Create a clean post by Elena to test reporting & resolution
+        clean_post = {
+            "title": "Normal Community Post",
+            "theme": "General",
+            "content": "Hello neighbors, let's organize a community cleanup this weekend!",
+            "group_ids": [1]
+        }
+        status, _, body = self.make_request("POST", "/api/posts", headers=headers_user, body=clean_post)
+        self.assertEqual(status, 201)
+        post_id = (body.get("item") or body.get("post", {}))["id"]
+
+        # Step 2: Submit a community report on that post
+        report_payload = {
+            "target_type": "FEED_ITEM",
+            "target_id": post_id,
+            "reason": "Off-topic / Misleading",
+            "notes": "Testing community report queue"
+        }
+        status, _, body = self.make_request("POST", "/api/reports", headers=headers_user, body=report_payload)
+        self.assertEqual(status, 201)
+        self.assertTrue(body.get("success"))
+
+        # Admin fetches moderation queue
+        status, _, body = self.make_request("GET", "/api/admin/reports", headers=headers_admin)
+        self.assertEqual(status, 200)
+        reports = body.get("reports", [])
+        self.assertTrue(len(reports) > 0)
+        matching_report = next((r for r in reports if r["target_id"] == post_id and r["target_type"] == "FEED_ITEM"), None)
+        self.assertIsNotNone(matching_report)
+        report_id = matching_report["id"]
+
+        # Admin resolves the report via 'dismiss'
+        status, _, body = self.make_request("POST", f"/api/admin/reports/{report_id}/resolve", headers=headers_admin, body={"action": "dismiss"})
+        self.assertEqual(status, 200)
+        self.assertTrue(body.get("success"))
+
+        # Step 1: Verify Site Admin can suspend/ban a user account and restore them
+        status, _, body = self.make_request("POST", "/api/admin/users/3/ban", headers=headers_admin, body={"ban": True})
+        self.assertEqual(status, 200)
+        self.assertTrue(body.get("success"))
+
+        # Verify suspended user token is invalidated
+        status, _, body = self.make_request("GET", "/api/auth/me", headers=headers_user)
+        self.assertEqual(status, 401)
+
+        # Restore Elena's account so subsequent tests aren't affected
+        status, _, body = self.make_request("POST", "/api/admin/users/3/ban", headers=headers_admin, body={"ban": False})
+        self.assertEqual(status, 200)
+        self.assertTrue(body.get("success"))
+
+    def test_google_analytics_integration(self):
+        """
+        Verifies that Google Analytics (GA4 gtag.js) script tag is present in static/index.html,
+        and that SPA route pageview and custom event helpers (trackAnalyticsPageView, trackAnalyticsEvent)
+        are implemented and exported in static/app.js.
+        """
+        base_dir = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+        index_path = os.path.join(base_dir, "static", "index.html")
+        app_path = os.path.join(base_dir, "static", "app.js")
+        with open(index_path, "r", encoding="utf-8") as f:
+            html = f.read()
+        with open(app_path, "r", encoding="utf-8") as f:
+            js = f.read()
+
+        self.assertIn("https://www.googletagmanager.com/gtag/js", html)
+        self.assertIn("window.GA_MEASUREMENT_ID", html)
+        self.assertIn("gtag('config'", html)
+
+        self.assertIn("function trackAnalyticsPageView(", js)
+        self.assertIn("function trackAnalyticsEvent(", js)
+        self.assertIn("window.trackAnalyticsPageView = trackAnalyticsPageView", js)
+        self.assertIn("window.trackAnalyticsEvent = trackAnalyticsEvent", js)
+        self.assertIn("trackAnalyticsPageView(path)", js)
+
+    def test_comment_and_group_chat_deletion_integration(self):
+        """
+        Verifies granular content deletion endpoints for comments (DELETE /api/comments/<cid>)
+        and Space Chat Board messages (DELETE /api/groups/<gid>/chat/<mid>).
+        """
+        token_admin = self.get_token("maya@gooddeeds.space")
+        headers_admin = self.get_auth_headers(token_admin)
+
+        # 1. Create a post and add a comment on it
+        post_res = self.make_request("POST", "/api/posts", headers=headers_admin, body={
+            "title": "Comment Deletion Test Post",
+            "theme": "General",
+            "content": "Testing comment deletion",
+            "group_ids": [1]
+        })
+        self.assertEqual(post_res[0], 201)
+        post_id = (post_res[2].get("item") or post_res[2].get("post"))["id"]
+
+        comm_res = self.make_request("POST", "/api/comments", headers=headers_admin, body={
+            "item_id": post_id,
+            "content": "Comment to be deleted"
+        })
+        self.assertEqual(comm_res[0], 201)
+        comm_id = comm_res[2]["comment"]["id"]
+
+        # 2. Delete the comment via DELETE /api/comments/<cid>
+        del_comm_res = self.make_request("DELETE", f"/api/comments/{comm_id}", headers=headers_admin)
+        self.assertEqual(del_comm_res[0], 200)
+        self.assertTrue(del_comm_res[2].get("success"))
+
+        # 3. Post a message to Space Chat Board and delete it via DELETE /api/groups/1/chat/<mid>
+        chat_res = self.make_request("POST", "/api/groups/1/chat", headers=headers_admin, body={
+            "message": "Temporary chat board message"
+        })
+        self.assertEqual(chat_res[0], 201)
+        msg_id = chat_res[2]["message"]["id"]
+
+        del_chat_res = self.make_request("DELETE", f"/api/groups/1/chat/{msg_id}", headers=headers_admin)
+        self.assertEqual(del_chat_res[0], 200)
+        self.assertTrue(del_chat_res[2].get("success"))
+
+    def test_group_member_kick_and_ban_integration(self):
+        """
+        Verifies that kicking and banning a member from a Space (POST /api/groups/<gid>/members/kick)
+        removes them and blocks them from re-joining the Space (POST /api/groups/<gid>/join returns 403).
+        """
+        token_admin = self.get_token("maya@gooddeeds.space")
+        headers_admin = self.get_auth_headers(token_admin)
+        token_elena = self.get_token("elena@gooddeeds.space")
+        headers_elena = self.get_auth_headers(token_elena)
+
+        # Ensure Elena joins Space 2 first
+        self.make_request("POST", "/api/groups/2/join", headers=headers_elena)
+
+        # Admin kicks and bans Elena from Space 2
+        kick_res = self.make_request("POST", "/api/groups/2/members/kick", headers=headers_admin, body={
+            "user_id": 3,
+            "ban": True,
+            "reason": "Testing Space ban enforcement"
+        })
+        self.assertEqual(kick_res[0], 200)
+        self.assertTrue(kick_res[2].get("success"))
+
+        # Elena attempts to re-join Space 2 and is blocked with 403
+        rejoin_res = self.make_request("POST", "/api/groups/2/join", headers=headers_elena)
+        self.assertEqual(rejoin_res[0], 403)
+        self.assertIn("banned", rejoin_res[2].get("error", "").lower())
+
+    def test_automated_spam_filter_across_kudos_comments_and_chat(self):
+        """
+        Verifies that automated safety guardrails block spam keywords across
+        POST /api/kudos, POST /api/comments, and POST /api/groups/<gid>/chat.
+        """
+        token = self.get_token("maya@gooddeeds.space")
+        headers = self.get_auth_headers(token)
+
+        # 1. Blocked Kudos
+        kudos_res = self.make_request("POST", "/api/kudos", headers=headers, body={
+            "recipient_id": 3,
+            "content": "Congratulations! Click here to win prize free bitcoin giveaway!"
+        })
+        self.assertEqual(kudos_res[0], 400)
+        self.assertIn("blocked", kudos_res[2].get("error", "").lower())
+
+        # 2. Blocked Comment
+        comm_res = self.make_request("POST", "/api/comments", headers=headers, body={
+            "item_id": 1,
+            "content": "Check out this crypto scam link!"
+        })
+        self.assertEqual(comm_res[0], 400)
+        self.assertIn("blocked", comm_res[2].get("error", "").lower())
+
+        # 3. Blocked Space Chat Board message
+        chat_res = self.make_request("POST", "/api/groups/1/chat", headers=headers, body={
+            "message": "malicious-phishing-link for everyone"
+        })
+        self.assertEqual(chat_res[0], 400)
+        self.assertIn("blocked", chat_res[2].get("error", "").lower())
+
+
+
+
+

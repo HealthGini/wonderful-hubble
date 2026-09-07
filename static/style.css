@@ -1,15 +1,21 @@
-/* gooddeeds.space Universal Accessible Stylesheet */
+/* gooddeeds.space Modern Soft Accessible Stylesheet */
+@import url('https://fonts.googleapis.com/css2?family=Outfit:wght@500;600;700;800;900&family=Plus+Jakarta+Sans:wght@400;500;600;700;800&display=swap');
 
 @layer base {
   html {
     font-size: 16px;
     scroll-behavior: smooth;
-    background-color: #f8fafc;
-    color: #0f172a;
-    font-family: system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, Cantarell, 'Inter', 'Helvetica Neue', sans-serif;
+    background-color: #faf9f6;
+    color: #1c1917;
+    font-family: 'Plus Jakarta Sans', system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
   }
   body {
     line-height: 1.6;
+    background-color: #faf9f6;
+  }
+  h1, h2, h3, h4, h5, h6 {
+    font-family: 'Outfit', 'Plus Jakarta Sans', sans-serif;
+    letter-spacing: -0.02em;
   }
 }
 
@@ -17,16 +23,16 @@
 button, 
 input[type="button"], 
 input[type="submit"], 
-input[type="reset"],
+input[type="reset"], 
 select,
 a.touch-target {
   min-height: 48px;
   min-width: 48px;
 }
 
-/* Sleek High Contrast Focus States */
+/* Sleek High Contrast Focus States with Warm Amber Glow */
 *:focus-visible {
-  outline: 2px solid #6366f1 !important;
+  outline: 2px solid #f59e0b !important;
   outline-offset: 2px !important;
 }
 
@@ -36,30 +42,30 @@ a.touch-target {
   height: 8px;
 }
 ::-webkit-scrollbar-track {
-  background: #f1f5f9;
+  background: #f5f5f0;
 }
 ::-webkit-scrollbar-thumb {
-  background: #cbd5e1;
+  background: #d6d3d1;
   border-radius: 9999px;
 }
 ::-webkit-scrollbar-thumb:hover {
-  background: #94a3b8;
+  background: #a8a29e;
 }
 
 /* Modal Glassmorphism Backdrop */
 dialog::backdrop {
-  background: rgba(15, 23, 42, 0.65);
-  backdrop-filter: blur(8px);
+  background: rgba(28, 25, 23, 0.45);
+  backdrop-filter: blur(12px);
 }
 
 dialog[open] {
-  animation: modalSlideIn 0.2s cubic-bezier(0.16, 1, 0.3, 1) normal;
+  animation: modalPopIn 0.25s cubic-bezier(0.16, 1, 0.3, 1) normal;
 }
 
-@keyframes modalSlideIn {
+@keyframes modalPopIn {
   from {
     opacity: 0;
-    transform: translateY(12px) scale(0.97);
+    transform: translateY(16px) scale(0.96);
   }
   to {
     opacity: 1;
@@ -67,13 +73,46 @@ dialog[open] {
   }
 }
 
-/* Modern Card Accents */
+/* Modern Card Accents with Soft Curves & Warm Glow */
 .kudos-card {
-  border-left: 4px solid #f59e0b;
-  background: linear-gradient(135deg, #fffbeb 0%, #ffffff 100%);
+  border-left: 5px solid #f59e0b;
+  background: linear-gradient(135deg, #fffdf8 0%, #ffffff 100%);
+  box-shadow: 0 10px 30px -4px rgba(245, 158, 11, 0.06), 0 2px 8px -2px rgba(28, 25, 23, 0.03);
+  border-radius: 1.5rem;
 }
 
 .post-card {
-  border-left: 4px solid #6366f1;
-  background: #ffffff;
+  border-left: 5px solid #6366f1;
+  background: linear-gradient(135deg, #fafaff 0%, #ffffff 100%);
+  box-shadow: 0 10px 30px -4px rgba(99, 102, 241, 0.05), 0 2px 8px -2px rgba(28, 25, 23, 0.03);
+  border-radius: 1.5rem;
+}
+
+/* Pill Buttons & Humane Hover Micro-Interactions */
+.pill-btn {
+  border-radius: 9999px;
+  transition: all 0.2s cubic-bezier(0.16, 1, 0.3, 1);
+}
+.pill-btn:hover {
+  transform: translateY(-1px);
+}
+.pill-btn:active {
+  transform: scale(0.98);
+}
+
+/* Disable browser-native search clear button to prevent duplicate cross marks */
+input[type="search"]::-webkit-search-cancel-button,
+input[type="search"]::-webkit-search-decoration,
+input[type="search"]::-webkit-search-results-button,
+input[type="search"]::-webkit-search-results-decoration {
+  -webkit-appearance: none;
+  appearance: none;
+  display: none;
+}
+
+input[type="search"]::-ms-clear,
+input[type="search"]::-ms-reveal {
+  display: none;
+  width: 0;
+  height: 0;
 }

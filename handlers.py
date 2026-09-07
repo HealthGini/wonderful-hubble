@@ -67,6 +67,40 @@ def camel_case_keys(obj):
         return [camel_case_keys(x) for x in obj]
     return obj
 
+_user_rate_limit_timestamps = {}
+
+BLOCKLISTED_KEYWORDS = [
+    "buy cheap viagra",
+    "crypto scam",
+    "click here to win prize",
+    "free bitcoin giveaway",
+    "spam-bot-payload",
+    "malicious-phishing-link"
+]
+
+def check_content_moderation(user, text_fields):
+    """
+    Verifies rate limits and checks text content against blocklisted spam/harmful keywords.
+    Returns (is_allowed: bool, error_message: str)
+    """
+    if not user:
+        return True, None
+    import time
+    now = time.time()
+    uid = user["id"]
+    timestamps = _user_rate_limit_timestamps.get(uid, [])
+    timestamps = [t for t in timestamps if now - t < 60.0]
+    if len(timestamps) >= 120:
+        return False, "Rate limit exceeded. Please wait a moment before posting again."
+    timestamps.append(now)
+    _user_rate_limit_timestamps[uid] = timestamps
+
+    full_text = " ".join([str(t or "") for t in text_fields]).lower()
+    for keyword in BLOCKLISTED_KEYWORDS:
+        if keyword in full_text:
+            return False, f"Content blocked by automated safety filter (prohibited phrase: '{keyword}')."
+    return True, None
+
 def get_fido_server(headers):
     origin = headers.get("Origin") or headers.get("origin")
     if not origin:
@@ -104,7 +138,7 @@ def get_user_from_token(headers):
     conn = get_db()
     cursor = conn.cursor()
     cursor.execute("""
-        SELECT u.id, u.email, u.username, u.phone, u.avatar_url, u.bio, u.is_site_admin, u.oauth_provider, u.oauth_id
+        SELECT u.id, u.email, u.username, u.phone, u.avatar_url, u.bio, u.is_site_admin, u.is_banned, u.oauth_provider, u.oauth_id
         FROM sessions s
         JOIN users u ON s.user_id = u.id
         WHERE s.token = ?
@@ -112,6 +146,8 @@ def get_user_from_token(headers):
     row = cursor.fetchone()
     conn.close()
     if row:
+        if row["is_banned"] == 1:
+            return None
         return dict(row)
     return None
 
@@ -212,7 +248,7 @@ def enrich_items_list(raw_items, user_id=None):
             item["user_reactions"] = user_reactions
 
             cursor.execute("""
-                SELECT c.id, c.content, c.created_at, u.username as author_name, u.avatar_url as author_avatar
+                SELECT c.id, c.content, c.created_at, u.username as author_name, u.avatar_url as author_avatar, c.user_id
                 FROM comments c
                 JOIN users u ON c.user_id = u.id
                 WHERE c.item_id = ?
@@ -718,7 +754,7 @@ def handle_api_request(method, path, headers, body_bytes):
         conn = get_db()
         cursor = conn.cursor()
         cursor.execute("""
-            SELECT id, email, username, phone, avatar_url, bio, is_site_admin, oauth_provider, oauth_id
+            SELECT id, email, username, phone, avatar_url, bio, is_site_admin, is_banned, oauth_provider, oauth_id
             FROM users
             WHERE (LOWER(email) = LOWER(?) OR LOWER(username) = LOWER(?)) AND password_hash = ?
         """, (email, email, pw_hash))
@@ -726,6 +762,9 @@ def handle_api_request(method, path, headers, body_bytes):
         if not row:
             conn.close()
             return error_response("Invalid email or password.", 401)
+        if row["is_banned"] == 1:
+            conn.close()
+            return error_response("Account suspended by site administration.", 403)
         user_dict = dict(row)
         token = str(uuid.uuid4())
         cursor.execute("INSERT INTO sessions (token, user_id) VALUES (?, ?)", (token, user_dict["id"]))
@@ -876,13 +915,13 @@ def handle_api_request(method, path, headers, body_bytes):
         conn = get_db()
         cursor = conn.cursor()
         if target_seg.isdigit():
-            cursor.execute("SELECT id, username, avatar_url, bio, created_at FROM users WHERE id = ?", (int(target_seg),))
+            cursor.execute("SELECT id, username, avatar_url, bio, is_site_admin, is_banned, created_at FROM users WHERE id = ?", (int(target_seg),))
         elif target_seg.lower() in ("profile", "me", "undefined", "null") and user:
-            cursor.execute("SELECT id, username, avatar_url, bio, created_at FROM users WHERE id = ?", (user["id"],))
+            cursor.execute("SELECT id, username, avatar_url, bio, is_site_admin, is_banned, created_at FROM users WHERE id = ?", (user["id"],))
         elif target_seg.lower() in ("profile", "me", "undefined", "null"):
-            cursor.execute("SELECT id, username, avatar_url, bio, created_at FROM users WHERE id = 1")
+            cursor.execute("SELECT id, username, avatar_url, bio, is_site_admin, is_banned, created_at FROM users WHERE id = 1")
         else:
-            cursor.execute("SELECT id, username, avatar_url, bio, created_at FROM users WHERE username = ? OR email = ?", (target_seg, target_seg))
+            cursor.execute("SELECT id, username, avatar_url, bio, is_site_admin, is_banned, created_at FROM users WHERE username = ? OR email = ?", (target_seg, target_seg))
         u_row = cursor.fetchone()
         if not u_row:
             conn.close()
@@ -1019,6 +1058,117 @@ def handle_api_request(method, path, headers, body_bytes):
         item_obj = items[0]
         return json_response({"item": item_obj, "kudos": item_obj, "post": item_obj})
 
+    # ================== EDIT / UPDATE ITEM (KUDOS / POSTS / EVENTS) ==================
+    if (path_only.startswith("/api/feed/") or path_only.startswith("/api/kudos/") or path_only.startswith("/api/posts/") or path_only.startswith("/api/post/")) and method in ("PUT", "PATCH"):
+        item_id_str = path_only.split("/")[-1]
+        try:
+            item_id = int(item_id_str)
+        except ValueError:
+            return error_response("Invalid item ID")
+        if not user:
+            return error_response("Authentication required", 401)
+        conn = get_db()
+        cursor = conn.cursor()
+        cursor.execute("SELECT id, author_id, recipient_id, item_type FROM feed_items WHERE id = ?", (item_id,))
+        row = cursor.fetchone()
+        if not row:
+            conn.close()
+            return error_response("Item not found", 404)
+        is_owner = (row["author_id"] == user["id"]) or (row["recipient_id"] == user["id"])
+        is_admin = (user.get("is_site_admin") == 1)
+        if not (is_owner or is_admin):
+            conn.close()
+            return error_response("Forbidden: You do not have permission to edit this item", 403)
+
+        title = body.get("title", "").strip()
+        theme = body.get("theme", "").strip() or "Events"
+        content = body.get("content", "").strip()
+        raw_res_url = body.get("resource_url") or body.get("attachments") or ""
+        if isinstance(raw_res_url, (list, dict)):
+            resource_url = json.dumps(raw_res_url)
+        else:
+            resource_url = str(raw_res_url or "").strip()
+        event_date = body.get("event_date", "").strip() or None
+        post_subtype = body.get("post_subtype", "").strip().upper() or None
+        extracted_text = extract_resource_text(resource_url)
+
+        cursor.execute("""
+            UPDATE feed_items
+            SET title = COALESCE(NULLIF(?, ''), title),
+                theme = COALESCE(NULLIF(?, ''), theme),
+                content = COALESCE(NULLIF(?, ''), content),
+                resource_url = ?,
+                event_date = COALESCE(?, event_date),
+                post_subtype = COALESCE(?, post_subtype),
+                extracted_text = ?
+            WHERE id = ?
+        """, (title, theme, content, resource_url, event_date, post_subtype, extracted_text, item_id))
+        conn.commit()
+        conn.close()
+
+        enriched = fetch_enriched_items("WHERE f.id = ?", (item_id,), user["id"])
+        item_obj = enriched[0] if enriched else {"id": item_id, "title": title}
+        return json_response({"success": True, "message": "Post updated successfully", "item": item_obj, "post": item_obj})
+
+    # ================== DELETE ITEM (KUDOS / POSTS / EVENTS) ==================
+    if (path_only.startswith("/api/feed/") or path_only.startswith("/api/kudos/") or path_only.startswith("/api/posts/") or path_only.startswith("/api/post/")) and method == "DELETE":
+        item_id_str = path_only.split("/")[-1]
+        try:
+            item_id = int(item_id_str)
+        except ValueError:
+            return error_response("Invalid item ID")
+        if not user:
+            return error_response("Authentication required", 401)
+        conn = get_db()
+        cursor = conn.cursor()
+        cursor.execute("SELECT id, author_id, recipient_id, item_type FROM feed_items WHERE id = ?", (item_id,))
+        row = cursor.fetchone()
+        if not row:
+            conn.close()
+            return error_response("Item not found", 404)
+        is_owner = (row["author_id"] == user["id"]) or (row["recipient_id"] == user["id"])
+        is_admin = (user.get("is_site_admin") == 1)
+        if not (is_owner or is_admin):
+            conn.close()
+            return error_response("Forbidden: You do not have permission to delete this post", 403)
+        cursor.execute("DELETE FROM feed_items WHERE id = ?", (item_id,))
+        conn.commit()
+        conn.close()
+        return json_response({"success": True, "message": "Post deleted successfully", "deleted_id": item_id})
+
+    # ================== DELETE GROUP RESOURCE ==================
+    if path_only.startswith("/api/groups/") and "/resources/" in path_only and method == "DELETE":
+        if not user:
+            return error_response("Login required", 401)
+        parts = path_only.split("/")
+        try:
+            gid = int(parts[3])
+            rid = int(parts[5])
+        except (ValueError, IndexError):
+            return error_response("Invalid group or resource ID")
+        
+        conn = get_db()
+        cursor = conn.cursor()
+        cursor.execute("SELECT id, added_by FROM group_resources WHERE id = ? AND group_id = ?", (rid, gid))
+        r_row = cursor.fetchone()
+        if not r_row:
+            conn.close()
+            return error_response("Resource not found", 404)
+        
+        cursor.execute("SELECT is_admin FROM group_members WHERE group_id = ? AND user_id = ?", (gid, user["id"]))
+        m_row = cursor.fetchone()
+        is_admin = (m_row and m_row["is_admin"] == 1) or (user.get("is_site_admin") == 1)
+        is_owner = (r_row["added_by"] == user["id"])
+        if not (is_owner or is_admin):
+            conn.close()
+            return error_response("Forbidden: You do not have permission to delete this resource", 403)
+
+        cursor.execute("DELETE FROM group_resources WHERE id = ? AND group_id = ?", (rid, gid))
+        conn.commit()
+        conn.close()
+        return json_response({"success": True, "message": "Resource deleted successfully", "deleted_id": rid})
+
+
     # ================== GET FEEDS / KUDOS / POSTS COLLECTIONS ==================
     if path_only in ("/api/feed", "/api/kudos", "/api/posts") and method == "GET":
         where_parts = []
@@ -1050,9 +1200,34 @@ def handle_api_request(method, path, headers, body_bytes):
             where_parts.append("f.recipient_id = ?")
             params.append(int(recipient_id))
 
+        subtype_param = query.get("subtype", [""])[0].strip().upper()
+        if subtype_param:
+            if subtype_param == "EVENT":
+                where_parts.append("(f.post_subtype = 'EVENT' OR (f.event_date IS NOT NULL AND f.event_date != ''))")
+            elif subtype_param == "RESOURCE":
+                where_parts.append("(f.post_subtype = 'RESOURCE' OR (f.resource_url IS NOT NULL AND f.resource_url != '' AND f.resource_url != '[]'))")
+            else:
+                where_parts.append("f.post_subtype = ?")
+                params.append(subtype_param)
+
         if theme:
-            where_parts.append("f.theme = ?")
-            params.append(theme)
+            THEME_ALIASES = {
+                "Inspiring Stories": ["Inspiring Stories", "Inspiring Story", "Inspiring Stories & Wisdom"],
+                "Wellbeing & Care": ["Wellbeing & Care", "Mental Health", "Wellness", "Mindfulness", "Mental Health & Peer Listening"],
+                "Skills & Learning": ["Skills & Learning", "Educational", "Education", "Education & Skill Building"],
+                "Community & Action": ["Community & Action", "General", "General & Mutual Aid"]
+            }
+            if theme == "Events":
+                where_parts.append("(f.post_subtype = 'EVENT' OR f.theme = 'Events' OR (f.event_date IS NOT NULL AND f.event_date != ''))")
+            elif theme == "Resources":
+                where_parts.append("(f.post_subtype = 'RESOURCE' OR f.theme = 'Resources' OR (f.resource_url IS NOT NULL AND f.resource_url != '' AND f.resource_url != '[]'))")
+            elif theme in THEME_ALIASES:
+                aliases = THEME_ALIASES[theme]
+                where_parts.append(f"f.theme IN ({','.join(['?']*len(aliases))})")
+                params.extend(aliases)
+            else:
+                where_parts.append("f.theme = ?")
+                params.append(theme)
 
         if group_id:
             if group_id == "my_spaces":
@@ -1077,21 +1252,23 @@ def handle_api_request(method, path, headers, body_bytes):
                 if author_tokens:
                     author_name = author_tokens[0]
                     remaining = (prefix + " " + " ".join(author_tokens[1:])).strip()
-                    where_parts.append("u.username LIKE ?")
-                    params.append(f"%{author_name}%")
+                    where_parts.append("(u.username LIKE ? OR ru.username LIKE ?)")
+                    params.extend([f"%{author_name}%", f"%{author_name}%"])
                     if remaining:
                         like_q = f"%{remaining}%"
-                        where_parts.append("(f.title LIKE ? OR f.content LIKE ? OR f.theme LIKE ? OR f.extracted_text LIKE ? OR f.resource_url LIKE ?)")
-                        params.extend([like_q, like_q, like_q, like_q, like_q])
+                        where_parts.append("(f.title LIKE ? OR f.content LIKE ? OR f.theme LIKE ? OR f.extracted_text LIKE ? OR f.resource_url LIKE ? OR u.username LIKE ? OR ru.username LIKE ?)")
+                        params.extend([like_q, like_q, like_q, like_q, like_q, like_q, like_q])
                 else:
                     if prefix:
                         like_q = f"%{prefix}%"
-                        where_parts.append("(f.title LIKE ? OR f.content LIKE ? OR f.theme LIKE ? OR f.extracted_text LIKE ? OR f.resource_url LIKE ?)")
-                        params.extend([like_q, like_q, like_q, like_q, like_q])
+                        where_parts.append("(f.title LIKE ? OR f.content LIKE ? OR f.theme LIKE ? OR f.extracted_text LIKE ? OR f.resource_url LIKE ? OR u.username LIKE ? OR ru.username LIKE ?)")
+                        params.extend([like_q, like_q, like_q, like_q, like_q, like_q, like_q])
             else:
+                clean_search = search.lstrip("@")
                 like_q = f"%{search}%"
-                where_parts.append("(f.title LIKE ? OR f.content LIKE ? OR f.theme LIKE ? OR f.extracted_text LIKE ? OR f.resource_url LIKE ?)")
-                params.extend([like_q, like_q, like_q, like_q, like_q])
+                like_user = f"%{clean_search}%"
+                where_parts.append("(f.title LIKE ? OR f.content LIKE ? OR f.theme LIKE ? OR f.extracted_text LIKE ? OR f.resource_url LIKE ? OR u.username LIKE ? OR ru.username LIKE ?)")
+                params.extend([like_q, like_q, like_q, like_q, like_q, like_user, like_user])
 
         where_clause = ""
         if where_parts:
@@ -1133,6 +1310,10 @@ def handle_api_request(method, path, headers, body_bytes):
 
         if not recipient_id or not content:
             return error_response("Recipient and message are required.")
+
+        ok, mod_err = check_content_moderation(user, [content])
+        if not ok:
+            return error_response(mod_err, 400)
 
         conn = get_db()
         cursor = conn.cursor()
@@ -1187,7 +1368,7 @@ def handle_api_request(method, path, headers, body_bytes):
         title = body.get("title", "").strip()
         theme = body.get("theme", "").strip()
         content = body.get("content", "").strip()
-        raw_res_url = body.get("resource_url", "")
+        raw_res_url = body.get("resource_url") or body.get("attachments") or ""
         if isinstance(raw_res_url, (list, dict)):
             resource_url = json.dumps(raw_res_url)
         else:
@@ -1196,10 +1377,14 @@ def handle_api_request(method, path, headers, body_bytes):
         post_subtype = body.get("post_subtype", "").strip().upper()
         event_date = body.get("event_date", "").strip()
 
-        VALID_THEMES = {"Inspiring Story", "Mental Health", "Wellness", "Mindfulness", "Educational", "General", "Events", "Resources", "Inspiring Stories", "Education", "Community Resources", "Inspiring Stories & Wisdom", "Mental Health & Peer Listening", "Education & Skill Building", "General & Mutual Aid", "Upcoming Community Events", "General Community Resources"}
+        VALID_THEMES = {"Inspiring Stories", "Wellbeing & Care", "Skills & Learning", "Community & Action", "Inspiring Story", "Mental Health", "Wellness", "Mindfulness", "Educational", "General", "Events", "Resources", "Education", "Community Resources", "Inspiring Stories & Wisdom", "Mental Health & Peer Listening", "Education & Skill Building", "General & Mutual Aid", "Upcoming Community Events", "General Community Resources"}
 
         if not title or not theme or not content:
             return error_response("Title, theme, and content are required.")
+
+        ok, mod_err = check_content_moderation(user, [title, content, resource_url])
+        if not ok:
+            return error_response(mod_err, 400)
 
         if theme not in VALID_THEMES:
             return error_response(f"Invalid theme: {theme}", 400)
@@ -1263,13 +1448,17 @@ def handle_api_request(method, path, headers, body_bytes):
         if not item_id or not content:
             return error_response("Item ID and comment content required.")
 
+        ok, mod_err = check_content_moderation(user, [content])
+        if not ok:
+            return error_response(mod_err, 400)
+
         conn = get_db()
         cursor = conn.cursor()
         cursor.execute("INSERT INTO comments (item_id, user_id, content) VALUES (?, ?, ?)", (item_id, user["id"], content))
         cid = cursor.lastrowid
         conn.commit()
         cursor.execute("""
-            SELECT c.id, c.content, c.created_at, u.username as author_name, u.avatar_url as author_avatar
+            SELECT c.id, c.content, c.created_at, u.username as author_name, u.avatar_url as author_avatar, c.user_id
             FROM comments c
             JOIN users u ON c.user_id = u.id
             WHERE c.id = ?
@@ -1277,6 +1466,44 @@ def handle_api_request(method, path, headers, body_bytes):
         new_c = dict(cursor.fetchone())
         conn.close()
         return json_response({"comment": new_c, "success": True}, 201)
+
+    if path_only.startswith("/api/comments/") and method == "DELETE":
+        if not user:
+            return error_response("Login required to delete comment", 401)
+        try:
+            cid = int(path_only.split("/")[-1])
+        except ValueError:
+            return error_response("Invalid comment ID")
+        conn = get_db()
+        cursor = conn.cursor()
+        cursor.execute("SELECT id, user_id, item_id FROM comments WHERE id = ?", (cid,))
+        c_row = cursor.fetchone()
+        if not c_row:
+            conn.close()
+            return error_response("Comment not found", 404)
+        is_owner = (c_row["user_id"] == user["id"])
+        is_admin = (user.get("is_site_admin") == 1)
+        if not (is_owner or is_admin):
+            # Check if post author or space admin
+            cursor.execute("SELECT author_id FROM feed_items WHERE id = ?", (c_row["item_id"],))
+            f_row = cursor.fetchone()
+            if f_row and f_row["author_id"] == user["id"]:
+                is_owner = True
+            else:
+                cursor.execute("""
+                    SELECT gm.is_admin FROM item_groups ig
+                    JOIN group_members gm ON ig.group_id = gm.group_id
+                    WHERE ig.item_id = ? AND gm.user_id = ? AND gm.is_admin = 1
+                """, (c_row["item_id"], user["id"]))
+                if cursor.fetchone():
+                    is_admin = True
+        if not (is_owner or is_admin):
+            conn.close()
+            return error_response("Forbidden: You do not have permission to delete this comment", 403)
+        cursor.execute("DELETE FROM comments WHERE id = ?", (cid,))
+        conn.commit()
+        conn.close()
+        return json_response({"success": True, "deleted_id": cid})
 
     # ================== GROUPS DIRECTORY & DETAIL ==================
     if path_only == "/api/groups" and method == "GET":
@@ -1318,8 +1545,16 @@ def handle_api_request(method, path, headers, body_bytes):
             except Exception:
                 g["themes"] = []
             
-            if theme_filter and theme_filter not in g["themes"]:
-                continue
+            if theme_filter:
+                THEME_ALIASES = {
+                    "Inspiring Stories": ["Inspiring Stories", "Inspiring Story", "Inspiring Stories & Wisdom"],
+                    "Wellbeing & Care": ["Wellbeing & Care", "Mental Health", "Wellness", "Mindfulness", "Mental Health & Peer Listening"],
+                    "Skills & Learning": ["Skills & Learning", "Educational", "Education", "Education & Skill Building"],
+                    "Community & Action": ["Community & Action", "General", "General & Mutual Aid"]
+                }
+                target_themes = set(THEME_ALIASES.get(theme_filter, [theme_filter]))
+                if not any(t in g["themes"] for t in target_themes):
+                    continue
 
             cursor.execute("SELECT COUNT(*) as cnt FROM group_members WHERE group_id = ?", (gid,))
             g["member_count"] = cursor.fetchone()["cnt"]
@@ -1426,7 +1661,7 @@ def handle_api_request(method, path, headers, body_bytes):
                 FROM group_messages m
                 JOIN users u ON m.user_id = u.id
                 WHERE m.group_id = ?
-                ORDER BY m.created_at ASC
+                ORDER BY m.created_at DESC, m.id DESC
             """, (gid,))
             rows = [dict(r) for r in cursor.fetchall()]
             conn.close()
@@ -1492,7 +1727,7 @@ def handle_api_request(method, path, headers, body_bytes):
             FROM group_messages m
             JOIN users u ON m.user_id = u.id
             WHERE m.group_id = ?
-            ORDER BY m.created_at ASC
+            ORDER BY m.created_at DESC, m.id DESC
         """, (gid,))
         g_data["chat_messages"] = [dict(r) for r in cursor.fetchall()]
 
@@ -1573,12 +1808,52 @@ def handle_api_request(method, path, headers, body_bytes):
         conn = get_db()
         cursor = conn.cursor()
         if action == "join":
+            cursor.execute("SELECT 1 FROM group_bans WHERE group_id = ? AND user_id = ?", (gid, user["id"]))
+            if cursor.fetchone():
+                conn.close()
+                return error_response("You have been banned from joining this space.", 403)
             cursor.execute("INSERT OR IGNORE INTO group_members (group_id, user_id, is_admin) VALUES (?, ?, 0)", (gid, user["id"]))
         else:
             cursor.execute("DELETE FROM group_members WHERE group_id = ? AND user_id = ?", (gid, user["id"]))
         conn.commit()
         conn.close()
         return json_response({"success": True, "action": action})
+
+    # KICK / BAN MEMBER FROM SPACE
+    if path_only.startswith("/api/groups/") and path_only.endswith("/members/kick") and method == "POST":
+        if not user:
+            return error_response("Login required", 401)
+        parts = path_only.split("/")
+        try:
+            gid = int(parts[3])
+            target_uid = int(body.get("user_id") or body.get("target_user_id"))
+        except (ValueError, TypeError):
+            return error_response("Valid group_id and user_id are required.")
+        ban_flag = bool(body.get("ban", False))
+        reason = str(body.get("reason", "")).strip() or "Removed by space administrator"
+
+        conn = get_db()
+        cursor = conn.cursor()
+        is_super_admin = (user.get("is_site_admin") == 1)
+        is_group_admin = False
+        if not is_super_admin:
+            cursor.execute("SELECT is_admin FROM group_members WHERE group_id = ? AND user_id = ?", (gid, user["id"]))
+            row = cursor.fetchone()
+            if row and row["is_admin"] == 1:
+                is_group_admin = True
+        if not (is_super_admin or is_group_admin):
+            conn.close()
+            return error_response("Forbidden: Requires Space Admin or Site Admin status.", 403)
+
+        cursor.execute("DELETE FROM group_members WHERE group_id = ? AND user_id = ?", (gid, target_uid))
+        if ban_flag:
+            cursor.execute("""
+                INSERT OR REPLACE INTO group_bans (group_id, user_id, banned_by, reason)
+                VALUES (?, ?, ?, ?)
+            """, (gid, target_uid, user["id"], reason))
+        conn.commit()
+        conn.close()
+        return json_response({"success": True, "group_id": gid, "user_id": target_uid, "banned": ban_flag})
 
     # INVITE OTHERS TO JOIN GROUP
     if path_only.startswith("/api/groups/") and path_only.endswith("/invite") and method == "POST":
@@ -1779,6 +2054,10 @@ def handle_api_request(method, path, headers, body_bytes):
         if not msg:
             return error_response("Message cannot be empty.")
 
+        ok, mod_err = check_content_moderation(user, [msg])
+        if not ok:
+            return error_response(mod_err, 400)
+
         conn = get_db()
         cursor = conn.cursor()
         cursor.execute("INSERT INTO group_messages (group_id, user_id, message) VALUES (?, ?, ?)", (gid, user["id"], msg))
@@ -1794,6 +2073,185 @@ def handle_api_request(method, path, headers, body_bytes):
         new_m = dict(cursor.fetchone())
         conn.close()
         return json_response({"message": new_m, "success": True}, 201)
+
+    # DELETE GROUP CHAT MESSAGE
+    if path_only.startswith("/api/groups/") and "/chat/" in path_only and method == "DELETE":
+        if not user:
+            return error_response("Login required", 401)
+        parts = path_only.split("/")
+        try:
+            gid = int(parts[3])
+            mid = int(parts[5])
+        except (ValueError, IndexError):
+            return error_response("Invalid group or message ID")
+        conn = get_db()
+        cursor = conn.cursor()
+        cursor.execute("SELECT id, user_id FROM group_messages WHERE id = ? AND group_id = ?", (mid, gid))
+        m_row = cursor.fetchone()
+        if not m_row:
+            conn.close()
+            return error_response("Message not found", 404)
+        is_owner = (m_row["user_id"] == user["id"])
+        is_super_admin = (user.get("is_site_admin") == 1)
+        is_group_admin = False
+        if not is_super_admin:
+            cursor.execute("SELECT is_admin FROM group_members WHERE group_id = ? AND user_id = ?", (gid, user["id"]))
+            gm_row = cursor.fetchone()
+            if gm_row and gm_row["is_admin"] == 1:
+                is_group_admin = True
+        if not (is_owner or is_super_admin or is_group_admin):
+            conn.close()
+            return error_response("Forbidden: You do not have permission to delete this chat message.", 403)
+        cursor.execute("DELETE FROM group_messages WHERE id = ? AND group_id = ?", (mid, gid))
+        conn.commit()
+        conn.close()
+        return json_response({"success": True, "deleted_id": mid})
+
+    # ================== SITE ADMIN USER BAN / SUSPEND ==================
+    if path_only.startswith("/api/admin/users/") and path_only.endswith("/ban") and method == "POST":
+        if not user or user.get("is_site_admin") != 1:
+            return error_response("Forbidden: Requires Site Admin status.", 403)
+        parts = path_only.split("/")
+        try:
+            target_uid = int(parts[4])
+        except (ValueError, IndexError):
+            return error_response("Invalid target user ID")
+        is_banned_val = 1 if (body.get("is_banned") in (1, True, "1", "true") or body.get("ban") in (1, True, "1", "true")) else 0
+        purge_content = bool(body.get("purge_content", False))
+
+        conn = get_db()
+        cursor = conn.cursor()
+        cursor.execute("UPDATE users SET is_banned = ? WHERE id = ?", (is_banned_val, target_uid))
+        if is_banned_val == 1:
+            cursor.execute("DELETE FROM sessions WHERE user_id = ?", (target_uid,))
+            if purge_content:
+                cursor.execute("DELETE FROM feed_items WHERE author_id = ?", (target_uid,))
+                cursor.execute("DELETE FROM comments WHERE user_id = ?", (target_uid,))
+                cursor.execute("DELETE FROM group_messages WHERE user_id = ?", (target_uid,))
+        conn.commit()
+        conn.close()
+        return json_response({"success": True, "user_id": target_uid, "is_banned": is_banned_val, "purged": purge_content})
+
+    # ================== CONTENT REPORTING & MODERATION QUEUE ==================
+    if path_only == "/api/reports" and method == "POST":
+        if not user:
+            return error_response("Login required to submit reports", 401)
+        target_type = str(body.get("target_type", "")).strip().upper()
+        try:
+            target_id = int(body.get("target_id"))
+        except (ValueError, TypeError):
+            return error_response("Valid target_type and target_id are required.")
+        reason = str(body.get("reason", "")).strip()
+        notes = str(body.get("notes", "")).strip()
+        if not target_type or not reason:
+            return error_response("Report reason is required.")
+
+        conn = get_db()
+        cursor = conn.cursor()
+        cursor.execute("""
+            INSERT INTO content_reports (target_type, target_id, reporter_id, reason, notes)
+            VALUES (?, ?, ?, ?, ?)
+        """, (target_type, target_id, user["id"], reason, notes))
+        rid = cursor.lastrowid
+        conn.commit()
+        conn.close()
+        return json_response({"success": True, "report_id": rid}, 201)
+
+    if path_only == "/api/admin/reports" and method == "GET":
+        if not user or user.get("is_site_admin") != 1:
+            return error_response("Forbidden: Requires Site Admin status.", 403)
+        conn = get_db()
+        cursor = conn.cursor()
+        cursor.execute("""
+            SELECT r.*, u.username as reporter_name
+            FROM content_reports r
+            LEFT JOIN users u ON r.reporter_id = u.id
+            ORDER BY r.status = 'PENDING' DESC, r.created_at DESC
+        """)
+        reports = []
+        for r in cursor.fetchall():
+            rep = dict(r)
+            ttype = rep["target_type"]
+            tid = rep["target_id"]
+            snippet = ""
+            author_id = None
+            author_name = ""
+            if ttype in ("POST", "KUDOS"):
+                cursor.execute("SELECT f.title, f.content, f.author_id, u.username FROM feed_items f LEFT JOIN users u ON f.author_id = u.id WHERE f.id = ?", (tid,))
+                row = cursor.fetchone()
+                if row:
+                    snippet = f"{row['title'] or ''} - {row['content']}".strip(" -")
+                    author_id = row["author_id"]
+                    author_name = row["username"] or ""
+            elif ttype == "COMMENT":
+                cursor.execute("SELECT c.content, c.user_id, u.username FROM comments c LEFT JOIN users u ON c.user_id = u.id WHERE c.id = ?", (tid,))
+                row = cursor.fetchone()
+                if row:
+                    snippet = row["content"]
+                    author_id = row["user_id"]
+                    author_name = row["username"] or ""
+            elif ttype == "CHAT":
+                cursor.execute("SELECT m.message, m.user_id, u.username FROM group_messages m LEFT JOIN users u ON m.user_id = u.id WHERE m.id = ?", (tid,))
+                row = cursor.fetchone()
+                if row:
+                    snippet = row["message"]
+                    author_id = row["user_id"]
+                    author_name = row["username"] or ""
+            rep["content_snippet"] = snippet or "[Deleted or unavailable]"
+            rep["target_author_id"] = author_id
+            rep["target_author_name"] = author_name
+            reports.append(rep)
+        conn.close()
+        return json_response({"reports": reports})
+
+    if path_only.startswith("/api/admin/reports/") and path_only.endswith("/resolve") and method == "POST":
+        if not user or user.get("is_site_admin") != 1:
+            return error_response("Forbidden: Requires Site Admin status.", 403)
+        parts = path_only.split("/")
+        try:
+            rid = int(parts[4])
+        except (ValueError, IndexError):
+            return error_response("Invalid report ID")
+        action = str(body.get("action", "DISMISS")).strip().upper() # 'DISMISS', 'DELETE_CONTENT', 'BAN_AUTHOR'
+
+        conn = get_db()
+        cursor = conn.cursor()
+        cursor.execute("SELECT * FROM content_reports WHERE id = ?", (rid,))
+        rep = cursor.fetchone()
+        if not rep:
+            conn.close()
+            return error_response("Report not found", 404)
+
+        ttype = rep["target_type"]
+        tid = rep["target_id"]
+        target_author_id = None
+
+        if action in ("DELETE_CONTENT", "BAN_AUTHOR"):
+            if ttype in ("POST", "KUDOS"):
+                cursor.execute("SELECT author_id FROM feed_items WHERE id = ?", (tid,))
+                row = cursor.fetchone()
+                if row: target_author_id = row["author_id"]
+                cursor.execute("DELETE FROM feed_items WHERE id = ?", (tid,))
+            elif ttype == "COMMENT":
+                cursor.execute("SELECT user_id FROM comments WHERE id = ?", (tid,))
+                row = cursor.fetchone()
+                if row: target_author_id = row["user_id"]
+                cursor.execute("DELETE FROM comments WHERE id = ?", (tid,))
+            elif ttype == "CHAT":
+                cursor.execute("SELECT user_id FROM group_messages WHERE id = ?", (tid,))
+                row = cursor.fetchone()
+                if row: target_author_id = row["user_id"]
+                cursor.execute("DELETE FROM group_messages WHERE id = ?", (tid,))
+
+            if action == "BAN_AUTHOR" and target_author_id:
+                cursor.execute("UPDATE users SET is_banned = 1 WHERE id = ?", (target_author_id,))
+                cursor.execute("DELETE FROM sessions WHERE user_id = ?", (target_author_id,))
+
+        new_status = "DISMISSED" if action == "DISMISS" else "RESOLVED"
+        cursor.execute("UPDATE content_reports SET status = ? WHERE id = ?", (new_status, rid))
+        conn.commit()
+        conn.close()
+        return json_response({"success": True, "report_id": rid, "status": new_status, "action": action})
 
     # ================== EMAIL OUTBOX LOG VIEWER ==================
     if path_only in ("/api/outbox", "/api/emails", "/api/notifications") and method == "GET":

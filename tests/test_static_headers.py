@@ -7,6 +7,8 @@ from http.server import ThreadingHTTPServer
 from base_test import BaseTestCase
 import server
 
+os.environ["no_proxy"] = "*"
+
 class TestStaticHeadersAndStartup(BaseTestCase):
     httpd = None
     server_port = 0

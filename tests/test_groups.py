@@ -75,14 +75,15 @@ class TestGroups(BaseTestCase):
         self.assertEqual(new_msg["message"], msg_data["message"])
         self.assertEqual(new_msg["author_name"], "Maya_Lin")
 
-        # 3. Verify it is in chat list and group detail
+        # 3. Verify it is in chat list and group detail (most recent at the top)
         status, _, body = self.make_request("GET", "/api/groups/1/chat", headers=headers)
         msgs = body.get("messages", [])
         self.assertEqual(len(msgs), 3)
+        self.assertEqual(msgs[0]["message"], msg_data["message"])
 
         status, _, body = self.make_request("GET", "/api/groups/1", headers=headers)
         chat_msgs = body["group"]["chat_messages"]
-        self.assertTrue(any(m["message"] == msg_data["message"] for m in chat_msgs))
+        self.assertEqual(chat_msgs[0]["message"], msg_data["message"])
 
     def test_curate_resource_admin_success(self):
         """Tests that a group admin can curate resources."""

@@ -145,9 +145,11 @@ class TestFeed(BaseTestCase):
         self.assertEqual(status, 200)
         feed = body.get("feed", [])
         
-        self.assertEqual(len(feed), 1)
-        self.assertEqual(feed[0]["id"], 1)
-        self.assertIn("Marcus", feed[0]["content"])
+        self.assertEqual(len(feed), 2)
+        item_ids = {item["id"] for item in feed}
+        self.assertIn(1, item_ids)
+        kudos_item = next(item for item in feed if item["id"] == 1)
+        self.assertIn("Marcus", kudos_item["content"])
 
         # Search "positivity" (matches Item 1 and Item 2)
         status, _, body = self.make_request("GET", "/api/feed?search=positivity")

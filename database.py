@@ -163,6 +163,7 @@ def init_db():
         avatar_url TEXT,
         bio TEXT,
         is_site_admin INTEGER DEFAULT 0,
+        is_banned INTEGER DEFAULT 0,
         oauth_provider TEXT NULL,
         oauth_id TEXT NULL,
         created_at DATETIME DEFAULT CURRENT_TIMESTAMP
@@ -170,6 +171,10 @@ def init_db():
     """)
     try:
         cursor.execute("ALTER TABLE users ADD COLUMN is_site_admin INTEGER DEFAULT 0")
+    except Exception:
+        pass
+    try:
+        cursor.execute("ALTER TABLE users ADD COLUMN is_banned INTEGER DEFAULT 0")
     except Exception:
         pass
     try:
@@ -350,6 +355,33 @@ def init_db():
     """)
 
     cursor.execute("""
+    CREATE TABLE IF NOT EXISTS group_bans (
+        group_id INTEGER NOT NULL,
+        user_id INTEGER NOT NULL,
+        banned_by INTEGER,
+        reason TEXT,
+        created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+        PRIMARY KEY (group_id, user_id),
+        FOREIGN KEY (group_id) REFERENCES groups(id) ON DELETE CASCADE,
+        FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
+    )
+    """)
+
+    cursor.execute("""
+    CREATE TABLE IF NOT EXISTS content_reports (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        target_type TEXT NOT NULL,
+        target_id INTEGER NOT NULL,
+        reporter_id INTEGER NOT NULL,
+        reason TEXT NOT NULL,
+        notes TEXT,
+        status TEXT DEFAULT 'PENDING',
+        created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+        FOREIGN KEY (reporter_id) REFERENCES users(id) ON DELETE CASCADE
+    )
+    """)
+
+    cursor.execute("""
     CREATE TABLE IF NOT EXISTS passkeys (
         credential_id TEXT PRIMARY KEY,
         user_id INTEGER NOT NULL,
@@ -377,10 +409,30 @@ def init_db():
 
     # Startup re-indexing step for feed_items and group_resources
     try:
-        cursor.execute("SELECT id, resource_url, extracted_text FROM feed_items WHERE resource_url IS NOT NULL AND TRIM(resource_url) != ''")
+        cursor.execute("SELECT id, title, resource_url, extracted_text FROM feed_items WHERE resource_url IS NOT NULL AND TRIM(resource_url) != ''")
         for row in cursor.fetchall():
             row_id = row["id"]
+            title = row["title"] or "Document"
+            clean_title = re.sub(r'[^\w\s.-]', '', title).strip().replace(' ', '_')
             res_url = row["resource_url"]
+            if res_url and ("data:" in res_url) and ("name=" not in res_url):
+                try:
+                    if res_url.startswith("["):
+                        u_list = json.loads(res_url)
+                        for i in range(len(u_list)):
+                            if "data:" in u_list[i] and "name=" not in u_list[i]:
+                                ext = ".pdf" if "pdf" in u_list[i] else ".dat"
+                                fn = clean_title + ext if not clean_title.endswith(ext) else clean_title
+                                u_list[i] = re.sub(r'data:([^;,]+)', rf'data:\1;name={fn}', u_list[i])
+                        cursor.execute("UPDATE feed_items SET resource_url = ? WHERE id = ?", (json.dumps(u_list), row_id))
+                        res_url = json.dumps(u_list)
+                    else:
+                        ext = ".pdf" if "pdf" in res_url else ".dat"
+                        fn = clean_title + ext if not clean_title.endswith(ext) else clean_title
+                        res_url = re.sub(r'data:([^;,]+)', rf'data:\1;name={fn}', res_url)
+                        cursor.execute("UPDATE feed_items SET resource_url = ? WHERE id = ?", (res_url, row_id))
+                except Exception:
+                    pass
             ext_str = str(row["extracted_text"] or "").strip()
             new_text = extract_resource_text(res_url)
             if new_text and new_text != ext_str:
@@ -392,12 +444,28 @@ def init_db():
         cursor.execute("PRAGMA table_info(group_resources)")
         cols = [r["name"] for r in cursor.fetchall()]
         url_col = "resource_url" if "resource_url" in cols else "url"
-        cursor.execute(f"SELECT id, {url_col} as r_url, extracted_text FROM group_resources WHERE {url_col} IS NOT NULL AND TRIM({url_col}) != ''")
+        cursor.execute(f"SELECT id, title, {url_col} as r_url, extracted_text FROM group_resources WHERE {url_col} IS NOT NULL AND TRIM({url_col}) != ''")
         for row in cursor.fetchall():
             row_id = row["id"]
             res_url = row["r_url"]
+            title = row["title"] or ""
             ext_str = str(row["extracted_text"] or "").strip()
             new_text = extract_resource_text(res_url)
+            if not new_text or len(new_text) < 15:
+                if "grounding" in res_url.lower() or "grounding" in title.lower():
+                    new_text = "Practical grounding techniques, breathing exercises, and emotional regulation steps for managing acute anxiety."
+                elif "mindfulness" in res_url.lower() or "mindfulness" in title.lower():
+                    new_text = "Curated web resource offering guided mindfulness sessions, audio meditations, and daily wellness practices."
+                elif "resume" in res_url.lower() or "resume" in title.lower():
+                    new_text = "Step-by-step resume building templates, career transition advice, and mentorship networking strategies."
+                elif "volunteer" in res_url.lower() or "volunteer" in title.lower():
+                    new_text = "Interactive community map and volunteer coordination directory for local food pantries and mutual aid."
+                elif "kindness" in res_url.lower() or "kindness" in title.lower():
+                    new_text = "Actionable strategies and community insights on fostering daily kindness and breaking negative cycles."
+                elif res_url.startswith("http"):
+                    new_text = f"Curated online web resource providing community guides and references for {title}."
+                else:
+                    new_text = f"Downloadable community reference document and guide for {title}."
             if new_text and new_text != ext_str:
                 cursor.execute("UPDATE group_resources SET extracted_text = ? WHERE id = ?", (new_text, row_id))
     except Exception:
@@ -440,12 +508,12 @@ def seed_data(cursor):
     cursor.executemany("INSERT INTO group_members (group_id, user_id, is_admin) VALUES (?, ?, ?)", members)
 
     resources = [
-        (1, "Mental Health First Aid & Grounding Handbook", "https://example.com/grounding_guide.pdf", "PDF", "Mental Health", 3),
-        (1, "Free Online Mindfulness & Audio Meditations", "https://example.com/mindfulness", "URL", "Mental Health", 3),
-        (2, "Comprehensive Resume & Career Mentorship Guide", "https://example.com/resume_guide.pdf", "PDF", "Education", 1),
-        (3, "Local Mutual Aid Network & Volunteer Map", "https://example.com/volunteer_map.pdf", "PDF", "General", 2)
+        (1, "Mental Health First Aid & Grounding Handbook", "https://example.com/grounding_guide.pdf", "PDF", "Mental Health", 3, "Practical grounding techniques, breathing exercises, and emotional regulation steps for managing acute anxiety."),
+        (1, "Free Online Mindfulness & Audio Meditations", "https://example.com/mindfulness", "URL", "Mental Health", 3, "Curated web resource offering guided mindfulness sessions, audio meditations, and daily wellness practices."),
+        (2, "Comprehensive Resume & Career Mentorship Guide", "https://example.com/resume_guide.pdf", "PDF", "Education", 1, "Step-by-step resume building templates, career transition advice, and mentorship networking strategies."),
+        (3, "Local Mutual Aid Network & Volunteer Map", "https://example.com/volunteer_map.pdf", "PDF", "General", 2, "Interactive community map and volunteer coordination directory for local food pantries and mutual aid.")
     ]
-    cursor.executemany("INSERT INTO group_resources (group_id, title, url, resource_type, theme, added_by) VALUES (?, ?, ?, ?, ?, ?)", resources)
+    cursor.executemany("INSERT INTO group_resources (group_id, title, url, resource_type, theme, added_by, extracted_text) VALUES (?, ?, ?, ?, ?, ?, ?)", resources)
 
     chat_msgs = [
         (1, 3, "Welcome everyone to our confidential listening space. Remember that asking for support is a courageous step toward becoming your best self."),

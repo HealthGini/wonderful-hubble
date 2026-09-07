@@ -4,6 +4,19 @@
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>GoodDeeds.space - One Good Deed at a Time</title>
+  <!-- Google Analytics (GA4) -->
+  <script async src="https://www.googletagmanager.com/gtag/js?id=G-GOODDEEDS"></script>
+  <script>
+    window.dataLayer = window.dataLayer || [];
+    function gtag(){dataLayer.push(arguments);}
+    gtag('js', new Date());
+    window.GA_MEASUREMENT_ID = window.GA_MEASUREMENT_ID || 'G-GOODDEEDS';
+    gtag('config', window.GA_MEASUREMENT_ID, { send_page_view: false });
+  </script>
+  <!-- Google Fonts: Plus Jakarta Sans & Outfit for modern, soft typography -->
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Outfit:wght@500;600;700;800;900&family=Plus+Jakarta+Sans:wght@400;500;600;700;800&display=swap" rel="stylesheet">
   <!-- Tailwind CSS via CDN -->
   <script src="https://cdn.tailwindcss.com"></script>
   <link rel="stylesheet" href="/style.css">
@@ -11,75 +24,78 @@
     tailwind.config = {
       theme: {
         extend: {
+          fontFamily: {
+            sans: ['"Plus Jakarta Sans"', 'system-ui', '-apple-system', 'sans-serif'],
+            heading: ['"Outfit"', '"Plus Jakarta Sans"', 'sans-serif']
+          },
           colors: {
-            warmcream: '#fcfaf5',
-            warmamber: '#d97706',
+            warmcream: '#faf9f6',
+            warmamber: '#f59e0b',
+            sunset: '#f97316',
+            softrose: '#fb7185',
             deepteal: '#0f766e',
-            slatecharcoal: '#1e293b'
+            slatecharcoal: '#1c1917',
+            softslate: '#292524'
           }
         }
       }
     }
   </script>
 </head>
-<body class="bg-slate-50 text-slate-800 antialiased min-h-screen flex flex-col selection:bg-amber-500 selection:text-white">
+<body class="bg-[#faf9f6] text-stone-800 antialiased min-h-screen flex flex-col font-sans selection:bg-amber-500 selection:text-white">
 
   <!-- A11Y Skip to Main Content -->
-  <a href="#main-content" class="sr-only focus:not-sr-only focus:absolute focus:top-4 focus:left-4 bg-amber-600 text-white font-black p-4 rounded-xl z-50 shadow-2xl">
+  <a href="#main-content" class="sr-only focus:not-sr-only focus:absolute focus:top-4 focus:left-4 bg-amber-600 text-white font-black p-4 rounded-2xl z-50 shadow-2xl">
     Skip to main content
   </a>
 
   <!-- Header & Primary Navigation -->
-  <header class="bg-white/95 backdrop-blur-md border-b border-slate-200/80 sticky top-0 z-40 shadow-sm">
+  <header class="bg-white/85 backdrop-blur-xl border-b border-stone-200/70 sticky top-0 z-40 shadow-sm">
     <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
       <div class="flex justify-between items-center min-h-[80px] py-2 gap-4">
         
-                <!-- Mobile Menu Button -->
-        <button id="mobile-menu-btn" onclick="toggleMobileMenu()" class="lg:hidden p-2 rounded-xl text-slate-700 hover:bg-slate-100 focus:outline-none touch-target" aria-label="Toggle Mobile Menu">
+        <!-- Mobile Menu Button -->
+        <button id="mobile-menu-btn" onclick="toggleMobileMenu()" class="lg:hidden p-2 rounded-2xl text-stone-700 hover:bg-stone-100 focus:outline-none touch-target" aria-label="Toggle Mobile Menu">
           <svg class="w-7 h-7" fill="none" stroke="currentColor" viewBox="0 0 24 24">
             <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 6h16M4 12h16M4 18h16"></path>
           </svg>
         </button>
 
         <!-- Logo -->
-        <a href="/#/" class="flex flex-col justify-center py-1 px-2 rounded-xl touch-target shrink-0 transition hover:opacity-90 select-none leading-none">
-          <span class="text-2xl sm:text-3xl font-extrabold tracking-tight text-emerald-400 font-sans">GoodDeeds</span>
-          <span class="text-xs sm:text-sm font-bold tracking-[0.45em] text-blue-400 pl-0.5 pt-1 lowercase">space</span>
+        <a href="/#/" class="flex items-center space-x-2 py-1 px-2 rounded-2xl touch-target shrink-0 transition hover:opacity-90 select-none">
+          <span class="text-2xl sm:text-3xl font-black tracking-tight bg-gradient-to-r from-emerald-600 via-teal-600 to-amber-600 bg-clip-text text-transparent font-heading">GoodDeeds</span>
+          <span class="px-2 py-0.5 text-xs font-black tracking-widest text-amber-900 bg-amber-100/90 rounded-full border border-amber-200 uppercase">space ✨</span>
         </a>
 
         <!-- Navigation Links -->
-        <nav class="hidden lg:flex items-center space-x-1.5" aria-label="Main Navigation">
+        <nav class="hidden lg:flex items-center space-x-2" aria-label="Main Navigation">
           <!-- Unified Spaces Dropdown -->
           <div class="relative group" id="quick-nav-container">
-            <button type="button" class="px-4 py-2 rounded-xl font-bold text-sm text-slate-700 hover:bg-slate-100 hover:text-indigo-600 transition flex items-center space-x-1.5" aria-haspopup="true" aria-expanded="false">
+            <button type="button" class="px-4 py-2.5 rounded-full font-bold text-sm text-stone-700 hover:bg-amber-50 hover:text-amber-900 transition flex items-center space-x-1.5" aria-haspopup="true" aria-expanded="false">
               <span>👥 Spaces</span>
-              <span aria-hidden="true" class="text-[10px] text-slate-400">▼</span>
+              <span aria-hidden="true" class="text-[10px] text-stone-400">▼</span>
             </button>
             
-            <div class="absolute left-0 mt-1 w-72 bg-white border border-slate-200/80 rounded-2xl shadow-xl hidden group-hover:block z-50 py-2 animate-fadeIn">
+            <div class="absolute left-0 mt-1.5 w-72 bg-white border border-stone-200/80 rounded-3xl shadow-xl hidden group-hover:block z-50 py-3 animate-fadeIn">
               <a href="/#/groups" class="block px-4 py-2.5 text-sm font-bold text-indigo-600 hover:bg-indigo-50/70 transition flex items-center space-x-2">
                 <span>🌐</span><span>Browse Spaces & Create New →</span>
               </a>
-              <div class="px-4 py-1.5 mt-1 text-[11px] font-extrabold tracking-wider text-slate-400 border-t border-slate-100 uppercase">My Joined Spaces</div>
+              <div class="px-4 py-1.5 mt-1 text-[11px] font-extrabold tracking-wider text-stone-400 border-t border-stone-100 uppercase">My Joined Spaces</div>
               <div id="quick-groups-list" class="max-h-64 overflow-y-auto">
-                <p class="px-4 py-3 text-slate-500 text-sm font-medium">Log in to see your joined spaces</p>
+                <p class="px-4 py-3 text-stone-500 text-sm font-medium">Log in to see your joined spaces</p>
               </div>
             </div>
           </div>
-
-          <a href="/#/spotlight" class="nav-link px-4 py-2 rounded-xl font-bold text-sm text-amber-600 hover:bg-amber-50 transition flex items-center space-x-1.5" title="Monthly Champions Spotlight">
-            <span>🏆 Hall of Fame</span>
-          </a>
         </nav>
 
         <!-- Auth & Action Controls -->
         <div class="flex items-center space-x-2 shrink-0">
           <!-- Guest Controls -->
-          <div id="nav-auth-guest" class="flex items-center space-x-2">
-            <button onclick="openModal('modal-login')" class="px-4 py-2.5 rounded-xl font-extrabold text-base bg-slate-100 text-slate-800 hover:bg-slate-200 transition touch-target">
+          <div id="nav-auth-guest" class="flex items-center space-x-2.5">
+            <button onclick="openModal('modal-login')" class="px-4 py-2.5 rounded-full font-extrabold text-sm bg-stone-100 text-stone-800 hover:bg-stone-200 transition touch-target">
               Log In
             </button>
-            <button onclick="openModal('modal-signup')" class="px-4 py-2.5 rounded-xl font-extrabold text-base bg-amber-600 text-white hover:bg-amber-700 shadow-sm transition touch-target">
+            <button onclick="openModal('modal-signup')" class="px-5 py-2.5 rounded-full font-black text-sm bg-gradient-to-r from-amber-500 to-orange-500 hover:from-amber-600 hover:to-orange-600 text-white shadow-md shadow-amber-500/20 transition touch-target">
               Sign Up Free
             </button>
           </div>
@@ -89,20 +105,20 @@
             
             <!-- Consolidated Kudos Dropdown -->
             <div class="relative group" id="kudos-hub-container">
-              <button type="button" class="px-3.5 py-2 rounded-xl font-bold text-sm bg-amber-50 text-amber-900 border border-amber-200 hover:bg-amber-100 transition flex items-center space-x-1.5" aria-haspopup="true" aria-expanded="false">
+              <button type="button" class="px-4 py-2 rounded-full font-bold text-sm bg-amber-50 text-amber-900 border border-amber-200 hover:bg-amber-100 transition flex items-center space-x-1.5 shadow-sm" aria-haspopup="true" aria-expanded="false">
                 <span>🌟 Kudos</span>
                 <span aria-hidden="true" class="text-[10px] text-amber-600">▼</span>
               </button>
               
-              <div class="absolute right-0 mt-1 w-64 bg-white border border-slate-200/80 rounded-2xl shadow-xl hidden group-hover:block z-50 py-2 animate-fadeIn text-left">
+              <div class="absolute right-0 mt-1.5 w-64 bg-white border border-stone-200/80 rounded-3xl shadow-xl hidden group-hover:block z-50 py-3 animate-fadeIn text-left">
                 <button onclick="openModal('modal-kudos')" class="w-full text-left px-4 py-2.5 text-sm font-black text-amber-600 bg-amber-50/90 hover:bg-amber-100 transition flex items-center space-x-2.5">
                   <span>✨</span><span>Give Public Kudos →</span>
                 </button>
-                <div class="px-4 py-1.5 mt-1 text-[10px] font-extrabold tracking-wider text-slate-400 border-t border-slate-100 uppercase">My Gratitude History</div>
-                <button onclick="filterFeedByMyKudos('received')" class="w-full text-left px-4 py-2 text-xs font-semibold text-slate-700 hover:bg-slate-50 transition flex items-center space-x-2">
+                <div class="px-4 py-1.5 mt-1 text-[10px] font-extrabold tracking-wider text-stone-400 border-t border-stone-100 uppercase">My Gratitude History</div>
+                <button onclick="filterFeedByMyKudos('received')" class="w-full text-left px-4 py-2 text-xs font-semibold text-stone-700 hover:bg-stone-50 transition flex items-center space-x-2">
                   <span>📥</span><span>Kudos I've Received</span>
                 </button>
-                <button onclick="filterFeedByMyKudos('given')" class="w-full text-left px-4 py-2 text-xs font-semibold text-slate-700 hover:bg-slate-50 transition flex items-center space-x-2">
+                <button onclick="filterFeedByMyKudos('given')" class="w-full text-left px-4 py-2 text-xs font-semibold text-stone-700 hover:bg-stone-50 transition flex items-center space-x-2">
                   <span>📤</span><span>Kudos I've Given</span>
                 </button>
               </div>
@@ -110,17 +126,17 @@
 
             <!-- Consolidated Posts Dropdown -->
             <div class="relative group" id="posts-hub-container">
-              <button type="button" class="px-3.5 py-2 rounded-xl font-bold text-sm bg-indigo-50 text-indigo-900 border border-indigo-200 hover:bg-indigo-100 transition flex items-center space-x-1.5" aria-haspopup="true" aria-expanded="false">
+              <button type="button" class="px-4 py-2 rounded-full font-bold text-sm bg-indigo-50 text-indigo-900 border border-indigo-200 hover:bg-indigo-100 transition flex items-center space-x-1.5 shadow-sm" aria-haspopup="true" aria-expanded="false">
                 <span>📝 Posts</span>
                 <span aria-hidden="true" class="text-[10px] text-indigo-600">▼</span>
               </button>
               
-              <div class="absolute right-0 mt-1 w-64 bg-white border border-slate-200/80 rounded-2xl shadow-xl hidden group-hover:block z-50 py-2 animate-fadeIn text-left">
+              <div class="absolute right-0 mt-1.5 w-64 bg-white border border-stone-200/80 rounded-3xl shadow-xl hidden group-hover:block z-50 py-3 animate-fadeIn text-left">
                 <button onclick="openModal('modal-post')" class="w-full text-left px-4 py-2.5 text-sm font-black text-indigo-600 bg-indigo-50/90 hover:bg-indigo-100 transition flex items-center space-x-2.5">
                   <span>✍️</span><span>Create New Post →</span>
                 </button>
-                <div class="px-4 py-1.5 mt-1 text-[10px] font-extrabold tracking-wider text-slate-400 border-t border-slate-100 uppercase">My Post History</div>
-                <button onclick="filterFeedByMyPosts('authored')" class="w-full text-left px-4 py-2 text-xs font-semibold text-slate-700 hover:bg-slate-50 transition flex items-center space-x-2">
+                <div class="px-4 py-1.5 mt-1 text-[10px] font-extrabold tracking-wider text-stone-400 border-t border-stone-100 uppercase">My Post History</div>
+                <button onclick="filterFeedByMyPosts('authored')" class="w-full text-left px-4 py-2 text-xs font-semibold text-stone-700 hover:bg-stone-50 transition flex items-center space-x-2">
                   <span>📂</span><span>My Authored Posts</span>
                 </button>
               </div>
@@ -128,22 +144,25 @@
             
             <!-- Consolidated Profile Dropdown -->
             <div class="relative group" id="profile-menu-container">
-              <button id="profile-menu-btn" type="button" class="flex items-center space-x-1 p-1 rounded-full hover:bg-slate-100 transition focus:outline-none touch-target" aria-haspopup="true" aria-expanded="false" title="Profile Menu">
+              <button id="profile-menu-btn" type="button" class="flex items-center space-x-1 p-1 rounded-full hover:bg-stone-100 transition focus:outline-none touch-target" aria-haspopup="true" aria-expanded="false" title="Profile Menu">
                 <img id="nav-user-avatar" src="" alt="User Avatar" class="w-9 h-9 rounded-full border-2 border-amber-500 object-cover shadow-sm">
-                <span aria-hidden="true" class="text-[10px] text-slate-400">▼</span>
+                <span aria-hidden="true" class="text-[10px] text-stone-400">▼</span>
               </button>
               
-              <div id="profile-dropdown-menu" class="absolute right-0 mt-1 w-56 bg-white border border-slate-200/80 rounded-2xl shadow-xl hidden group-hover:block z-50 py-2 animate-fadeIn text-left">
-                <div class="px-4 py-2 border-b border-slate-100">
-                  <p class="text-[10px] font-extrabold tracking-wider text-slate-400 uppercase">Signed in as</p>
-                  <p class="font-bold text-sm text-slate-800 truncate mt-0.5"><span id="nav-user-name" class="font-bold text-sm text-slate-800">Member</span></p>
+              <div id="profile-dropdown-menu" class="absolute right-0 mt-1.5 w-56 bg-white border border-stone-200/80 rounded-3xl shadow-xl hidden group-hover:block z-50 py-3 animate-fadeIn text-left">
+                <div class="px-4 py-2 border-b border-stone-100">
+                  <p class="text-[10px] font-extrabold tracking-wider text-stone-400 uppercase">Signed in as</p>
+                  <p class="font-bold text-sm text-stone-800 truncate mt-0.5"><span id="nav-user-name" class="font-bold text-sm text-stone-800">Member</span></p>
                 </div>
                 <div class="py-1">
-                  <a href="/#/profile" onclick="closeProfileDropdown()" class="block px-4 py-2.5 text-sm font-bold text-slate-700 hover:bg-slate-50 transition flex items-center space-x-2">
+                  <a href="/#/profile" onclick="closeProfileDropdown()" class="block px-4 py-2.5 text-sm font-bold text-stone-700 hover:bg-stone-50 transition flex items-center space-x-2">
                     <span>👤</span><span>View My Profile →</span>
                   </a>
+                  <a id="nav-moderation-link" href="/#/moderation" onclick="closeProfileDropdown()" class="hidden px-4 py-2.5 text-sm font-bold text-amber-800 bg-amber-50/80 hover:bg-amber-100 transition flex items-center space-x-2">
+                    <span>🛡️</span><span>Moderation Queue →</span>
+                  </a>
                 </div>
-                <div class="border-t border-slate-100 pt-1">
+                <div class="border-t border-stone-100 pt-1">
                   <button id="nav-logout" onclick="logout(); closeProfileDropdown();" class="w-full text-left px-4 py-2.5 text-sm font-bold text-red-600 hover:bg-red-50 transition flex items-center space-x-2">
                     <span>🚪</span><span>Log Off</span>
                   </button>
@@ -156,82 +175,81 @@
       </div>
     </div>
     <!-- Mobile Drawer Menu -->
-  <div id="mobile-menu" class="hidden lg:hidden border-b border-slate-200 bg-white px-4 pt-2 pb-4 space-y-3 shadow-md">
-    <div id="mobile-auth-actions" class="hidden border-b border-slate-100 pb-3 space-y-2">
-      <div id="mobile-menu-auth-actions" class="space-y-2">
-        <button onclick="closeMobileMenu(); openModal('modal-kudos')" class="w-full py-2.5 px-4 rounded-xl font-extrabold text-sm bg-gradient-to-r from-amber-500 to-yellow-500 text-white shadow-md flex items-center justify-center space-x-2 touch-target">
-          <span>✨ Give Public Kudos</span>
-        </button>
-        <button onclick="closeMobileMenu(); openModal('modal-post')" class="w-full py-2.5 px-4 rounded-xl font-extrabold text-sm bg-gradient-to-r from-indigo-600 to-violet-600 text-white shadow-md flex items-center justify-center space-x-2 touch-target">
-          <span>✍️ Create New Post</span>
-        </button>
+    <div id="mobile-menu" class="hidden lg:hidden border-b border-stone-200 bg-white px-4 pt-2 pb-4 space-y-3 shadow-md">
+      <div id="mobile-auth-actions" class="hidden border-b border-stone-100 pb-3 space-y-2">
+        <div id="mobile-menu-auth-actions" class="space-y-2">
+          <button onclick="closeMobileMenu(); openModal('modal-kudos')" class="w-full py-2.5 px-4 rounded-full font-black text-sm bg-gradient-to-r from-amber-500 to-orange-500 text-white shadow-md flex items-center justify-center space-x-2 touch-target">
+            <span>✨ Give Public Kudos</span>
+          </button>
+          <button onclick="closeMobileMenu(); openModal('modal-post')" class="w-full py-2.5 px-4 rounded-full font-black text-sm bg-gradient-to-r from-indigo-600 to-violet-600 text-white shadow-md flex items-center justify-center space-x-2 touch-target">
+            <span>✍️ Create New Post</span>
+          </button>
+        </div>
+      </div>
+      <div class="space-y-1">
+        <a href="/#/groups" onclick="closeMobileMenu()" class="block px-3 py-2 rounded-xl text-base font-bold text-stone-700 hover:bg-stone-100">👥 Browse Spaces</a>
+        <a href="/#/feed" onclick="closeMobileMenu()" class="block px-3 py-2 rounded-xl text-base font-bold text-indigo-700 hover:bg-indigo-50">🌐 Community Feed</a>
       </div>
     </div>
-    <div class="space-y-1">
-      <a href="/#/groups" onclick="closeMobileMenu()" class="block px-3 py-2 rounded-xl text-base font-bold text-slate-700 hover:bg-slate-100">👥 Browse Spaces</a>
-      <a href="/#/spotlight" onclick="closeMobileMenu()" class="block px-3 py-2 rounded-xl text-base font-bold text-amber-600 hover:bg-amber-50">🏆 Hall of Fame</a>
-      <a href="/#/feed" onclick="closeMobileMenu()" class="block px-3 py-2 rounded-xl text-base font-bold text-indigo-600 hover:bg-indigo-50">🌐 Community Feed</a>
-    </div>
-  </div>
-</header>
+  </header>
 
   <!-- Main Content Area -->
   <main id="main-content" class="flex-1 max-w-7xl w-full mx-auto px-4 sm:px-6 lg:px-8 py-8">
 
     <!-- ================== VIEW 1: WELCOMING LANDING PAGE ================== -->
     <section id="view-landing" class="space-y-12">
-      <div class="bg-gradient-to-br from-slate-900 via-indigo-950 to-slate-900 rounded-3xl p-8 sm:p-14 text-white shadow-2xl border border-slate-800 relative overflow-hidden flex flex-col lg:flex-row items-center justify-between gap-10">
+      <div class="bg-gradient-to-br from-amber-500/10 via-rose-500/5 to-indigo-600/10 bg-white rounded-3xl p-8 sm:p-14 text-stone-900 shadow-sm border border-stone-200/80 relative overflow-hidden flex flex-col lg:flex-row items-center justify-between gap-10">
         <div class="space-y-6 max-w-2xl relative z-10">
-          <span class="px-4 py-1.5 rounded-full bg-indigo-500/25 font-extrabold tracking-wider text-xs border border-indigo-400/30 inline-block uppercase text-indigo-200">✨ Promoting Goodness in Our Communities</span>
-          <h1 class="text-4xl sm:text-6xl font-black tracking-tight leading-[1.15]">Become the Best Version of Yourself — One Good Deed at a Time.</h1>
-          <p class="text-lg sm:text-xl text-slate-300 font-normal leading-relaxed">
+          <span class="px-4 py-1.5 rounded-full bg-amber-100 font-extrabold tracking-wider text-xs border border-amber-300/60 inline-block uppercase text-amber-900 shadow-sm">✨ Promoting Goodness in Our Communities</span>
+          <h1 class="text-4xl sm:text-6xl font-black tracking-tight leading-[1.15] font-heading text-stone-900">Become the Best Version of Yourself — One Good Deed at a Time.</h1>
+          <p class="text-lg sm:text-xl text-stone-600 font-medium leading-relaxed">
             gooddeeds.space is a universal social platform built to enable collaboration, recognize intrinsic kindness with public Kudos, and lend or seek support across mental health, education, and community services.
           </p>
           <div class="flex flex-wrap gap-4 pt-2">
-            <a href="/#/feed" class="px-8 py-4 rounded-2xl font-extrabold text-lg bg-amber-500 hover:bg-amber-600 text-white shadow-lg shadow-amber-500/25 transition inline-flex items-center touch-target">
+            <a href="/#/feed" class="px-8 py-4 rounded-full font-black text-lg bg-gradient-to-r from-amber-500 to-orange-500 hover:from-amber-600 hover:to-orange-600 text-white shadow-md shadow-amber-500/20 transition inline-flex items-center touch-target">
               Explore GoodDeeds.space ↗
             </a>
-            <button onclick="openModal('modal-signup')" class="px-8 py-4 rounded-2xl font-extrabold text-lg bg-white/10 hover:bg-white/15 border border-white/20 text-white backdrop-blur-md transition touch-target">
+            <button onclick="openModal('modal-signup')" class="px-8 py-4 rounded-full font-black text-lg bg-stone-100 hover:bg-stone-200 text-stone-800 border border-stone-300 transition touch-target">
               Join Free Today
             </button>
           </div>
         </div>
 
-        <div class="bg-white/10 p-8 rounded-3xl border border-white/20 backdrop-blur-2xl max-w-md w-full shadow-2xl relative z-10 space-y-6">
-          <div class="flex items-center justify-between border-b border-white/15 pb-4">
+        <div class="bg-white/90 p-8 rounded-3xl border border-stone-200/80 backdrop-blur-xl max-w-md w-full shadow-lg relative z-10 space-y-6">
+          <div class="flex items-center justify-between border-b border-stone-100 pb-4">
             <div class="flex items-center space-x-2.5">
               <span class="relative flex h-3 w-3">
                 <span class="animate-ping absolute inline-flex h-full w-full rounded-full bg-emerald-400 opacity-75"></span>
-                <span class="relative inline-flex rounded-full h-3 w-3 bg-emerald-400"></span>
+                <span class="relative inline-flex rounded-full h-3 w-3 bg-emerald-500"></span>
               </span>
-              <span class="font-black text-xs uppercase tracking-widest text-indigo-200">Community Ripple</span>
+              <span class="font-black text-xs uppercase tracking-widest text-emerald-800">Community Ripple</span>
             </div>
-            <span class="text-xs font-bold bg-emerald-500/20 border border-emerald-400/30 px-3 py-1 rounded-full text-emerald-300">Active Now</span>
+            <span class="text-xs font-bold bg-emerald-50 border border-emerald-200 px-3 py-1 rounded-full text-emerald-800">Active Now</span>
           </div>
           <div class="space-y-4">
-            <div class="bg-black/30 p-4 rounded-2xl border border-white/10 flex items-start space-x-3.5">
+            <div class="bg-amber-50/70 p-4 rounded-2xl border border-amber-200/70 flex items-start space-x-3.5">
               <span class="text-2xl pt-0.5" aria-hidden="true">🌟</span>
               <div>
-                <p class="text-sm font-bold text-white leading-snug">"Massive thank you to Marcus for organizing our weekend food pantry restock!"</p>
-                <p class="text-xs text-indigo-200 mt-1.5 font-bold">— Kudos given by Maya Lin</p>
+                <p class="text-sm font-bold text-stone-900 leading-snug">"Massive thank you to Marcus for organizing our weekend food pantry restock!"</p>
+                <p class="text-xs text-amber-800 mt-1.5 font-bold">— Kudos given by Maya Lin</p>
               </div>
             </div>
             <div id="landing-platform-stats-grid" class="grid grid-cols-2 gap-3 pt-1">
-              <div class="bg-white/5 p-4 rounded-2xl border border-white/10 text-center">
-                <div id="stat-acts-of-kindness" class="text-3xl font-black tracking-tight text-white">...</div>
-                <div class="text-[11px] font-extrabold text-indigo-200 uppercase tracking-wider mt-1">Acts of Kindness</div>
+              <div class="bg-stone-50 p-4 rounded-2xl border border-stone-200 text-center">
+                <div id="stat-acts-of-kindness" class="text-3xl font-black tracking-tight text-stone-900">...</div>
+                <div class="text-[11px] font-extrabold text-stone-500 uppercase tracking-wider mt-1">Acts of Kindness</div>
               </div>
-              <div class="bg-white/5 p-4 rounded-2xl border border-white/10 text-center">
-                <div id="stat-community-members" class="text-3xl font-black tracking-tight text-amber-400">...</div>
-                <div class="text-[11px] font-extrabold text-indigo-200 uppercase tracking-wider mt-1">Community Members</div>
+              <div class="bg-stone-50 p-4 rounded-2xl border border-stone-200 text-center">
+                <div id="stat-community-members" class="text-3xl font-black tracking-tight text-amber-600">...</div>
+                <div class="text-[11px] font-extrabold text-stone-500 uppercase tracking-wider mt-1">Community Members</div>
               </div>
-              <div class="bg-white/5 p-4 rounded-2xl border border-white/10 text-center">
-                <div id="stat-active-spaces" class="text-3xl font-black tracking-tight text-indigo-300">...</div>
-                <div class="text-[11px] font-extrabold text-indigo-200 uppercase tracking-wider mt-1">Active Spaces</div>
+              <div class="bg-stone-50 p-4 rounded-2xl border border-stone-200 text-center">
+                <div id="stat-active-spaces" class="text-3xl font-black tracking-tight text-indigo-600">...</div>
+                <div class="text-[11px] font-extrabold text-stone-500 uppercase tracking-wider mt-1">Active Spaces</div>
               </div>
-              <div class="bg-white/5 p-4 rounded-2xl border border-white/10 text-center">
-                <div id="stat-free-open" class="text-3xl font-black tracking-tight text-emerald-400">100%</div>
-                <div class="text-[11px] font-extrabold text-indigo-200 uppercase tracking-wider mt-1">Free & Open Space</div>
+              <div class="bg-stone-50 p-4 rounded-2xl border border-stone-200 text-center">
+                <div id="stat-free-open" class="text-3xl font-black tracking-tight text-emerald-600">100%</div>
+                <div class="text-[11px] font-extrabold text-stone-500 uppercase tracking-wider mt-1">Free & Open Space</div>
               </div>
             </div>
           </div>
@@ -270,75 +288,9 @@
         </div>
       </section>
 
-      <!-- ================== LANDING FEATURES SHOWCASE SECTION ================== -->
-      <section id="landing-features-section" class="bg-stone-900 text-white p-8 sm:p-12 rounded-3xl shadow-xl space-y-8">
-        <div class="text-center max-w-3xl mx-auto space-y-3">
-          <h2 class="text-3xl sm:text-4xl font-black">🚀 Platform Features Built for Kindness</h2>
-        </div>
-        <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-6">
-          <div onclick="openModal('modal-kudos')" class="bg-white/5 border border-white/10 p-6 rounded-2xl space-y-3 cursor-pointer hover:bg-white/10 transition">
-            <div class="text-3xl">🌟</div>
-            <h3 class="text-xl font-bold text-white">Give Public Kudos</h3>
-            <p class="text-stone-300 text-sm leading-relaxed">Recognize friends, volunteers, and colleagues with public high-fives and gratitude notes.</p>
-          </div>
-          <div onclick="openModal('modal-post')" class="bg-white/5 border border-white/10 p-6 rounded-2xl space-y-3 cursor-pointer hover:bg-white/10 transition">
-            <div class="text-3xl">📝</div>
-            <h3 class="text-xl font-bold text-white">Share Posts & Stories</h3>
-            <p class="text-stone-300 text-sm leading-relaxed">Post life lessons, educational events, announcements, and inspiring mutual aid stories.</p>
-          </div>
-          <div class="bg-white/5 border border-white/10 p-6 rounded-2xl space-y-3">
-            <div class="text-3xl">👥</div>
-            <h3 class="text-xl font-bold text-white">Community Spaces</h3>
-            <p class="text-stone-300 text-sm leading-relaxed">Join dedicated spaces for Mental Health, Education & Skill Share, and Neighborhood Action.</p>
-          </div>
-          <div class="bg-white/5 border border-white/10 p-6 rounded-2xl space-y-3">
-            <div class="text-3xl">🏆</div>
-            <h3 class="text-xl font-bold text-white">Monthly Champions Spotlight</h3>
-            <p class="text-stone-300 text-sm leading-relaxed">Celebrate community recognition leaders in our transparent Hall of Fame.</p>
-          </div>
-        </div>
-      </section>
 
-      <!-- ================== LANDING FAQ SECTION ================== -->
-      <section id="landing-faq-section" class="bg-white p-8 sm:p-12 rounded-3xl border border-stone-200/80 shadow-sm space-y-8">
-        <div class="text-center max-w-3xl mx-auto space-y-3">
-          <h2 class="text-3xl sm:text-4xl font-black text-stone-900">❓ Frequently Asked Questions</h2>
-        </div>
-        <div class="grid grid-cols-1 md:grid-cols-2 gap-6">
-          <div class="bg-stone-50 border border-stone-200 p-6 rounded-2xl space-y-2">
-            <h3 class="text-lg font-extrabold text-stone-900">Q: Is GoodDeeds.space completely free?</h3>
-            <p class="text-stone-600 text-sm leading-relaxed">A: Yes! GoodDeeds.space is 100% free and open for everyone to promote goodness in their communities.</p>
-          </div>
-          <div class="bg-stone-50 border border-stone-200 p-6 rounded-2xl space-y-2">
-            <h3 class="text-lg font-extrabold text-stone-900">Q: Do I need an account to view community highlights?</h3>
-            <p class="text-stone-600 text-sm leading-relaxed">A: No, anyone can browse public Kudos, Posts, and Space activities without logging in.</p>
-          </div>
-          <div class="bg-stone-50 border border-stone-200 p-6 rounded-2xl space-y-2">
-            <h3 class="text-lg font-extrabold text-stone-900">Q: How do Public Kudos work?</h3>
-            <p class="text-stone-600 text-sm leading-relaxed">A: Simply select a recipient, write your heartfelt message, and optionally tag a shared space.</p>
-          </div>
-          <div class="bg-stone-50 border border-stone-200 p-6 rounded-2xl space-y-2">
-            <h3 class="text-lg font-extrabold text-stone-900">Q: How can I create a new Space for my group?</h3>
-            <p class="text-stone-600 text-sm leading-relaxed">A: Logged-in members can click "+ Create Space" under the Spaces menu to start a community space.</p>
-          </div>
-        </div>
-      </section>
 
-      <!-- ================== LANDING CALL-TO-ACTION BANNER ================== -->
-      <section id="landing-cta-section" class="bg-gradient-to-r from-amber-500 via-amber-600 to-orange-600 rounded-3xl p-8 sm:p-12 text-white shadow-xl text-center space-y-6">
-        <h2 class="text-3xl sm:text-5xl font-black tracking-tight">Ready to Ripple Positivity in Your Community?</h2>
-        <p class="text-lg sm:text-xl text-amber-100 font-medium max-w-2xl mx-auto">
-          Join a welcoming network dedicated to gratitude, peer support, and mutual aid.
-        </p>
-        <div class="flex flex-wrap items-center justify-center gap-4 pt-2">
-          <button onclick="openModal('modal-signup')" class="px-8 py-4 rounded-2xl font-extrabold text-lg bg-white text-amber-800 hover:bg-amber-50 shadow-lg transition touch-target">
-            Sign Up Free Today ↗
-          </button>
-          <a href="/#/groups" class="px-8 py-4 rounded-2xl font-extrabold text-lg bg-black/20 hover:bg-black/30 border border-white/30 text-white backdrop-blur-md transition touch-target">
-            Browse Community Spaces →
-          </a>
-        </div>
-      </section>
+
 
       <div class="space-y-6">
         <div class="flex justify-between items-baseline border-b-2 border-stone-200 pb-4">
@@ -347,26 +299,40 @@
         </div>
         <div id="landing-filter-bar" class="bg-white p-5 sm:p-6 rounded-2xl border border-slate-200/80 shadow-sm space-y-4 my-4">
           <div class="flex flex-wrap gap-3 items-center justify-between">
-            <select id="landing-group-select" onchange="filterLandingByGroup(this.value)" class="px-4 py-2.5 rounded-xl border border-slate-300 font-bold text-sm bg-white focus:border-amber-500 cursor-pointer touch-target">
-              <option value="">All Spaces</option>
-            </select>
-            <select id="landing-type-select" onchange="filterLandingByType(this.value)" class="px-4 py-2.5 rounded-xl border border-slate-300 font-bold text-sm bg-white focus:border-amber-500 cursor-pointer touch-target">
-              <option value="">All Kudos and Posts</option>
-              <option value="KUDOS">Kudos Only</option>
-              <option value="POST">Posts Only</option>
-            </select>
+            <div class="flex flex-wrap gap-3 items-center">
+              <select id="landing-group-select" onchange="filterLandingByGroup(this.value)" class="px-4 py-2.5 rounded-xl border border-slate-300 font-bold text-sm bg-white focus:border-amber-500 cursor-pointer touch-target">
+                <option value="">All Spaces</option>
+              </select>
+              <select id="landing-type-select" onchange="filterLandingByType(this.value)" class="px-4 py-2.5 rounded-xl border border-slate-300 font-bold text-sm bg-white focus:border-amber-500 cursor-pointer touch-target">
+                <option value="">All Kudos and Posts</option>
+                <option value="KUDOS">Kudos Only</option>
+                <option value="POST">Posts Only</option>
+              </select>
+            </div>
+            <button type="button" id="btn-toggle-landing-theme-pills" onclick="toggleLandingThemePillsBar()" class="px-3.5 py-2.5 rounded-xl border border-slate-300 font-bold text-sm bg-white hover:bg-slate-50 text-slate-700 transition flex items-center space-x-1.5 shrink-0 touch-target" title="Toggle Topic & Type Filters" aria-label="Toggle Topic and Type Filters" aria-expanded="true">
+              <span id="landing-theme-pills-active-indicator" class="hidden w-2 h-2 rounded-full bg-amber-500"></span>
+              <span id="landing-theme-pills-toggle-icon" class="text-xs text-slate-500 font-black">▲</span>
+            </button>
           </div>
-          <div id="landing-theme-pills-bar" class="overflow-x-auto whitespace-nowrap scrollbar-none py-1 flex items-center gap-2" role="group" aria-label="Landing Theme Filter">
-            <span class="text-xs font-bold text-slate-400 uppercase tracking-wider pr-1 shrink-0">Filter:</span>
-            <button type="button" onclick="filterLandingByTheme('')" class="landing-theme-pill shrink-0 px-3.5 py-1.5 rounded-xl font-bold text-sm bg-slate-900 text-white transition touch-target shadow-sm">All</button>
-            <button type="button" onclick="filterLandingByTheme('Inspiring Story')" class="landing-theme-pill shrink-0 px-3.5 py-1.5 rounded-xl font-bold text-sm bg-slate-100 hover:bg-slate-200 text-slate-700 transition touch-target">✨ Inspiring Story</button>
-            <button type="button" onclick="filterLandingByTheme('Mental Health')" class="landing-theme-pill shrink-0 px-3.5 py-1.5 rounded-xl font-bold text-sm bg-slate-100 hover:bg-slate-200 text-slate-700 transition touch-target">🌱 Mental Health</button>
-            <button type="button" onclick="filterLandingByTheme('Wellness')" class="landing-theme-pill shrink-0 px-3.5 py-1.5 rounded-xl font-bold text-sm bg-slate-100 hover:bg-slate-200 text-slate-700 transition touch-target">🌿 Wellness</button>
-            <button type="button" onclick="filterLandingByTheme('Mindfulness')" class="landing-theme-pill shrink-0 px-3.5 py-1.5 rounded-xl font-bold text-sm bg-slate-100 hover:bg-slate-200 text-slate-700 transition touch-target">🧘 Mindfulness</button>
-            <button type="button" onclick="filterLandingByTheme('Educational')" class="landing-theme-pill shrink-0 px-3.5 py-1.5 rounded-xl font-bold text-sm bg-slate-100 hover:bg-slate-200 text-slate-700 transition touch-target">🎓 Educational</button>
-            <button type="button" onclick="filterLandingByTheme('General')" class="landing-theme-pill shrink-0 px-3.5 py-1.5 rounded-xl font-bold text-sm bg-slate-100 hover:bg-slate-200 text-slate-700 transition touch-target">🤝 General</button>
-            <button type="button" onclick="filterLandingByTheme('Events')" class="landing-theme-pill shrink-0 px-3.5 py-1.5 rounded-xl font-bold text-sm bg-slate-100 hover:bg-slate-200 text-slate-700 transition touch-target">📅 Events</button>
-            <button type="button" onclick="filterLandingByTheme('Resources')" class="landing-theme-pill shrink-0 px-3.5 py-1.5 rounded-xl font-bold text-sm bg-slate-100 hover:bg-slate-200 text-slate-700 transition touch-target">📎 Resources</button>
+          <div id="landing-theme-pills-bar" class="space-y-2" role="group" aria-label="Landing Topic and Sub-Filter by Type">
+            <!-- Line 1: Primary Topics (4 Pillars) -->
+            <div class="overflow-x-auto whitespace-nowrap scrollbar-none py-1 flex items-center gap-2">
+              <span class="text-xs font-black uppercase tracking-wider text-slate-500 pr-1 shrink-0">Topic:</span>
+              <button type="button" onclick="filterLandingByTheme('')" class="landing-theme-pill shrink-0 px-3.5 py-1.5 rounded-xl font-bold text-sm bg-slate-900 text-white transition touch-target shadow-sm">All</button>
+              <button type="button" onclick="filterLandingByTheme('Inspiring Stories')" class="landing-theme-pill shrink-0 px-3.5 py-1.5 rounded-xl font-bold text-sm bg-white hover:bg-slate-50 text-slate-700 transition touch-target shadow-xs">✨ Inspiring Stories</button>
+              <button type="button" onclick="filterLandingByTheme('Wellbeing & Care')" class="landing-theme-pill shrink-0 px-3.5 py-1.5 rounded-xl font-bold text-sm bg-white hover:bg-slate-50 text-slate-700 transition touch-target shadow-xs">🌱 Wellbeing & Care</button>
+              <button type="button" onclick="filterLandingByTheme('Skills & Learning')" class="landing-theme-pill shrink-0 px-3.5 py-1.5 rounded-xl font-bold text-sm bg-white hover:bg-slate-50 text-slate-700 transition touch-target shadow-xs">💡 Skills & Learning</button>
+              <button type="button" onclick="filterLandingByTheme('Community & Action')" class="landing-theme-pill shrink-0 px-3.5 py-1.5 rounded-xl font-bold text-sm bg-white hover:bg-slate-50 text-slate-700 transition touch-target shadow-xs">🤝 Community & Action</button>
+            </div>
+
+            <!-- Line 2: Sub-filter by Type (Indented with connector branch) -->
+            <div class="overflow-x-auto whitespace-nowrap scrollbar-none py-0.5 pl-3 sm:pl-4 border-l-2 border-amber-300/80 ml-2 flex items-center gap-2">
+              <span class="text-[11px] font-black uppercase tracking-wider text-amber-800 shrink-0 flex items-center gap-1">
+                <span>↳</span><span>Type:</span>
+              </span>
+              <button type="button" onclick="filterLandingByFormat('EVENT')" class="landing-format-pill shrink-0 px-3 py-1.5 rounded-xl font-bold text-xs bg-white hover:bg-amber-100/70 text-slate-700 transition touch-target shadow-xs border border-amber-200/60">📅 Events</button>
+              <button type="button" onclick="filterLandingByFormat('RESOURCE')" class="landing-format-pill shrink-0 px-3 py-1.5 rounded-xl font-bold text-xs bg-white hover:bg-amber-100/70 text-slate-700 transition touch-target shadow-xs border border-amber-200/60">📎 Resources</button>
+            </div>
           </div>
         </div>
         <div id="landing-space-info-banner" class="hidden animate-fadeIn my-4"></div>
@@ -403,8 +369,8 @@
           <!-- Keyword Search -->
           <div class="relative flex-1">
             <span class="absolute inset-y-0 left-0 pl-4 flex items-center pointer-events-none text-slate-400 text-lg" aria-hidden="true">🔍</span>
-            <input type="search" id="feed-search-input" placeholder="Search Kudos, Posts, Events and Resources..." class="w-full pl-11 pr-10 py-3 rounded-xl border border-slate-300 font-medium text-sm bg-slate-50 focus:bg-white focus:border-indigo-600 transition">
-            <button id="feed-search-clear-btn" onclick="clearFeedSearchInput()" class="hidden absolute inset-y-0 right-0 pr-3 flex items-center text-slate-400 hover:text-slate-600 font-bold text-base">✕</button>
+            <input type="search" id="feed-search-input" placeholder="Search Kudos, Posts, Events, Resources, or Username..." class="w-full pl-11 pr-11 py-3 rounded-xl border border-slate-300 font-medium text-sm bg-slate-50 focus:bg-white focus:border-indigo-600 transition">
+            <button id="feed-search-clear-btn" type="button" onclick="clearFeedSearchInput()" class="hidden absolute inset-y-0 right-0 pr-3.5 flex items-center text-slate-400 hover:text-slate-700 font-bold text-sm transition" title="Clear search" aria-label="Clear search">✕</button>
           </div>
 
           <!-- Group Filter Dropdown -->
@@ -418,20 +384,34 @@
             <option value="KUDOS">Kudos Only</option>
             <option value="POST">Posts Only</option>
           </select>
+
+          <!-- Toggle Topic & Type Sub-Filters Button -->
+          <button type="button" id="btn-toggle-theme-pills" onclick="toggleThemePillsBar()" class="px-4 py-3 rounded-xl border border-slate-300 font-bold text-sm bg-white hover:bg-slate-50 text-slate-700 transition flex items-center justify-center space-x-1.5 shrink-0 touch-target" title="Toggle Topic & Type Filters" aria-label="Toggle Topic and Type Filters" aria-expanded="true">
+            <span id="theme-pills-active-indicator" class="hidden w-2 h-2 rounded-full bg-amber-500"></span>
+            <span id="theme-pills-toggle-icon" class="text-xs text-slate-500 font-black">▲</span>
+          </button>
         </div>
 
-        <!-- Theme Filter Pills Bar (11 Topic Pills) -->
-        <div id="theme-pills-bar" class="overflow-x-auto whitespace-nowrap scrollbar-none py-1.5 flex items-center gap-2" role="group" aria-label="Theme Filter">
-          <span class="text-xs font-bold text-slate-400 uppercase tracking-wider pr-1 shrink-0">Filter:</span>
-          <button onclick="filterByTheme('')" class="theme-pill shrink-0 px-3.5 py-1.5 rounded-xl font-bold text-sm bg-slate-900 text-white transition touch-target shadow-sm">All</button>
-          <button onclick="filterByTheme('Inspiring Story')" class="theme-pill shrink-0 px-3.5 py-1.5 rounded-xl font-bold text-sm bg-slate-100 hover:bg-slate-200 text-slate-700 transition touch-target">✨ Inspiring Story</button>
-          <button onclick="filterByTheme('Mental Health')" class="theme-pill shrink-0 px-3.5 py-1.5 rounded-xl font-bold text-sm bg-slate-100 hover:bg-slate-200 text-slate-700 transition touch-target">🌱 Mental Health</button>
-          <button onclick="filterByTheme('Wellness')" class="theme-pill shrink-0 px-3.5 py-1.5 rounded-xl font-bold text-sm bg-slate-100 hover:bg-slate-200 text-slate-700 transition touch-target">🌿 Wellness</button>
-          <button onclick="filterByTheme('Mindfulness')" class="theme-pill shrink-0 px-3.5 py-1.5 rounded-xl font-bold text-sm bg-slate-100 hover:bg-slate-200 text-slate-700 transition touch-target">🧘 Mindfulness</button>
-          <button onclick="filterByTheme('Educational')" class="theme-pill shrink-0 px-3.5 py-1.5 rounded-xl font-bold text-sm bg-slate-100 hover:bg-slate-200 text-slate-700 transition touch-target">🎓 Educational</button>
-          <button onclick="filterByTheme('General')" class="theme-pill shrink-0 px-3.5 py-1.5 rounded-xl font-bold text-sm bg-slate-100 hover:bg-slate-200 text-slate-700 transition touch-target">🤝 General</button>
-          <button onclick="filterByTheme('Events')" class="theme-pill shrink-0 px-3.5 py-1.5 rounded-xl font-bold text-sm bg-slate-100 hover:bg-slate-200 text-slate-700 transition touch-target">📅 Events</button>
-          <button onclick="filterByTheme('Resources')" class="theme-pill shrink-0 px-3.5 py-1.5 rounded-xl font-bold text-sm bg-slate-100 hover:bg-slate-200 text-slate-700 transition touch-target">📎 Resources</button>
+        <!-- Theme & Type Filter Pills Bar (Hierarchical Sub-Filter) -->
+        <div id="theme-pills-bar" class="space-y-2" role="group" aria-label="Topic and Sub-Filter by Type">
+          <!-- Line 1: Primary Topics (4 Pillars) -->
+          <div class="overflow-x-auto whitespace-nowrap scrollbar-none py-1.5 flex items-center gap-2">
+            <span class="text-xs font-black uppercase tracking-wider text-slate-500 pr-1 shrink-0">Topic:</span>
+            <button onclick="filterByTheme('')" class="theme-pill shrink-0 px-3.5 py-1.5 rounded-xl font-bold text-sm bg-slate-900 text-white transition touch-target shadow-sm">All</button>
+            <button onclick="filterByTheme('Inspiring Stories')" class="theme-pill shrink-0 px-3.5 py-1.5 rounded-xl font-bold text-sm bg-white hover:bg-slate-50 text-slate-700 transition touch-target shadow-xs">✨ Inspiring Stories</button>
+            <button onclick="filterByTheme('Wellbeing & Care')" class="theme-pill shrink-0 px-3.5 py-1.5 rounded-xl font-bold text-sm bg-white hover:bg-slate-50 text-slate-700 transition touch-target shadow-xs">🌱 Wellbeing & Care</button>
+            <button onclick="filterByTheme('Skills & Learning')" class="theme-pill shrink-0 px-3.5 py-1.5 rounded-xl font-bold text-sm bg-white hover:bg-slate-50 text-slate-700 transition touch-target shadow-xs">💡 Skills & Learning</button>
+            <button onclick="filterByTheme('Community & Action')" class="theme-pill shrink-0 px-3.5 py-1.5 rounded-xl font-bold text-sm bg-white hover:bg-slate-50 text-slate-700 transition touch-target shadow-xs">🤝 Community & Action</button>
+          </div>
+
+          <!-- Line 2: Sub-filter by Type (Indented with connector branch) -->
+          <div class="overflow-x-auto whitespace-nowrap scrollbar-none py-0.5 pl-3 sm:pl-4 border-l-2 border-amber-300/80 ml-2 flex items-center gap-2">
+            <span class="text-[11px] font-black uppercase tracking-wider text-amber-800 shrink-0 flex items-center gap-1">
+              <span>↳</span><span>Type:</span>
+            </span>
+            <button type="button" onclick="filterByFormat('EVENT')" class="format-pill shrink-0 px-3 py-1.5 rounded-xl font-bold text-xs bg-white hover:bg-amber-100/70 text-slate-700 transition touch-target shadow-xs border border-amber-200/60">📅 Events</button>
+            <button type="button" onclick="filterByFormat('RESOURCE')" class="format-pill shrink-0 px-3 py-1.5 rounded-xl font-bold text-xs bg-white hover:bg-amber-100/70 text-slate-700 transition touch-target shadow-xs border border-amber-200/60">📎 Resources</button>
+          </div>
         </div>
       </div>
 
@@ -472,10 +452,10 @@
         <input type="search" id="group-search-input" placeholder="Search spaces by name or description..." class="flex-1 px-4 py-3.5 rounded-xl border-2 border-stone-300 font-bold text-base bg-white">
         <select id="group-theme-filter" onchange="filterGroupsTheme(this.value)" class="px-5 py-3.5 rounded-xl border-2 border-stone-300 font-black text-base bg-white cursor-pointer touch-target">
           <option value="">All Space Themes</option>
-          <option value="Mental Health">Mental Health</option>
-          <option value="Wellness">Wellness</option>
-          <option value="Education">Education</option>
-          <option value="General">General</option>
+          <option value="Inspiring Stories">Inspiring Stories</option>
+          <option value="Wellbeing & Care">Wellbeing & Care</option>
+          <option value="Skills & Learning">Skills & Learning</option>
+          <option value="Community & Action">Community & Action</option>
         </select>
       </div>
 
@@ -494,37 +474,40 @@
       </div>
 
       <!-- Responsive Layout: Left column for tabs/panes, Right column for calendar widget -->
-      <div class="grid grid-cols-1 lg:grid-cols-3 gap-8 items-start">
-        <div class="lg:col-span-2 space-y-6">
-          <!-- Navigation Tabs -->
-          <div class="flex border-b-2 border-stone-200 gap-2 overflow-x-auto" role="tablist">
-        <button onclick="switchGroupTab('chat')" id="gtab-chat" class="gtab-btn px-8 py-4 font-black text-xl border-b-4 border-amber-600 text-amber-800 transition touch-target shrink-0">
-          💬 Common Chat Board
-        </button>
-        <button onclick="switchGroupTab('kudos')" id="gtab-kudos" class="gtab-btn px-8 py-4 font-black text-xl border-b-4 border-transparent text-stone-500 hover:text-stone-800 transition touch-target shrink-0">
-          🌟 Kudos
-        </button>
-        <button onclick="switchGroupTab('posts')" id="gtab-posts" class="gtab-btn px-8 py-4 font-black text-xl border-b-4 border-transparent text-stone-500 hover:text-stone-800 transition touch-target shrink-0">
-          📝 Posts
-        </button>
-        <button onclick="switchGroupTab('roster')" id="gtab-roster" class="gtab-btn px-8 py-4 font-black text-xl border-b-4 border-transparent text-stone-500 hover:text-stone-800 transition touch-target shrink-0">
-          👥 Members List
-        </button>
-        <button onclick="switchGroupTab('resources')" id="gtab-resources" class="gtab-btn px-8 py-4 font-black text-xl border-b-4 border-transparent text-stone-500 hover:text-stone-800 transition touch-target shrink-0">
-          📚 Resources
-        </button>
-      </div>
-
-      <!-- Tab Content 1: Common Chat Board -->
-      <div id="gcontent-chat" class="space-y-6 animate-fadeIn">
-        <div class="bg-white p-6 sm:p-8 rounded-3xl border border-slate-200 shadow-sm space-y-4">
-          <h3 class="text-xl font-extrabold text-slate-900 tracking-tight">💬 Common Chat Board</h3>
-          <div class="flex flex-col sm:flex-row gap-3">
-            <input type="text" id="group-chat-input" placeholder="Type a message for everyone in this space..." class="flex-1 px-4 py-3.5 rounded-xl border border-slate-300 font-medium text-base bg-slate-50 text-slate-900 placeholder:text-slate-400 focus:bg-white focus:border-indigo-600 transition">
-            <button onclick="sendGroupChat()" class="px-6 py-3.5 bg-indigo-600 hover:bg-indigo-700 text-white font-bold text-base rounded-xl shadow-sm transition touch-target shrink-0">
-              Send Message
+      <div id="group-detail-layout" class="grid grid-cols-1 lg:grid-cols-3 gap-8 items-start">
+        <div id="group-main-content-col" class="lg:col-span-2 space-y-6">
+          <!-- Navigation Tabs & Calendar Toggle Bar -->
+          <div class="flex flex-wrap items-center justify-between border-b-2 border-stone-200 gap-2 pb-1">
+            <div class="flex gap-2 overflow-x-auto" role="tablist">
+              <button onclick="switchGroupTab('chat')" id="gtab-chat" class="gtab-btn px-8 py-4 font-black text-xl border-b-4 border-amber-600 text-amber-800 transition touch-target shrink-0">
+                💬 Chat Board
+              </button>
+              <button onclick="switchGroupTab('kudos')" id="gtab-kudos" class="gtab-btn px-8 py-4 font-black text-xl border-b-4 border-transparent text-stone-500 hover:text-stone-800 transition touch-target shrink-0">
+                🌟 Kudos
+              </button>
+              <button onclick="switchGroupTab('posts')" id="gtab-posts" class="gtab-btn px-8 py-4 font-black text-xl border-b-4 border-transparent text-stone-500 hover:text-stone-800 transition touch-target shrink-0">
+                📝 Posts
+              </button>
+              <button onclick="switchGroupTab('resources')" id="gtab-resources" class="gtab-btn px-8 py-4 font-black text-xl border-b-4 border-transparent text-stone-500 hover:text-stone-800 transition touch-target shrink-0">
+                📚 Resources
+              </button>
+            </div>
+            <button type="button" id="btn-toggle-calendar" onclick="toggleCalendarWidget()" class="px-4 py-2 my-2 rounded-xl font-bold text-xs bg-stone-100 hover:bg-amber-100 text-stone-700 hover:text-amber-900 border border-stone-300 transition flex items-center space-x-1.5 shadow-sm touch-target shrink-0" title="Collapse calendar to expand tabs & feeds space" aria-label="Toggle Calendar Widget">
+              <span id="calendar-toggle-icon">📅</span>
+              <span id="calendar-toggle-text">Hide Calendar</span>
             </button>
           </div>
+
+      <!-- Tab Content 1: Chat Board -->
+      <div id="gcontent-chat" class="space-y-6 animate-fadeIn">
+        <div class="bg-white p-6 sm:p-8 rounded-3xl border border-slate-200 shadow-sm space-y-4">
+          <h3 class="text-xl font-extrabold text-slate-900 tracking-tight">💬 Chat Board</h3>
+          <form onsubmit="event.preventDefault(); sendGroupChat();" class="flex flex-col sm:flex-row gap-3">
+            <input type="text" id="group-chat-input" placeholder="Type a message for everyone in this space..." class="flex-1 px-4 py-3.5 rounded-xl border border-slate-300 font-medium text-base bg-slate-50 text-slate-900 placeholder:text-slate-400 focus:bg-white focus:border-indigo-600 transition">
+            <button type="submit" class="px-6 py-3.5 bg-indigo-600 hover:bg-indigo-700 text-white font-bold text-base rounded-xl shadow-sm transition touch-target shrink-0">
+              Send Message
+            </button>
+          </form>
         </div>
         <div id="group-chat-list" class="space-y-3"></div>
       </div>
@@ -540,142 +523,35 @@
       </div>
 
       <!-- Tab Content 4: Public Member Roster -->
-      <div id="gcontent-roster" class="hidden">
+      <div id="gcontent-roster" class="hidden space-y-6 animate-fadeIn">
+        <div class="flex items-center justify-between pb-2">
+          <h3 class="text-2xl font-black text-stone-900">👥 Members List</h3>
+        </div>
         <div id="group-roster-list" class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-6"></div>
       </div>
 
       <!-- Tab Content 5: Space Resources -->
       <div id="gcontent-resources" class="hidden space-y-8 animate-fadeIn">
-        <div id="admin-curate-box" class="hidden max-w-3xl mx-auto bg-white p-8 sm:p-12 rounded-3xl border-2 border-stone-200 shadow-xl space-y-8 animate-fadeIn text-left">
-          <div class="text-center space-y-1.5 border-b border-stone-100 pb-5">
-            <h3 class="text-3xl font-black text-stone-900 tracking-tight">Add Space Resources</h3>
-            <p class="text-stone-500 font-bold text-sm">Curate helpful web links and downloadable files for your space members.</p>
-          </div>
-
-          <!-- Step 1 Wizard -->
-          <form id="curate-step-1" onsubmit="reviewCurateStep(event)" class="space-y-6">
-            <!-- Subtype Selection -->
-            <div>
-              <label class="block font-bold text-stone-700 text-sm mb-2">Resource Subtype <span class="text-red-500">*</span></label>
-              <div class="flex flex-wrap gap-4">
-                <label class="inline-flex items-center space-x-2 cursor-pointer font-bold text-stone-800">
-                  <input type="radio" name="curate-subtype" value="Community Resource" checked onchange="toggleCurateSubtype('Community Resource')" class="text-amber-600 focus:ring-amber-500 h-4 w-4">
-                  <span>📚 Community Resource</span>
-                </label>
-                <label class="inline-flex items-center space-x-2 cursor-pointer font-bold text-stone-800">
-                  <input type="radio" name="curate-subtype" value="Community Event" onchange="toggleCurateSubtype('Community Event')" class="text-amber-600 focus:ring-amber-500 h-4 w-4">
-                  <span>📅 Community Event</span>
-                </label>
-                <label class="inline-flex items-center space-x-2 cursor-pointer font-bold text-stone-800">
-                  <input type="radio" name="curate-subtype" value="General Post" onchange="toggleCurateSubtype('General Post')" class="text-amber-600 focus:ring-amber-500 h-4 w-4">
-                  <span>📝 General Post</span>
-                </label>
-              </div>
-            </div>
-
-            <!-- Event Date Container -->
-            <div id="curate-event-date-container" class="hidden">
-              <label class="block font-bold text-stone-700 text-sm mb-1.5">Event Date <span class="text-red-500">*</span></label>
-              <input type="date" id="curate-event-date" class="w-full px-4 py-3 rounded-xl border-2 border-stone-300 font-bold text-base bg-stone-50 focus:bg-white focus:border-amber-600 transition">
-            </div>
-
-            <!-- Field 1: Title -->
-            <div>
-              <label class="block font-bold text-stone-700 text-sm mb-1.5">Title <span class="text-stone-400 font-normal text-xs">*(Acts as resource description)*</span> <span class="text-red-500">*</span></label>
-              <input type="text" id="curate-title" required placeholder="e.g. Comprehensive Mutual Aid & Wellness Handbook" class="w-full px-4 py-3 rounded-xl border-2 border-stone-300 font-bold text-base bg-stone-50 focus:bg-white focus:border-amber-600 transition">
-            </div>
-
-            <!-- Field 2: Description -->
-            <div>
-              <label class="block font-bold text-stone-700 text-sm mb-1.5">Description <span class="text-stone-400 font-normal text-xs">*(Detailed overview)*</span></label>
-              <textarea id="curate-desc" rows="3" placeholder="Provide additional details about what this resource contains..." class="w-full px-4 py-3 rounded-xl border-2 border-stone-300 font-medium text-sm bg-stone-50 focus:bg-white focus:border-amber-600 transition"></textarea>
-            </div>
-
-            <!-- Field 3: Category Theme Purpose -->
-            <div>
-              <label class="block font-bold text-stone-700 text-sm mb-1">Category Theme Selection Purpose <span class="text-red-500">*</span></label>
-              <p class="text-xs text-stone-400 font-medium mb-2">Explicitly categorizes these resources to help space members search, filter, and discover them.</p>
-              <select id="res-theme" required class="w-full px-4 py-3 rounded-xl border-2 border-stone-300 font-bold text-base bg-white focus:border-amber-600 transition cursor-pointer touch-target">
-                <option value="Inspiring Story">✨ Inspiring Story</option>
-                <option value="Mental Health">🌱 Mental Health</option>
-                <option value="Wellness">🌿 Wellness</option>
-                <option value="Mindfulness">🧘 Mindfulness</option>
-                <option value="Educational">🎓 Educational</option>
-                <option value="General">🤝 General</option>
-              </select>
-            </div>
-
-            <!-- Field 4: Links -->
-            <div class="space-y-3">
-              <label class="block font-bold text-stone-700 text-sm">Links <span class="text-stone-400 font-normal text-xs">*(Add one or more web URLs)*</span></label>
-              <div id="curate-links-list" class="space-y-2.5">
-                <div class="flex gap-2">
-                  <input type="url" placeholder="https://example.com/useful-article" class="curate-link-input flex-1 px-4 py-3 rounded-xl border-2 border-stone-300 font-medium text-sm bg-stone-50 focus:bg-white focus:border-amber-600 transition">
-                </div>
-              </div>
-              <button type="button" onclick="addCurateLinkField()" class="px-4 py-2 bg-amber-50 hover:bg-amber-100 text-amber-800 font-bold text-xs rounded-lg transition flex items-center space-x-1">
-                <span>+ Add More Links</span>
-              </button>
-            </div>
-
-            <!-- Field 5: File Uploads -->
-            <div class="space-y-3">
-              <label class="block font-bold text-stone-700 text-sm">File <span class="text-stone-400 font-normal text-xs">*(Upload PDFs, guides or images)*</span></label>
-              <div class="border-2 border-dashed border-stone-300 hover:border-amber-500 rounded-2xl p-6 bg-stone-50 transition text-center cursor-pointer relative">
-                <input type="file" id="curate-file-input" multiple onchange="handleCurateFilesSelect(event)" class="absolute inset-0 opacity-0 cursor-pointer w-full h-full">
-                <div class="space-y-1 pointer-events-none">
-                  <span class="text-2xl block">📁</span>
-                  <span class="font-bold text-sm text-stone-700">Choose Files or Drag & Drop Here</span>
-                  <span class="text-xs text-stone-400 block font-medium">Supports PDF, DOCX, TXT, PNG, JPG (Multiple files allowed)</span>
-                </div>
-              </div>
-              <div id="curate-files-preview" class="space-y-2 pt-1"></div>
-            </div>
-
-            <!-- Field 6: Submit Button -->
-            <div class="pt-4 text-center">
-              <button type="submit" class="w-full sm:w-auto min-w-[240px] px-8 py-3.5 bg-amber-600 hover:bg-amber-700 text-white font-black text-lg rounded-xl shadow-lg transition touch-target">
-                Next: Review Resources ↗
-              </button>
-            </div>
-          </form>
-
-          <!-- Step 2 Wizard -->
-          <div id="curate-step-2" class="hidden space-y-6">
-            <h4 class="text-xl font-black text-stone-900">Review & Confirm Resource Attachment</h4>
-            <div id="curate-preview-card" class="bg-stone-50 p-6 rounded-2xl border-2 border-stone-200 space-y-3"></div>
-            <div class="flex flex-col sm:flex-row justify-end gap-3 pt-4">
-              <button type="button" onclick="backToCurateStep1()" class="px-6 py-3 bg-stone-200 hover:bg-stone-300 text-stone-800 font-bold rounded-xl transition">
-                ← Back to Edit
-              </button>
-              <button type="button" onclick="confirmSubmitCurateResources()" class="px-8 py-3.5 bg-emerald-600 hover:bg-emerald-700 text-white font-black rounded-xl shadow-lg transition touch-target">
-                ✅ Confirm & Add to Space Library
-              </button>
-            </div>
-          </div>
-        </div>
-
         <div id="group-resources-list" class="flex flex-col space-y-4"></div>
-        </div>
-        </div>
+      </div>
+    </div>
 
         <!-- Right Sidebar Column: Calendar Widget -->
-        <div class="lg:col-span-1 space-y-6">
+        <div id="group-calendar-sidebar" class="lg:col-span-1 space-y-6">
           <div id="group-calendar-widget" class="bg-white p-6 rounded-3xl border-2 border-stone-200 shadow-sm space-y-4">
             <div class="flex items-center justify-between border-b border-stone-200 pb-3">
               <button type="button" onclick="navigateGroupCalendar(-1)" class="px-3 py-1.5 rounded-xl bg-stone-100 hover:bg-stone-200 font-black text-sm text-stone-700 transition">&lt; Prev</button>
               <h3 id="calendar-month-header" class="text-lg font-black text-stone-900 tracking-tight">Month YYYY</h3>
-              <button type="button" onclick="navigateGroupCalendar(1)" class="px-3 py-1.5 rounded-xl bg-stone-100 hover:bg-stone-200 font-black text-sm text-stone-700 transition">Next &gt;</button>
+              <div class="flex items-center space-x-1.5">
+                <button type="button" onclick="navigateGroupCalendar(1)" class="px-3 py-1.5 rounded-xl bg-stone-100 hover:bg-stone-200 font-black text-sm text-stone-700 transition">Next &gt;</button>
+                <button type="button" id="btn-collapse-calendar" onclick="toggleCalendarWidget(true)" class="p-1.5 rounded-xl bg-stone-100 hover:bg-amber-100 text-stone-600 hover:text-amber-800 font-black text-xs transition touch-target" title="Collapse calendar widget" aria-label="Collapse calendar widget">✕</button>
+              </div>
             </div>
             <div id="calendar-admin-action-bar" class="hidden pt-1">
               <div id="admin-calendar-actions" class="flex flex-col sm:flex-row gap-2">
-                <button type="button" id="btn-add-calendar-event" onclick="openAddCalendarEventModal()" class="flex-1 px-3 py-2 bg-amber-600 hover:bg-amber-700 text-white font-bold text-xs rounded-xl shadow-sm transition flex items-center justify-center space-x-1">
+                <button type="button" id="btn-add-calendar-event" onclick="openAddCalendarEventModal()" class="w-full px-3 py-2 bg-amber-600 hover:bg-amber-700 text-white font-bold text-xs rounded-xl shadow-sm transition flex items-center justify-center space-x-1">
                   <span>+ Add Event</span>
                 </button>
-                <button type="button" id="admin-calendar-pdf-upload" onclick="document.getElementById('calendar-pdf-input').click()" class="flex-1 px-3 py-2 bg-indigo-600 hover:bg-indigo-700 text-white font-bold text-xs rounded-xl shadow-sm transition flex items-center justify-center space-x-1">
-                  <span>📄 Upload PDF Calendar</span>
-                </button>
-                <input type="file" id="calendar-pdf-input" accept=".pdf" onchange="handleCalendarPdfUpload(event)" class="hidden">
               </div>
             </div>
             <div class="grid grid-cols-7 gap-1 text-center font-bold text-xs text-stone-400 py-1 border-b border-stone-100">
@@ -717,6 +593,7 @@
           </div>
         </div>
       </div>
+    </div>
 
       <!-- Profile Impact & Activity Statistics Section -->
       <div id="prof-stats-section" class="grid grid-cols-1 sm:grid-cols-3 gap-6">
@@ -768,6 +645,22 @@
       </div>
 
       <div id="outbox-list" class="space-y-6"></div>
+    </section>
+
+    <!-- ================== VIEW: ADMIN MODERATION QUEUE ================== -->
+    <section id="view-moderation" class="hidden space-y-8">
+      <div class="bg-gradient-to-r from-amber-50 via-stone-50 to-red-50 p-8 rounded-3xl border-2 border-amber-300 flex flex-col md:flex-row justify-between items-start md:items-center gap-6">
+        <div class="space-y-2">
+          <span class="px-3 py-1 bg-amber-600 text-white font-black text-xs rounded-full uppercase tracking-wider">Site Admin Governance</span>
+          <h1 class="text-3xl sm:text-4xl font-black text-stone-950">🛡️ Content Moderation Queue</h1>
+          <p class="text-stone-700 font-medium text-lg">Review community-reported posts, kudos, comments, and chat messages. Dismiss false reports or remove harmful content and suspend bad actors.</p>
+        </div>
+        <button onclick="loadModerationQueue()" class="px-6 py-3 bg-stone-900 hover:bg-black text-white font-black text-base rounded-xl shadow touch-target">
+          🔄 Refresh Queue
+        </button>
+      </div>
+
+      <div id="moderation-queue-list" class="space-y-4"></div>
     </section>
 
     <!-- ================== VIEW 8: SOURCE CODE BROWSER ================== -->
@@ -877,11 +770,11 @@
   <!-- ======================== INTERACTIVE DIALOGS ========================= -->
 
   <!-- MODAL 1: LOG IN -->
-  <dialog id="modal-login" class="p-0 rounded-3xl max-w-lg w-full shadow-2xl border-2 border-stone-200 m-auto max-h-[90vh] overflow-y-auto p-5 sm:p-8 rounded-2xl sm:rounded-3xl">
+  <dialog id="modal-login" class="p-0 rounded-3xl max-w-lg w-full shadow-2xl border-2 border-stone-200 m-auto max-h-[90vh] overflow-y-auto">
     <div class="p-8 sm:p-10 space-y-6 bg-white">
       <div class="flex justify-between items-center border-b pb-4">
         <h3 class="text-3xl font-black text-stone-900">Welcome Back</h3>
-        <button onclick="closeModal('modal-login')" class="text-stone-400 hover:text-stone-700 text-3xl font-black p-2 touch-target" aria-label="Close modal">×</button>
+        <button type="button" onclick="closeModal('modal-login')" class="w-10 h-10 rounded-full flex items-center justify-center text-stone-400 hover:text-stone-700 hover:bg-stone-100 text-2xl font-black transition touch-target" aria-label="Close modal" title="Close">✕</button>
       </div>
 
       <div class="bg-amber-50 p-4 rounded-2xl border border-amber-200 space-y-2">
@@ -926,11 +819,11 @@
   </dialog>
 
   <!-- MODAL 2: SIGN UP FREE -->
-  <dialog id="modal-signup" class="p-0 rounded-3xl max-w-lg w-full shadow-2xl border-2 border-stone-200 m-auto max-h-[90vh] overflow-y-auto p-5 sm:p-8 rounded-2xl sm:rounded-3xl">
+  <dialog id="modal-signup" class="p-0 rounded-3xl max-w-lg w-full shadow-2xl border-2 border-stone-200 m-auto max-h-[90vh] overflow-y-auto">
     <div class="p-8 sm:p-10 space-y-6 bg-white max-h-[90vh] overflow-y-auto">
       <div class="flex justify-between items-center border-b pb-4">
         <h3 class="text-3xl font-black text-stone-900">Join Community</h3>
-        <button onclick="closeModal('modal-signup')" class="text-stone-400 hover:text-stone-700 text-3xl font-black p-2 touch-target" aria-label="Close modal">×</button>
+        <button type="button" onclick="closeModal('modal-signup')" class="w-10 h-10 rounded-full flex items-center justify-center text-stone-400 hover:text-stone-700 hover:bg-stone-100 text-2xl font-black transition touch-target" aria-label="Close modal" title="Close">✕</button>
       </div>
       <div class="space-y-4">
         <button type="button" class="btn-passkey-login w-full py-3.5 px-4 bg-stone-900 hover:bg-black text-white font-extrabold text-base rounded-2xl shadow-sm flex items-center justify-center gap-3 transition touch-target">
@@ -985,12 +878,12 @@
   </dialog>
 
   <!-- MODAL 3: GIVE PUBLIC KUDOS -->
-  <dialog id="modal-kudos" class="p-0 rounded-3xl max-w-lg w-full shadow-2xl border border-slate-200 bg-white m-auto max-h-[90vh] overflow-y-auto p-5 sm:p-8 rounded-2xl sm:rounded-3xl">
-    <div class="p-8 sm:p-10 space-y-6 bg-white">
-      <div class="text-center space-y-1 border-b border-slate-100 pb-5 relative">
+  <dialog id="modal-kudos" class="p-0 rounded-3xl max-w-lg w-full shadow-2xl border border-slate-200 bg-white m-auto max-h-[90vh] overflow-y-auto">
+    <div class="p-8 sm:p-10 space-y-6 bg-white relative">
+      <button type="button" onclick="closeModal('modal-kudos')" class="absolute top-4 right-4 sm:top-6 sm:right-6 w-10 h-10 rounded-full flex items-center justify-center text-stone-400 hover:text-stone-700 hover:bg-stone-100 text-2xl font-black transition touch-target" aria-label="Close modal" title="Close">✕</button>
+      <div class="text-center space-y-1 border-b border-slate-100 pb-5 pr-8 pl-8">
         <h3 class="text-2xl font-extrabold text-slate-800 tracking-tight">Give Public Kudos</h3>
         <p class="text-slate-500 font-medium text-xs">Recognize intrinsic kindness and community impact.</p>
-        <button onclick="closeModal('modal-kudos')" class="absolute right-0 top-0 text-slate-400 hover:text-slate-700 text-3xl font-bold p-2 touch-target">×</button>
       </div>
 
       <form onsubmit="handleGiveKudos(event)" class="space-y-5">
@@ -1018,12 +911,12 @@
   </dialog>
 
   <!-- MODAL 4: SHARE POST -->
-  <dialog id="modal-post" class="p-0 rounded-3xl max-w-2xl w-full shadow-2xl border border-slate-200 bg-white m-auto max-h-[90vh] overflow-y-auto p-5 sm:p-8 rounded-2xl sm:rounded-3xl">
-    <div class="p-8 sm:p-12 space-y-8 bg-white">
-      <div class="text-center space-y-1.5 border-b border-slate-100 pb-5 relative">
+  <dialog id="modal-post" class="p-0 rounded-3xl max-w-2xl w-full shadow-2xl border border-slate-200 bg-white m-auto max-h-[90vh] overflow-y-auto">
+    <div class="p-8 sm:p-12 space-y-8 bg-white relative">
+      <button type="button" onclick="closeModal('modal-post')" class="absolute top-4 right-4 sm:top-6 sm:right-6 w-10 h-10 rounded-full flex items-center justify-center text-stone-400 hover:text-stone-700 hover:bg-stone-100 text-2xl font-black transition touch-target" aria-label="Close modal" title="Close">✕</button>
+      <div class="text-center space-y-1.5 border-b border-slate-100 pb-5 pr-8 pl-8">
         <h3 class="text-3xl font-extrabold text-slate-800 tracking-tight">Share Story, Event or Resource</h3>
         <p class="text-slate-500 font-medium text-sm">Publish public announcements, inspiring experiences, and community guides.</p>
-        <button onclick="closeModal('modal-post')" class="absolute right-0 top-0 text-slate-400 hover:text-slate-700 text-3xl font-bold p-2 touch-target">×</button>
       </div>
 
       <div id="post-step-1" class="space-y-6">
@@ -1067,12 +960,10 @@
           <label class="block font-bold text-slate-700 text-sm mb-1">Choose a Theme <span class="text-red-500">*</span></label>
           <p class="text-xs text-slate-400 font-medium mb-2">Explicitly categorizes this post to help space members search, filter, and discover it.</p>
           <select id="post-input-theme" required class="w-full px-4 py-3 rounded-xl border border-slate-300 font-bold text-base bg-white focus:border-indigo-600 transition cursor-pointer touch-target">
-            <option value="Inspiring Story">✨ Inspiring Story</option>
-            <option value="Mental Health">🌱 Mental Health</option>
-            <option value="Wellness">🌿 Wellness</option>
-            <option value="Mindfulness">🧘 Mindfulness</option>
-            <option value="Educational">🎓 Educational</option>
-            <option value="General">🤝 General</option>
+            <option value="Inspiring Stories">✨ Inspiring Stories</option>
+            <option value="Wellbeing & Care">🌱 Wellbeing & Care</option>
+            <option value="Skills & Learning">💡 Skills & Learning</option>
+            <option value="Community & Action">🤝 Community & Action</option>
           </select>
         </div>
 
@@ -1139,11 +1030,11 @@
   </dialog>
 
   <!-- MODAL 5: CREATE NEW SPACE -->
-  <dialog id="modal-create-group" class="p-0 rounded-3xl max-w-lg w-full shadow-2xl border-2 border-stone-200 m-auto max-h-[90vh] overflow-y-auto p-5 sm:p-8 rounded-2xl sm:rounded-3xl">
+  <dialog id="modal-create-group" class="p-0 rounded-3xl max-w-lg w-full shadow-2xl border-2 border-stone-200 m-auto max-h-[90vh] overflow-y-auto">
     <div class="p-8 sm:p-10 space-y-6 bg-white">
       <div class="flex justify-between items-center border-b pb-4">
         <h3 class="text-3xl font-black text-stone-900">Create Community Space</h3>
-        <button onclick="closeModal('modal-create-group')" class="text-stone-400 hover:text-stone-700 text-3xl font-black p-2 touch-target">×</button>
+        <button type="button" onclick="closeModal('modal-create-group')" class="w-10 h-10 rounded-full flex items-center justify-center text-stone-400 hover:text-stone-700 hover:bg-stone-100 text-2xl font-black transition touch-target" aria-label="Close modal" title="Close">✕</button>
       </div>
 
       <form onsubmit="handleCreateGroup(event)" class="space-y-4">
@@ -1162,10 +1053,10 @@
         <div>
           <label class="block font-black text-stone-700 mb-1 text-sm">Primary Theme</label>
           <select id="cgrp-theme" required class="w-full px-4 py-3 rounded-xl border border-slate-300 font-bold text-base bg-white focus:border-indigo-600 transition cursor-pointer touch-target">
-            <option value="Mental Health">Mental Health</option>
-            <option value="Wellness">Wellness</option>
-            <option value="Education">Education</option>
-            <option value="General">General</option>
+            <option value="Inspiring Stories">Inspiring Stories</option>
+            <option value="Wellbeing & Care">Wellbeing & Care</option>
+            <option value="Skills & Learning">Skills & Learning</option>
+            <option value="Community & Action">Community & Action</option>
           </select>
         </div>
         <button type="submit" class="w-full py-4 bg-teal-800 hover:bg-teal-900 text-white font-black text-xl rounded-2xl shadow transition touch-target">
@@ -1176,11 +1067,11 @@
   </dialog>
 
   <!-- MODAL 6: EDIT PROFILE -->
-  <dialog id="modal-edit-profile" class="p-0 rounded-3xl max-w-lg w-full shadow-2xl border-2 border-stone-200 m-auto max-h-[90vh] overflow-y-auto p-5 sm:p-8 rounded-2xl sm:rounded-3xl">
+  <dialog id="modal-edit-profile" class="p-0 rounded-3xl max-w-lg w-full shadow-2xl border-2 border-stone-200 m-auto max-h-[90vh] overflow-y-auto">
     <div class="p-8 sm:p-10 space-y-6 bg-white">
       <div class="flex justify-between items-center border-b pb-4">
         <h3 class="text-3xl font-black text-stone-900">Update Profile</h3>
-        <button onclick="closeModal('modal-edit-profile')" class="text-stone-400 hover:text-stone-700 text-3xl font-black p-2 touch-target">×</button>
+        <button type="button" onclick="closeModal('modal-edit-profile')" class="w-10 h-10 rounded-full flex items-center justify-center text-stone-400 hover:text-stone-700 hover:bg-stone-100 text-2xl font-black transition touch-target" aria-label="Close modal" title="Close">✕</button>
       </div>
 
       <form onsubmit="handleProfileUpdate(event)" class="space-y-4">
@@ -1204,14 +1095,14 @@
   </dialog>
 
   <!-- MODAL 7: CUSTOMER SERVICE PORTAL -->
-  <dialog id="modal-support" class="p-0 rounded-3xl max-w-lg w-full shadow-2xl border-2 border-amber-400 m-auto max-h-[90vh] overflow-y-auto p-5 sm:p-8 rounded-2xl sm:rounded-3xl">
+  <dialog id="modal-support" class="p-0 rounded-3xl max-w-lg w-full shadow-2xl border-2 border-amber-400 m-auto max-h-[90vh] overflow-y-auto">
     <div class="p-8 sm:p-10 space-y-6 bg-white">
       <div class="flex justify-between items-center border-b pb-4">
         <div class="flex items-center space-x-2">
           <span class="text-3xl" aria-hidden="true">🙋‍♀️</span>
           <h3 class="text-2xl sm:text-3xl font-black text-stone-900">Customer Service</h3>
         </div>
-        <button onclick="closeModal('modal-support')" class="text-stone-400 hover:text-stone-700 text-3xl font-black p-2 touch-target">×</button>
+        <button type="button" onclick="closeModal('modal-support')" class="w-10 h-10 rounded-full flex items-center justify-center text-stone-400 hover:text-stone-700 hover:bg-stone-100 text-2xl font-black transition touch-target" aria-label="Close modal" title="Close">✕</button>
       </div>
 
       <p class="text-stone-600 font-medium text-base">
@@ -1235,14 +1126,14 @@
   </dialog>
 
   <!-- MODAL 8: TERMS OF SERVICE -->
-  <dialog id="modal-tos" class="p-0 rounded-3xl max-w-2xl w-full shadow-2xl border border-slate-200 bg-white m-auto max-h-[90vh] overflow-y-auto p-5 sm:p-8 rounded-2xl sm:rounded-3xl">
+  <dialog id="modal-tos" class="p-0 rounded-3xl max-w-2xl w-full shadow-2xl border border-slate-200 bg-white m-auto max-h-[90vh] overflow-y-auto">
     <div class="p-8 sm:p-12 space-y-6 bg-white max-h-[85vh] overflow-y-auto text-left">
       <div class="flex justify-between items-center border-b border-slate-100 pb-4 sticky top-0 bg-white z-10">
         <div>
           <h3 class="text-2xl font-extrabold text-slate-900 tracking-tight">📜 Terms of Service & Standards</h3>
           <p class="text-xs font-semibold text-slate-400">Effective Date: June 2026</p>
         </div>
-        <button onclick="closeModal('modal-tos')" class="text-slate-400 hover:text-slate-700 text-3xl font-black p-2 touch-target" aria-label="Close modal">×</button>
+        <button type="button" onclick="closeModal('modal-tos')" class="w-10 h-10 rounded-full flex items-center justify-center text-stone-400 hover:text-stone-700 hover:bg-stone-100 text-2xl font-black transition touch-target" aria-label="Close modal" title="Close">✕</button>
       </div>
 
       <div class="space-y-5 text-sm font-medium text-slate-700 leading-relaxed">
@@ -1266,11 +1157,11 @@
   </dialog>
 
   <!-- MODAL: INVITE OTHERS -->
-  <dialog id="modal-invite-group" class="p-0 rounded-3xl max-w-lg w-full shadow-2xl border-2 border-slate-200 m-auto max-h-[90vh] overflow-y-auto p-5 sm:p-8 rounded-2xl sm:rounded-3xl">
+  <dialog id="modal-invite-group" class="p-0 rounded-3xl max-w-lg w-full shadow-2xl border-2 border-slate-200 m-auto max-h-[90vh] overflow-y-auto">
     <div class="p-8 sm:p-10 space-y-6 bg-white">
       <div class="flex justify-between items-center border-b pb-4">
         <h3 class="text-2xl font-black text-slate-900">💌 Invite Others to Join</h3>
-        <button onclick="closeModal('modal-invite-group')" class="text-slate-400 hover:text-slate-600 font-black text-xl touch-target">✕</button>
+        <button type="button" onclick="closeModal('modal-invite-group')" class="w-10 h-10 rounded-full flex items-center justify-center text-stone-400 hover:text-stone-700 hover:bg-stone-100 text-2xl font-black transition touch-target" aria-label="Close modal" title="Close">✕</button>
       </div>
       <form onsubmit="handleGroupInviteSubmit(event)" class="space-y-5 text-left font-sans">
         <div class="relative">
@@ -1292,14 +1183,14 @@
   </dialog>
 
   <!-- MODAL: CALENDAR DAY EVENTS -->
-  <dialog id="modal-calendar-day" class="p-0 rounded-3xl max-w-lg w-full shadow-2xl border-2 border-stone-200 m-auto max-h-[90vh] overflow-y-auto p-5 sm:p-8 rounded-2xl sm:rounded-3xl">
+  <dialog id="modal-calendar-day" class="p-0 rounded-3xl max-w-lg w-full shadow-2xl border-2 border-stone-200 m-auto max-h-[90vh] overflow-y-auto">
     <div class="p-6 sm:p-8 space-y-5 bg-white">
       <div class="flex justify-between items-center border-b pb-3">
         <div>
           <h3 id="modal-calendar-day-header" class="text-xl font-black text-stone-900">Events</h3>
           <p id="calendar-day-modal-title" class="text-xs font-bold text-stone-500"></p>
         </div>
-        <button onclick="closeModal('modal-calendar-day')" class="text-stone-400 hover:text-stone-600 font-black text-xl touch-target">✕</button>
+        <button type="button" onclick="closeModal('modal-calendar-day')" class="w-10 h-10 rounded-full flex items-center justify-center text-stone-400 hover:text-stone-700 hover:bg-stone-100 text-2xl font-black transition touch-target" aria-label="Close modal" title="Close">✕</button>
       </div>
       <div id="calendar-day-events-list" class="space-y-4 max-h-[60vh] overflow-y-auto">
         <div id="modal-calendar-day-list" class="space-y-4"></div>
@@ -1311,42 +1202,65 @@
   </dialog>
 
   <!-- MODAL: ADD CALENDAR EVENT -->
-  <dialog id="modal-add-event" class="p-0 rounded-3xl max-w-lg w-full shadow-2xl border-2 border-stone-200 m-auto max-h-[90vh] overflow-y-auto p-5 sm:p-8 rounded-2xl sm:rounded-3xl">
-    <div class="p-6 sm:p-8 space-y-5 bg-white">
-      <div class="flex justify-between items-center border-b pb-3">
-        <h3 class="text-xl font-black text-stone-900">Add Calendar Event</h3>
-        <button onclick="closeModal('modal-add-event')" class="text-stone-400 hover:text-stone-600 font-black text-xl touch-target">✕</button>
+  <dialog id="modal-add-event" class="p-0 rounded-3xl max-w-lg w-full shadow-2xl border-2 border-stone-200 m-auto max-h-[90vh] overflow-y-auto">
+    <div class="p-6 sm:p-8 space-y-5 bg-white relative">
+      <button type="button" onclick="closeModal('modal-add-event')" class="absolute top-4 right-4 sm:top-6 sm:right-6 w-10 h-10 rounded-full flex items-center justify-center text-stone-400 hover:text-stone-700 hover:bg-stone-100 text-2xl font-black transition touch-target" aria-label="Close modal" title="Close">✕</button>
+      <div class="text-center sm:text-left border-b border-stone-100 pb-3 pr-10">
+        <h3 class="text-2xl font-black text-stone-900">Add Calendar Event</h3>
+        <p class="text-xs font-bold text-stone-500">Schedule an activity, workshop, or community gathering.</p>
       </div>
       <form onsubmit="submitAddEventModal(event)" class="space-y-4 text-left font-sans">
         <div>
           <label class="block text-xs font-bold text-stone-700 uppercase mb-1">Event Title <span class="text-red-500">*</span></label>
-          <input type="text" id="add-event-title" required placeholder="e.g. Community Cleanup Day" class="w-full px-3.5 py-2.5 rounded-xl border border-stone-300 font-medium text-sm text-stone-900 focus:border-amber-600 focus:outline-none" oninput="document.getElementById('addevent-title').value = this.value">
+          <input type="text" id="add-event-title" required placeholder="e.g. Community Cleanup Day" class="w-full px-3.5 py-2.5 rounded-xl border border-stone-300 font-medium text-sm text-stone-900 bg-stone-50 focus:bg-white focus:border-amber-600 focus:outline-none transition" oninput="if(document.getElementById('addevent-title')) document.getElementById('addevent-title').value = this.value">
           <input type="hidden" id="addevent-title">
         </div>
         <div class="grid grid-cols-1 sm:grid-cols-2 gap-3">
           <div>
             <label class="block text-xs font-bold text-stone-700 uppercase mb-1">Event Date <span class="text-red-500">*</span></label>
-            <input type="date" id="add-event-date" required class="w-full px-3.5 py-2.5 rounded-xl border border-stone-300 font-medium text-sm text-stone-900 focus:border-amber-600 focus:outline-none" oninput="document.getElementById('addevent-date').value = this.value">
+            <input type="date" id="add-event-date" required class="w-full px-3.5 py-2.5 rounded-xl border border-stone-300 font-medium text-sm text-stone-900 bg-stone-50 focus:bg-white focus:border-amber-600 focus:outline-none transition cursor-pointer" oninput="if(document.getElementById('addevent-date')) document.getElementById('addevent-date').value = this.value">
             <input type="hidden" id="addevent-date">
           </div>
           <div>
             <label class="block text-xs font-bold text-stone-700 uppercase mb-1">Time (Optional)</label>
-            <input type="text" id="add-event-time" placeholder="e.g. 10:00 AM" class="w-full px-3.5 py-2.5 rounded-xl border border-stone-300 font-medium text-sm text-stone-900 focus:border-amber-600 focus:outline-none" oninput="document.getElementById('addevent-time').value = this.value">
+            <input type="text" id="add-event-time" placeholder="e.g. 10:00 AM" class="w-full px-3.5 py-2.5 rounded-xl border border-stone-300 font-medium text-sm text-stone-900 bg-stone-50 focus:bg-white focus:border-amber-600 focus:outline-none transition" oninput="if(document.getElementById('addevent-time')) document.getElementById('addevent-time').value = this.value">
             <input type="hidden" id="addevent-time">
           </div>
         </div>
         <div>
           <label class="block text-xs font-bold text-stone-700 uppercase mb-1">Description (Optional)</label>
-          <textarea id="add-event-description" rows="3" placeholder="Details about location, requirements, etc." class="w-full px-3.5 py-2.5 rounded-xl border border-stone-300 font-medium text-sm text-stone-900 focus:border-amber-600 focus:outline-none" oninput="document.getElementById('addevent-description').value = this.value"></textarea>
+          <textarea id="add-event-description" rows="3" placeholder="Details about location, requirements, etc." class="w-full px-3.5 py-2.5 rounded-xl border border-stone-300 font-medium text-sm text-stone-900 bg-stone-50 focus:bg-white focus:border-amber-600 focus:outline-none transition" oninput="if(document.getElementById('addevent-description')) document.getElementById('addevent-description').value = this.value"></textarea>
           <textarea id="addevent-description" class="hidden"></textarea>
         </div>
-        <div>
-          <label class="block text-xs font-bold text-stone-700 uppercase mb-1">Attachment Link or Base64 (Optional)</label>
-          <input type="text" id="add-event-attachment" placeholder="https://... or data:..." class="w-full px-3.5 py-2.5 rounded-xl border border-stone-300 font-medium text-sm text-stone-900 focus:border-amber-600 focus:outline-none" oninput="document.getElementById('addevent-file').value = this.value; document.getElementById('addevent-file-data').value = this.value">
-          <input type="hidden" id="addevent-file">
-          <input type="hidden" id="addevent-file-data">
+
+        <!-- Links Section -->
+        <div class="space-y-3">
+          <label class="block text-xs font-bold text-stone-700 uppercase mb-1">Links (Optional)</label>
+          <div id="add-event-links-list" class="space-y-2.5">
+            <div class="flex gap-2">
+              <input type="url" id="add-event-input-url" placeholder="https://example.com/event-details" class="add-event-link-input flex-1 px-3.5 py-2.5 rounded-xl border border-stone-300 font-medium text-sm text-stone-900 bg-stone-50 focus:bg-white focus:border-amber-600 focus:outline-none transition">
+            </div>
+          </div>
+          <button type="button" onclick="addEventLinkField()" class="px-3.5 py-1.5 bg-amber-50 hover:bg-amber-100 text-amber-900 font-bold text-xs rounded-lg transition flex items-center space-x-1">
+            <span>+ Add More Links</span>
+          </button>
         </div>
-        <div class="flex justify-end space-x-3 pt-3">
+
+        <!-- Files Section -->
+        <div class="space-y-3">
+          <label class="block text-xs font-bold text-stone-700 uppercase mb-1">Files (Optional)</label>
+          <div class="border-2 border-dashed border-stone-300 hover:border-amber-500 rounded-2xl p-5 bg-stone-50 transition text-center cursor-pointer relative">
+            <input type="file" id="add-event-file-input" multiple onchange="handleAddEventFilesSelect(event)" class="absolute inset-0 opacity-0 cursor-pointer w-full h-full">
+            <div class="space-y-1 pointer-events-none">
+              <span class="text-2xl block">📁</span>
+              <span class="font-bold text-sm text-stone-700">Choose Files or Drag & Drop Here</span>
+              <span class="text-xs text-stone-400 block font-medium">*(Attach event flyers, PDF agendas, or images)*</span>
+            </div>
+          </div>
+          <div id="add-event-files-preview" class="space-y-2 pt-1"></div>
+        </div>
+
+        <div class="flex justify-end space-x-3 pt-3 border-t border-stone-100">
           <button type="button" onclick="closeModal('modal-add-event')" class="px-5 py-2.5 bg-stone-100 hover:bg-stone-200 text-stone-700 font-bold rounded-xl transition">Cancel</button>
           <button type="submit" class="px-6 py-2.5 bg-amber-600 hover:bg-amber-700 text-white font-bold rounded-xl shadow-sm transition touch-target">Add to Calendar</button>
         </div>
@@ -1354,20 +1268,151 @@
     </div>
   </dialog>
 
-  <!-- MODAL: SCRAPE PREVIEW -->
-  <dialog id="modal-scrape-preview" class="p-0 rounded-3xl max-w-3xl w-full shadow-2xl border-2 border-stone-200 m-auto max-h-[90vh] overflow-y-auto p-5 sm:p-8 rounded-2xl sm:rounded-3xl">
-    <div class="p-6 sm:p-8 space-y-5 bg-white">
-      <div class="flex justify-between items-center border-b pb-3">
-        <div>
-          <h3 class="text-xl font-black text-stone-900">Review Scraped Calendar Events</h3>
-          <p class="text-xs font-bold text-stone-500">Select and adjust events extracted from the PDF before importing.</p>
-        </div>
-        <button onclick="closeModal('modal-scrape-preview')" class="text-stone-400 hover:text-stone-600 font-black text-xl touch-target">✕</button>
+  <!-- MODAL: REPORT CONTENT -->
+  <dialog id="modal-report-content" class="p-0 rounded-3xl max-w-lg w-full shadow-2xl border-2 border-stone-200 m-auto max-h-[90vh] overflow-y-auto">
+    <div class="bg-white p-6 sm:p-8 rounded-3xl space-y-6 animate-fadeIn text-left relative">
+      <button type="button" onclick="closeModal('modal-report-content')" class="absolute top-4 right-4 sm:top-6 sm:right-6 w-10 h-10 rounded-full flex items-center justify-center text-stone-400 hover:text-stone-700 hover:bg-stone-100 text-2xl font-black transition touch-target" aria-label="Close dialog" title="Close">✕</button>
+      <div class="space-y-1.5 border-b border-stone-100 pb-4 pr-8">
+        <h3 class="text-2xl font-black text-stone-900 tracking-tight flex items-center space-x-2"><span>🚩</span><span>Report Content</span></h3>
+        <p class="text-stone-500 font-bold text-sm">Help keep GoodDeeds.space safe, supportive, and respectful for all members.</p>
       </div>
-      <div id="scrape-preview-list" class="space-y-3 max-h-[60vh] overflow-y-auto"></div>
-      <div class="flex justify-end space-x-3 pt-3 border-t border-stone-100">
-        <button type="button" onclick="closeModal('modal-scrape-preview')" class="px-5 py-2.5 bg-stone-100 hover:bg-stone-200 text-stone-700 font-bold rounded-xl transition">Cancel</button>
-        <button type="button" onclick="confirmImportScrapedEvents()" class="px-6 py-2.5 bg-indigo-600 hover:bg-indigo-700 text-white font-bold rounded-xl shadow-sm transition touch-target">Import Selected Events</button>
+
+      <form onsubmit="submitContentReport(event)" class="space-y-4">
+        <input type="hidden" id="report-target-type">
+        <input type="hidden" id="report-target-id">
+
+        <div>
+          <label class="block text-xs font-bold text-stone-700 uppercase mb-2">Reason for reporting</label>
+          <select id="report-reason" required class="w-full px-4 py-3 rounded-xl border border-stone-300 font-bold text-sm bg-white focus:border-amber-500">
+            <option value="Spam or commercial solicitation">Spam or commercial solicitation</option>
+            <option value="Harassment or abusive language">Harassment or abusive language</option>
+            <option value="Misinformation or harmful advice">Misinformation or harmful advice</option>
+            <option value="Inappropriate or offensive content">Inappropriate or offensive content</option>
+            <option value="Off-topic or disruptive">Off-topic or disruptive</option>
+          </select>
+        </div>
+
+        <div>
+          <label class="block text-xs font-bold text-stone-700 uppercase mb-2">Additional notes (Optional)</label>
+          <textarea id="report-notes" rows="3" placeholder="Provide any context for the volunteer moderation team..." class="w-full px-4 py-3 rounded-xl border border-stone-300 font-medium text-sm bg-stone-50 focus:bg-white focus:border-amber-500"></textarea>
+        </div>
+
+        <div class="flex justify-end space-x-3 pt-2 border-t border-stone-100">
+          <button type="button" onclick="closeModal('modal-report-content')" class="px-5 py-2.5 bg-stone-100 hover:bg-stone-200 text-stone-700 font-bold rounded-xl transition">Cancel</button>
+          <button type="submit" class="px-6 py-2.5 bg-red-600 hover:bg-red-700 text-white font-bold rounded-xl shadow-sm transition touch-target">Submit Report</button>
+        </div>
+      </form>
+    </div>
+  </dialog>
+
+
+  <!-- MODAL: ADD SPACE RESOURCES -->
+  <dialog id="modal-curate-resource" class="p-0 rounded-3xl max-w-3xl w-full shadow-2xl border-2 border-stone-200 m-auto max-h-[90vh] overflow-y-auto">
+    <div id="admin-curate-box" class="bg-white p-6 sm:p-8 rounded-3xl space-y-6 animate-fadeIn text-left relative">
+      <button type="button" onclick="closeModal('modal-curate-resource')" class="absolute top-4 right-4 sm:top-6 sm:right-6 w-10 h-10 rounded-full flex items-center justify-center text-stone-400 hover:text-stone-700 hover:bg-stone-100 text-2xl font-black transition touch-target" aria-label="Close dialog" title="Close">✕</button>
+      <div class="text-center space-y-1.5 border-b border-stone-100 pb-5 pr-8">
+        <h3 class="text-3xl font-black text-stone-900 tracking-tight">Add Space Resources</h3>
+        <p class="text-stone-500 font-bold text-sm">Curate helpful web links and downloadable files for your space members.</p>
+      </div>
+
+      <!-- Step 1 Wizard -->
+      <form id="curate-step-1" onsubmit="reviewCurateStep(event)" class="space-y-6">
+        <!-- Subtype Selection -->
+        <div>
+          <label class="block font-bold text-stone-700 text-sm mb-2">Resource Subtype <span class="text-red-500">*</span></label>
+          <div class="flex flex-wrap gap-4">
+            <label class="inline-flex items-center space-x-2 cursor-pointer font-bold text-stone-800">
+              <input type="radio" name="curate-subtype" value="Community Resource" checked onchange="toggleCurateSubtype('Community Resource')" class="text-amber-600 focus:ring-amber-500 h-4 w-4">
+              <span>📚 Community Resource</span>
+            </label>
+            <label class="inline-flex items-center space-x-2 cursor-pointer font-bold text-stone-800">
+              <input type="radio" name="curate-subtype" value="Community Event" onchange="toggleCurateSubtype('Community Event')" class="text-amber-600 focus:ring-amber-500 h-4 w-4">
+              <span>📅 Community Event</span>
+            </label>
+            <label class="inline-flex items-center space-x-2 cursor-pointer font-bold text-stone-800">
+              <input type="radio" name="curate-subtype" value="General Post" onchange="toggleCurateSubtype('General Post')" class="text-amber-600 focus:ring-amber-500 h-4 w-4">
+              <span>📝 General Post</span>
+            </label>
+          </div>
+        </div>
+
+        <!-- Event Date Container -->
+        <div id="curate-event-date-container" class="hidden">
+          <label class="block font-bold text-stone-700 text-sm mb-1.5">Event Date <span class="text-red-500">*</span></label>
+          <input type="date" id="curate-event-date" class="w-full px-4 py-3 rounded-xl border-2 border-stone-300 font-bold text-base bg-stone-50 focus:bg-white focus:border-amber-600 transition">
+        </div>
+
+        <!-- Field 1: Title -->
+        <div>
+          <label class="block font-bold text-stone-700 text-sm mb-1.5">Title <span class="text-stone-400 font-normal text-xs">*(Acts as resource description)*</span> <span class="text-red-500">*</span></label>
+          <input type="text" id="curate-title" required placeholder="e.g. Comprehensive Mutual Aid & Wellness Handbook" class="w-full px-4 py-3 rounded-xl border-2 border-stone-300 font-bold text-base bg-stone-50 focus:bg-white focus:border-amber-600 transition">
+        </div>
+
+        <!-- Field 2: Description -->
+        <div>
+          <label class="block font-bold text-stone-700 text-sm mb-1.5">Description <span class="text-stone-400 font-normal text-xs">*(Detailed overview)*</span></label>
+          <textarea id="curate-desc" rows="3" placeholder="Provide additional details about what this resource contains..." class="w-full px-4 py-3 rounded-xl border-2 border-stone-300 font-medium text-sm bg-stone-50 focus:bg-white focus:border-amber-600 transition"></textarea>
+        </div>
+
+        <!-- Field 3: Category Theme Purpose -->
+        <div>
+          <label class="block font-bold text-stone-700 text-sm mb-1">Category Theme Selection Purpose <span class="text-red-500">*</span></label>
+          <p class="text-xs text-stone-400 font-medium mb-2">Explicitly categorizes these resources to help space members search, filter, and discover them.</p>
+          <select id="res-theme" required class="w-full px-4 py-3 rounded-xl border-2 border-stone-300 font-bold text-base bg-white focus:border-amber-600 transition cursor-pointer touch-target">
+            <option value="Inspiring Stories">✨ Inspiring Stories</option>
+            <option value="Wellbeing & Care">🌱 Wellbeing & Care</option>
+            <option value="Skills & Learning">💡 Skills & Learning</option>
+            <option value="Community & Action">🤝 Community & Action</option>
+          </select>
+        </div>
+
+        <!-- Field 4: Links -->
+        <div class="space-y-3">
+          <label class="block font-bold text-stone-700 text-sm">Links <span class="text-stone-400 font-normal text-xs">*(Add one or more web URLs)*</span></label>
+          <div id="curate-links-list" class="space-y-2.5">
+            <div class="flex gap-2">
+              <input type="url" placeholder="https://example.com/useful-article" class="curate-link-input flex-1 px-4 py-3 rounded-xl border-2 border-stone-300 font-medium text-sm bg-stone-50 focus:bg-white focus:border-amber-600 transition">
+            </div>
+          </div>
+          <button type="button" onclick="addCurateLinkField()" class="px-4 py-2 bg-amber-50 hover:bg-amber-100 text-amber-800 font-bold text-xs rounded-lg transition flex items-center space-x-1">
+            <span>+ Add More Links</span>
+          </button>
+        </div>
+
+        <!-- Field 5: File Uploads -->
+        <div class="space-y-3">
+          <label class="block font-bold text-stone-700 text-sm">File <span class="text-stone-400 font-normal text-xs">*(Upload PDFs, guides or images)*</span></label>
+          <div class="border-2 border-dashed border-stone-300 hover:border-amber-500 rounded-2xl p-6 bg-stone-50 transition text-center cursor-pointer relative">
+            <input type="file" id="curate-file-input" multiple onchange="handleCurateFilesSelect(event)" class="absolute inset-0 opacity-0 cursor-pointer w-full h-full">
+            <div class="space-y-1 pointer-events-none">
+              <span class="text-2xl block">📁</span>
+              <span class="font-bold text-sm text-stone-700">Choose Files or Drag & Drop Here</span>
+              <span class="text-xs text-stone-400 block font-medium">Supports PDF, DOCX, TXT, PNG, JPG (Multiple files allowed)</span>
+            </div>
+          </div>
+          <div id="curate-files-preview" class="space-y-2 pt-1"></div>
+        </div>
+
+        <!-- Field 6: Submit Button -->
+        <div class="pt-4 text-center">
+          <button type="submit" class="w-full sm:w-auto min-w-[240px] px-8 py-3.5 bg-amber-600 hover:bg-amber-700 text-white font-black text-lg rounded-xl shadow-lg transition touch-target">
+            Next: Review Resources ↗
+          </button>
+        </div>
+      </form>
+
+      <!-- Step 2 Wizard -->
+      <div id="curate-step-2" class="hidden space-y-6">
+        <h4 class="text-xl font-black text-stone-900">Review & Confirm Resource Attachment</h4>
+        <div id="curate-preview-card" class="bg-stone-50 p-6 rounded-2xl border-2 border-stone-200 space-y-3"></div>
+        <div class="flex flex-col sm:flex-row justify-end gap-3 pt-4">
+          <button type="button" onclick="backToCurateStep1()" class="px-6 py-3 bg-stone-200 hover:bg-stone-300 text-stone-800 font-bold rounded-xl transition">
+            ← Back to Edit
+          </button>
+          <button type="button" onclick="confirmSubmitCurateResources()" class="px-8 py-3.5 bg-emerald-600 hover:bg-emerald-700 text-white font-black rounded-xl shadow-lg transition touch-target">
+            ✅ Confirm & Add to Space Library
+          </button>
+        </div>
       </div>
     </div>
   </dialog>
