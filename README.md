@@ -148,15 +148,23 @@ GoodDeeds.space includes a three-tiered moderation and safety system to protect 
     - **🗑️ Delete Content**: Removes the reported post, comment, or chat message.
     - **🚫 Delete & Ban Author**: Deletes the reported content, suspends the author's account, purges their content, and resolves the report.
 
-### 3. Automated Safety Guardrails
+### 3. Automated Safety Guardrails & Authentication Rate Limiting
 - **Server-Side Keyword Filter & Rate Limiter (`check_content_moderation`)**:
   - Automatically enforced across `POST /api/kudos`, `POST /api/posts`, `POST /api/comments`, and `POST /api/groups/<gid>/chat`.
   - Immediately blocks known spam/malicious phrases (`400 Bad Request`) and enforces per-user rate limits against automated floods.
+- **Authentication Rate Limiting (`check_auth_rate_limit`)**:
+  - **`POST /api/auth/login`**: Throttled to a maximum of **10 login attempts per 60 seconds** per `(IP, email)` pair to block brute-force credential stuffing (`429 Too Many Requests`).
+  - **`POST /api/auth/signup`**: Throttled to a maximum of **5 registration attempts per 60 seconds** per client IP (`429 Too Many Requests`), and automatically filters registration fields against prohibited spam keywords (`400 Bad Request`).
 
-### 4. CSRF & XSS Protection on State-Changing Endpoints
+### 4. Salted PBKDF2-HMAC-SHA256 Password Security
+- **Per-User Random Salt & Key Stretching**:
+  - Passwords in [`database.py`](database.py) (`hash_password`) are hashed using `hashlib.pbkdf2_hmac("sha256", ...)` with a unique 16-byte cryptographically secure random salt (`os.urandom(16)`) and **100,000 iterations**, stored in the format `pbkdf2_sha256$100000$<salt_hex>$<hash_hex>`.
+  - Credential verification (`verify_password`) uses constant-time `hmac.compare_digest` comparison and transparently upgrades any legacy unsalted SHA-256 hashes upon login.
+
+### 5. CSRF & XSS Protection on State-Changing Endpoints
 - **Cross-Site Request Forgery (CSRF) Defense**:
   - **Explicit Bearer Token Auth**: API endpoints authenticate via an explicit `Authorization: Bearer <token>` HTTP header (stored in `localStorage`, never ambient cookies). Because browsers never attach custom `Authorization` headers to cross-site `<form>` submissions or cross-origin requests without preflight, endpoints are inherently immune to cookie-based CSRF.
-  - **Server-Side Origin Validation**: In addition, `handle_api_request` in [`handlers.py`](handlers.py) enforces strict `Origin` / `Host` header matching on all state-changing requests (`POST`, `PUT`, `DELETE`). Cross-origin requests with a mismatched `Origin` are immediately rejected with `403 Forbidden: CSRF Origin mismatch.`
+  - **Server-Side Origin & Referer Validation**: In addition, `handle_api_request` in [`handlers.py`](handlers.py) enforces strict `Origin` / `Host` header matching on all state-changing requests (`POST`, `PUT`, `DELETE`). If `Origin` is omitted, the server falls back to verifying the `Referer` header against `Host`. Any cross-site request with a mismatched `Origin`/`Referer` or missing both headers is immediately rejected with `403 Forbidden`.
 - **Cross-Site Scripting (XSS) Sanitization**:
   - All user-generated text fields (post titles/content, comments, chat messages, usernames, report notes) are sanitized via `escapeHtml(...)` in [`static/app.js`](static/app.js) before DOM insertion.
 
@@ -358,13 +366,13 @@ Since SMTP servers might not be configured in local development, all emails sent
 Users can submit inquiries which log to `customer_service_inquiries`.
 *   **Submit API**: `POST /api/support`
 *   **View API (Admin)**: `GET /api/support`
-*   On submission, a confirmation email is sent to the user, and an alert email is sent to `roht_kgupta@yahoo.com` (both visible in the Simulated Outbox).
+*   On submission, a confirmation email is sent to the user, and an alert email is sent to `SUPPORT_ALERT_EMAIL` (defaulting to `support@gooddeeds.space`, both visible in the Simulated Outbox).
 
 ---
 
 ## Running the Testing Suite
 
-The testing suite verifies all 128 unit, API integration, and UI regression tests using isolated temporary databases.
+The testing suite verifies all 136+ unit, API integration, and UI regression tests using isolated temporary databases.
 
 ### Running with the Helper Script
 Ensure the script is executable, then run it:

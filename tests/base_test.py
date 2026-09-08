@@ -47,6 +47,10 @@ class BaseTestCase(unittest.TestCase):
         if os.path.exists(self.temp_db_file):
             os.remove(self.temp_db_file)
         self.database.init_db()
+        if hasattr(self.handlers, "_auth_rate_limit_timestamps"):
+            self.handlers._auth_rate_limit_timestamps.clear()
+        if hasattr(self.handlers, "_user_rate_limit_timestamps"):
+            self.handlers._user_rate_limit_timestamps.clear()
 
     def make_request(self, method, path, headers=None, body=None):
         """Helper to make simulated API requests to handlers."""

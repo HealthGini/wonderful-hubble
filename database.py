@@ -38,15 +38,42 @@ def get_db():
 
 def hash_password(password: str) -> str:
     """
-    Hashes a plain text password using SHA-256.
+    Hashes a plain text password using PBKDF2-HMAC-SHA256 with a random 16-byte salt
+    and 100,000 iterations.
     
     Args:
         password: The plain text password to hash.
         
     Returns:
-        str: The hex digest of the hashed password.
+        str: Formatted string 'pbkdf2_sha256$100000$<salt_hex>$<hash_hex>'
     """
-    return hashlib.sha256(password.encode("utf-8")).hexdigest()
+    iterations = 100000
+    salt_bytes = os.urandom(16)
+    salt_hex = salt_bytes.hex()
+    derived = hashlib.pbkdf2_hmac("sha256", password.encode("utf-8"), salt_bytes, iterations)
+    return f"pbkdf2_sha256${iterations}${salt_hex}${derived.hex()}"
+
+def verify_password(plain_password: str, stored_hash: str) -> bool:
+    """
+    Verifies a plain text password against a stored salted PBKDF2 hash
+    (with transparent fallback for legacy SHA-256 hashes during migration).
+    """
+    import hmac
+    if not stored_hash or not plain_password:
+        return False
+    if stored_hash.startswith("pbkdf2_sha256$"):
+        try:
+            parts = stored_hash.split("$")
+            iterations = int(parts[1])
+            salt_bytes = bytes.fromhex(parts[2])
+            expected_hex = parts[3]
+            derived = hashlib.pbkdf2_hmac("sha256", plain_password.encode("utf-8"), salt_bytes, iterations)
+            return hmac.compare_digest(derived.hex(), expected_hex)
+        except Exception:
+            return False
+    # Legacy unsalted SHA-256 fallback
+    legacy_hex = hashlib.sha256(plain_password.encode("utf-8")).hexdigest()
+    return hmac.compare_digest(legacy_hex, stored_hash)
 
 def extract_resource_text(resource_url) -> str:
     """

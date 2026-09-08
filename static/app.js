@@ -2692,7 +2692,7 @@ async function handleSupportSubmit(e) {
     document.getElementById("supp-message").value = "";
     showToast("✅ " + data.message);
     setTimeout(() => {
-      if (confirm("Inquiry submitted! Would you like to view the simulated email alert sent to roht_kgupta@yahoo.com in the Email Outbox Audit Log?")) {
+      if (confirm("Inquiry submitted! Would you like to view the simulated support alert in the Email Outbox Audit Log?")) {
         navigateTo("/outbox");
       }
     }, 500);

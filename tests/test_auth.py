@@ -31,7 +31,8 @@ class TestAuth(BaseTestCase):
         self.assertIsNotNone(row)
         pw_hash = row["password_hash"]
         self.assertNotEqual(pw_hash, signup_data["password"])
-        self.assertEqual(pw_hash, self.database.hash_password(signup_data["password"]))
+        self.assertTrue(pw_hash.startswith("pbkdf2_sha256$100000$"))
+        self.assertTrue(self.database.verify_password(signup_data["password"], pw_hash))
 
     def test_signup_missing_fields(self):
         """Tests signup fails with missing fields."""

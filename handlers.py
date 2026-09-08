@@ -17,7 +17,7 @@ from email.mime.multipart import MIMEMultipart
 from email.mime.text import MIMEText
 from urllib.parse import parse_qs, urlparse
 import urllib.request
-from database import get_db, hash_password, get_user_stats, extract_resource_text, get_platform_stats
+from database import get_db, hash_password, verify_password, get_user_stats, extract_resource_text, get_platform_stats
 
 from fido2.server import Fido2Server
 from fido2.webauthn import (
@@ -68,6 +68,35 @@ def camel_case_keys(obj):
     return obj
 
 _user_rate_limit_timestamps = {}
+_auth_rate_limit_timestamps = {}
+
+def get_client_ip(headers):
+    """Extracts client IP address from request headers with fallback to 127.0.0.1."""
+    if hasattr(headers, "get"):
+        xff = headers.get("X-Forwarded-For") or headers.get("x-forwarded-for")
+        if xff:
+            return str(xff).split(",")[0].strip()
+        real_ip = headers.get("X-Real-IP") or headers.get("x-real-ip")
+        if real_ip:
+            return str(real_ip).strip()
+    return "127.0.0.1"
+
+def check_auth_rate_limit(action, identifier, max_requests=10, window_seconds=60.0):
+    """
+    Rate limits authentication endpoints (/api/auth/login, /api/auth/signup) by IP and identifier
+    to prevent brute-force credential stuffing and automated signup spam.
+    Returns (is_allowed: bool, error_message: str)
+    """
+    import time
+    now = time.time()
+    key = f"{action}:{identifier}"
+    timestamps = _auth_rate_limit_timestamps.get(key, [])
+    timestamps = [t for t in timestamps if now - t < window_seconds]
+    if len(timestamps) >= max_requests:
+        return False, "Too many authentication attempts. Please wait a minute and try again."
+    timestamps.append(now)
+    _auth_rate_limit_timestamps[key] = timestamps
+    return True, None
 
 BLOCKLISTED_KEYWORDS = [
     "buy cheap viagra",
@@ -424,12 +453,20 @@ def handle_api_request(method, path, headers, body_bytes):
 
     # ================== CSRF & ORIGIN PROTECTION ==================
     if method in ("POST", "PUT", "DELETE"):
-        origin_hdr = (headers.get("Origin") or headers.get("origin") or "").strip() if hasattr(headers, "get") else ""
         host_hdr = (headers.get("Host") or headers.get("host") or "").strip() if hasattr(headers, "get") else ""
-        if origin_hdr and host_hdr:
-            origin_host = urlparse(origin_hdr).netloc
-            if origin_host and origin_host != host_hdr:
-                return error_response("Forbidden: CSRF Origin mismatch.", 403)
+        if host_hdr:
+            origin_hdr = (headers.get("Origin") or headers.get("origin") or "").strip() if hasattr(headers, "get") else ""
+            referer_hdr = (headers.get("Referer") or headers.get("referer") or "").strip() if hasattr(headers, "get") else ""
+            if origin_hdr and origin_hdr != "null":
+                origin_host = urlparse(origin_hdr).netloc
+                if origin_host != host_hdr:
+                    return error_response("Forbidden: CSRF Origin mismatch.", 403)
+            elif referer_hdr:
+                referer_host = urlparse(referer_hdr).netloc
+                if referer_host != host_hdr:
+                    return error_response("Forbidden: CSRF Referer mismatch.", 403)
+            else:
+                return error_response("Forbidden: CSRF check failed (missing Origin or Referer header).", 403)
 
     # ================== PLATFORM STATS ENDPOINTS ==================
     if path_only in ("/api/stats", "/api/landing_stats", "/stats", "/landing_stats") and method == "GET":
@@ -729,12 +766,22 @@ def handle_api_request(method, path, headers, body_bytes):
         return json_response({"token": token, "user": user_dict, "success": True})
 
     if path_only == "/api/auth/signup" and method == "POST":
+        client_ip = get_client_ip(headers)
+        is_allowed, err_msg = check_auth_rate_limit("signup", client_ip, max_requests=5, window_seconds=60.0)
+        if not is_allowed:
+            return error_response(err_msg, 429)
+
         email = body.get("email", "").strip()
         username = body.get("username", "").strip()
         password = body.get("password", "")
         phone = body.get("phone", "").strip()
         avatar_url = body.get("avatar_url", "").strip() or "https://images.unsplash.com/photo-1534528741775-53994a69daeb?auto=format&fit=crop&w=200&q=80"
         bio = body.get("bio", "").strip()
+
+        full_signup_text = f"{email} {username} {bio}".lower()
+        for keyword in BLOCKLISTED_KEYWORDS:
+            if keyword in full_signup_text:
+                return error_response(f"Registration blocked by automated safety filter (prohibited phrase: '{keyword}').", 400)
 
         if not email or not username or not password:
             return error_response("Email, username, and password are required.")
@@ -770,24 +817,34 @@ def handle_api_request(method, path, headers, body_bytes):
     if path_only == "/api/auth/login" and method == "POST":
         email = body.get("email", "").strip()
         password = body.get("password", "")
+        client_ip = get_client_ip(headers)
+        login_key = f"{client_ip}:{email.lower()}" if email else client_ip
+        is_allowed, err_msg = check_auth_rate_limit("login", login_key, max_requests=10, window_seconds=60.0)
+        if not is_allowed:
+            return error_response(err_msg, 429)
+
         if not email or not password:
             return error_response("Email and password are required.")
-        pw_hash = hash_password(password)
         conn = get_db()
         cursor = conn.cursor()
         cursor.execute("""
-            SELECT id, email, username, phone, avatar_url, bio, is_site_admin, is_banned, oauth_provider, oauth_id
+            SELECT id, email, username, password_hash, phone, avatar_url, bio, is_site_admin, is_banned, oauth_provider, oauth_id
             FROM users
-            WHERE (LOWER(email) = LOWER(?) OR LOWER(username) = LOWER(?)) AND password_hash = ?
-        """, (email, email, pw_hash))
+            WHERE LOWER(email) = LOWER(?) OR LOWER(username) = LOWER(?)
+        """, (email, email))
         row = cursor.fetchone()
-        if not row:
+        if not row or not verify_password(password, row["password_hash"]):
             conn.close()
             return error_response("Invalid email or password.", 401)
         if row["is_banned"] == 1:
             conn.close()
             return error_response("Account suspended by site administration.", 403)
         user_dict = dict(row)
+        stored_pw_hash = user_dict.pop("password_hash", "")
+        # Transparently upgrade legacy unsalted hashes to salted PBKDF2-HMAC-SHA256 on login
+        if not str(stored_pw_hash).startswith("pbkdf2_sha256$"):
+            new_salted_hash = hash_password(password)
+            cursor.execute("UPDATE users SET password_hash = ? WHERE id = ?", (new_salted_hash, user_dict["id"]))
         token = str(uuid.uuid4())
         cursor.execute("INSERT INTO sessions (token, user_id) VALUES (?, ?)", (token, user_dict["id"]))
         conn.commit()
@@ -2379,8 +2436,9 @@ def handle_api_request(method, path, headers, body_bytes):
         conn.commit()
         conn.close()
 
+        support_alert_recipient = os.environ.get("SUPPORT_ALERT_EMAIL", "support@gooddeeds.space")
         send_real_or_simulated_email(user["email"], user_subj, user_body)
-        send_real_or_simulated_email("roht_kgupta@yahoo.com", admin_subj, admin_body)
+        send_real_or_simulated_email(support_alert_recipient, admin_subj, admin_body)
 
         return json_response({"success": True, "message": "Customer service inquiry submitted successfully."})
 

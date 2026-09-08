@@ -626,38 +626,15 @@ class TestRegressionCoverage(GoodDeedsTestCase):
         self.assertIn("window.closeProfileDropdown = closeProfileDropdown", app_js_content)
         self.assertIn("window.toggleProfileDropdown = toggleProfileDropdown", app_js_content)
 
-    @classmethod
-    def setUpClass(cls):
-        super().setUpClass()
-        try:
-            base_dir = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-            notes_dir = os.path.join(base_dir, "_worker_notes")
-            os.makedirs(notes_dir, exist_ok=True)
-            readme_path = os.path.join(notes_dir, "README.md")
-            if not os.path.exists(readme_path):
-                with open(readme_path, "w", encoding="utf-8") as f:
-                    f.write("""# Interactive Space Calendar & PDF Scraping Documentation
-
-## What Works
-- **Interactive Space Calendar Layout & Widget (`#group-calendar-widget`)**: Responsive right sidebar (`lg:col-span-1`) in space details (`#view-group-detail`) displaying a 7-column weekday and day cells grid (`#calendar-days-grid`), month/year header (`#calendar-month-header`), and navigation buttons (`< Prev`, `Next >`).
-- **Admin Action Bar (`#calendar-admin-action-bar` / `#admin-calendar-actions`)**: Automatically visible to space admins and site admins (`is_admin == 1` or `is_site_admin == 1`). Provides `+ Add Event` button and `📄 Upload PDF Calendar` button.
-- **Quick Event Creation (`#modal-add-event`)**: Allows creating space events with title, event date, optional time, description, and optional attachment. Submits via `POST /api/posts` (`item_type: "POST"`, `post_subtype: "EVENT"`, `event_date`, `group_ids: [activeGroupData.id]`).
-- **PDF Calendar Scraping (`POST /api/groups/<gid>/scrape_calendar`)**: Extracts text lines/tokens from base64 PDF or resource URIs via `extract_resource_text()`. Parses dates (ISO, US, and Natural formats) and surrounding text (title, time, description) via `parse_calendar_events_from_text` / `parse_scraped_calendar_events`.
-- **Scraped Events Preview & Import (`#modal-scrape-preview`)**: Displays scraped suggested events (`#scrape-preview-list`) with checkboxes (`scraped-event-checkbox`) and editable fields so admins can review and batch import selected events directly into the space calendar (`confirmImportScrapedEvents()`).
-- **Day Events Modal (`#modal-calendar-day`)**: Displays all events and resources scheduled on a clicked date (`showCalendarDayEvents(dateStr)`). Attachment buttons strictly comply with Rule 2 (`_attachmentCache` + `openAttachment(...)` + `formatAttachmentLabel(url, 0, 1)`).
-
-## What Doesn't Work / Limitations
-- None. All automated regression and integration tests pass cleanly (`Ran 92 tests in ~1.3s. OK`).
-
-## How to Run Tests
-From the workspace root directory, execute:
-```bash
-./run_tests.sh
-```
-All 92+ tests run cleanly with `OK`.
-""")
-        except Exception:
-            pass
+    def test_repo_root_hygiene_no_stray_files(self):
+        """
+        Verifies repository root hygiene: asserts that stray scratch/debug files
+        (scratch_test.js, test_syntax.js, _worker_notes/) do not exist at repo root.
+        """
+        base_dir = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+        for stray in ("_worker_notes", "scratch_test.js", "test_syntax.js"):
+            stray_path = os.path.join(base_dir, stray)
+            self.assertFalse(os.path.exists(stray_path), f"Stray file/directory found at repo root: {stray}")
 
     def test_interactive_calendar_widget_structure(self):
         """
@@ -2099,17 +2076,24 @@ All 92+ tests run cleanly with `OK`.
 
     def test_csrf_origin_validation_on_state_changing_endpoints(self):
         """
-        Verifies that state-changing endpoints (POST, PUT, DELETE) enforce CSRF Origin
-        validation when an Origin header is provided, rejecting cross-site origins with 403.
+        Verifies that state-changing endpoints (POST, PUT, DELETE) enforce strict CSRF Origin/Referer
+        validation when Host is provided:
+        - Reject cross-site Origin with 403
+        - Reject requests missing both Origin and Referer with 403 (prevents no-Origin form POST bypass)
+        - Reject cross-site Referer fallback with 403
+        - Allow same-origin Referer fallback with 201
+        - Allow same-origin Origin with 201
         """
         token = self.get_token("maya@gooddeeds.space")
-        bad_headers = {
+
+        # 1. Cross-site Origin header -> 403
+        bad_origin_headers = {
             "Authorization": f"Bearer {token}",
             "Content-Type": "application/json",
             "Host": "localhost:8080",
             "Origin": "https://evil-attacker.example.com"
         }
-        status, _, body = self.make_request("POST", "/api/posts", headers=bad_headers, body={
+        status, _, body = self.make_request("POST", "/api/posts", headers=bad_origin_headers, body={
             "title": "CSRF Attack Attempt",
             "theme": "General",
             "content": "Should be blocked by CSRF check"
@@ -2117,6 +2101,50 @@ All 92+ tests run cleanly with `OK`.
         self.assertEqual(status, 403)
         self.assertIn("csrf", body.get("error", "").lower())
 
+        # 2. Missing both Origin and Referer when Host is present -> 403
+        missing_origin_headers = {
+            "Authorization": f"Bearer {token}",
+            "Content-Type": "application/json",
+            "Host": "localhost:8080"
+        }
+        status, _, body = self.make_request("POST", "/api/posts", headers=missing_origin_headers, body={
+            "title": "No-Origin Bypass Attempt",
+            "theme": "General",
+            "content": "Should be blocked when Origin and Referer are missing"
+        })
+        self.assertEqual(status, 403)
+        self.assertIn("csrf", body.get("error", "").lower())
+
+        # 3. Cross-site Referer fallback when Origin is omitted -> 403
+        bad_referer_headers = {
+            "Authorization": f"Bearer {token}",
+            "Content-Type": "application/json",
+            "Host": "localhost:8080",
+            "Referer": "https://evil-attacker.example.com/form"
+        }
+        status, _, body = self.make_request("POST", "/api/posts", headers=bad_referer_headers, body={
+            "title": "Cross-site Referer Attempt",
+            "theme": "General",
+            "content": "Should be blocked by Referer fallback check"
+        })
+        self.assertEqual(status, 403)
+        self.assertIn("csrf", body.get("error", "").lower())
+
+        # 4. Valid same-origin Referer fallback when Origin is omitted -> 201
+        good_referer_headers = {
+            "Authorization": f"Bearer {token}",
+            "Content-Type": "application/json",
+            "Host": "localhost:8080",
+            "Referer": "http://localhost:8080/feed"
+        }
+        status, _, body = self.make_request("POST", "/api/posts", headers=good_referer_headers, body={
+            "title": "Legitimate Same-Origin Referer Post",
+            "theme": "General",
+            "content": "Allowed by Referer fallback check"
+        })
+        self.assertEqual(status, 201)
+
+        # 5. Valid same-origin Origin header -> 201
         good_headers = {
             "Authorization": f"Bearer {token}",
             "Content-Type": "application/json",
@@ -2175,11 +2203,122 @@ All 92+ tests run cleanly with `OK`.
         status, _, body = self.make_request("GET", "/api/notifications", headers=headers_elena)
         self.assertEqual(body.get("unread_count"), 0)
 
+    def test_salted_pbkdf2_password_hashing_and_upgrade(self):
+        """
+        Verifies that hash_password produces unique salted PBKDF2-HMAC-SHA256 hashes
+        ('pbkdf2_sha256$100000$<salt>$<hash>'), verify_password validates correctly,
+        and login transparently upgrades any legacy unsalted SHA-256 hash.
+        """
+        from database import hash_password, verify_password
+        h1 = hash_password("SecretPassword123!")
+        h2 = hash_password("SecretPassword123!")
+        self.assertTrue(h1.startswith("pbkdf2_sha256$100000$"))
+        self.assertNotEqual(h1, h2, "Every hash must generate a unique random salt")
+        self.assertTrue(verify_password("SecretPassword123!", h1))
+        self.assertFalse(verify_password("WrongPassword", h1))
 
+        # Test transparent login upgrade of a legacy unsalted SHA-256 hash
+        import hashlib
+        legacy_unsalted = hashlib.sha256("legacy_pw".encode("utf-8")).hexdigest()
+        conn = self.database.get_db()
+        conn.execute("UPDATE users SET password_hash = ? WHERE id = 3", (legacy_unsalted,))
+        conn.commit()
+        conn.close()
 
+        # Log in with Elena using 'legacy_pw'
+        status, _, body = self.make_request("POST", "/api/auth/login", body={
+            "email": "elena@gooddeeds.space",
+            "password": "legacy_pw"
+        })
+        self.assertEqual(status, 200)
+        self.assertIn("token", body)
 
+        # Verify database row was transparently upgraded to salted PBKDF2-HMAC-SHA256
+        conn = self.database.get_db()
+        upgraded_row = conn.execute("SELECT password_hash FROM users WHERE id = 3").fetchone()
+        conn.close()
+        self.assertTrue(upgraded_row["password_hash"].startswith("pbkdf2_sha256$100000$"))
 
+    def test_auth_login_and_signup_rate_limiting_and_spam_filter(self):
+        """
+        Verifies rate limiting on /api/auth/login (max 10 per 60s) and /api/auth/signup (max 5 per 60s),
+        returning 429 Too Many Requests when exceeded, as well as spam keyword filtering on signup.
+        """
+        # 1. Signup spam filter blocks prohibited keywords in username/bio
+        status, _, body = self.make_request("POST", "/api/auth/signup", headers={"X-Forwarded-For": "10.0.0.50"}, body={
+            "email": "spambot@example.com",
+            "username": "free bitcoin giveaway bot",
+            "password": "Password123!"
+        })
+        self.assertEqual(status, 400)
+        self.assertIn("prohibited phrase", body.get("error", "").lower())
 
+        # 2. Signup rate limiting (5 attempts allowed per IP, 6th returns 429)
+        for i in range(4):
+            status, _, body = self.make_request("POST", "/api/auth/signup", headers={"X-Forwarded-For": "10.0.0.50"}, body={
+                "email": f"user_{i}@example.com",
+                "username": f"user_{i}",
+                "password": "Password123!"
+            })
+            self.assertEqual(status, 201)
 
+        # 6th attempt from same IP (1 blocked spam attempt + 4 successful signups = 5 attempts total so far)
+        status, _, body = self.make_request("POST", "/api/auth/signup", headers={"X-Forwarded-For": "10.0.0.50"}, body={
+            "email": "user_extra@example.com",
+            "username": "user_extra",
+            "password": "Password123!"
+        })
+        self.assertEqual(status, 429)
+        self.assertIn("too many authentication attempts", body.get("error", "").lower())
 
+        # 3. Login brute-force rate limiting (10 attempts allowed per IP:email, 11th returns 429)
+        for i in range(10):
+            status, _, body = self.make_request("POST", "/api/auth/login", headers={"X-Forwarded-For": "10.0.0.99"}, body={
+                "email": "maya@gooddeeds.space",
+                "password": f"wrong_password_{i}"
+            })
+            self.assertEqual(status, 401)
 
+        # 11th login attempt against maya@gooddeeds.space from same IP is rate limited with 429
+        status, _, body = self.make_request("POST", "/api/auth/login", headers={"X-Forwarded-For": "10.0.0.99"}, body={
+            "email": "maya@gooddeeds.space",
+            "password": "wrong_password_11"
+        })
+        self.assertEqual(status, 429)
+        self.assertIn("too many authentication attempts", body.get("error", "").lower())
+
+    def test_support_alert_email_env_var_configuration(self):
+        """
+        Verifies that no personal email is hardcoded in handlers.py or static/app.js
+        and that support inquiry alerts respect the SUPPORT_ALERT_EMAIL environment variable.
+        """
+        base_dir = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+        for rel_path in ("handlers.py", os.path.join("static", "app.js")):
+            with open(os.path.join(base_dir, rel_path), "r", encoding="utf-8") as f:
+                content = f.read()
+                self.assertNotIn("roht_kgupta@yahoo.com", content)
+
+        token = self.get_token("maya@gooddeeds.space")
+        headers = {"Authorization": f"Bearer {token}"}
+
+        old_env = os.environ.get("SUPPORT_ALERT_EMAIL")
+        try:
+            os.environ["SUPPORT_ALERT_EMAIL"] = "custom-ops@gooddeeds.space"
+            status, _, body = self.make_request("POST", "/api/support", headers=headers, body={
+                "subject": "Testing Support Alert Env Var",
+                "message": "Should route to custom-ops@gooddeeds.space"
+            })
+            self.assertEqual(status, 200)
+
+            conn = self.database.get_db()
+            row = conn.execute(
+                "SELECT recipient_email FROM email_outbox WHERE recipient_email = ? ORDER BY id DESC LIMIT 1",
+                ("custom-ops@gooddeeds.space",)
+            ).fetchone()
+            conn.close()
+            self.assertIsNotNone(row)
+        finally:
+            if old_env is not None:
+                os.environ["SUPPORT_ALERT_EMAIL"] = old_env
+            elif "SUPPORT_ALERT_EMAIL" in os.environ:
+                del os.environ["SUPPORT_ALERT_EMAIL"]
