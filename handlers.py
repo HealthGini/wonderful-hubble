@@ -451,10 +451,16 @@ def handle_api_request(method, path, headers, body_bytes):
 
     user = get_user_from_token(headers)
 
-    # ================== CSRF & ORIGIN PROTECTION ==================
+    # ================== HOST & CSRF / ORIGIN PROTECTION ==================
     if method in ("POST", "PUT", "DELETE"):
         host_hdr = (headers.get("Host") or headers.get("host") or "").strip() if hasattr(headers, "get") else ""
         if host_hdr:
+            allowed_hosts_env = os.environ.get("ALLOWED_HOSTS", "localhost,127.0.0.1,gooddeeds.space,www.gooddeeds.space")
+            allowed_hosts = [h.strip().lower() for h in allowed_hosts_env.split(",") if h.strip()]
+            host_only = host_hdr.split(":")[0].lower()
+            if "*" not in allowed_hosts and host_only not in allowed_hosts and not host_only.endswith(".googlers.com"):
+                return error_response("Bad Request: Invalid or untrusted Host header.", 400)
+
             origin_hdr = (headers.get("Origin") or headers.get("origin") or "").strip() if hasattr(headers, "get") else ""
             referer_hdr = (headers.get("Referer") or headers.get("referer") or "").strip() if hasattr(headers, "get") else ""
             if origin_hdr and origin_hdr != "null":

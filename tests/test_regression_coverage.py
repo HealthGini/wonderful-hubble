@@ -2144,7 +2144,22 @@ class TestRegressionCoverage(GoodDeedsTestCase):
         })
         self.assertEqual(status, 201)
 
-        # 5. Valid same-origin Origin header -> 201
+        # 5. Spoofed Host header matching spoofed Referer -> 400 Bad Request (ALLOWED_HOSTS protection)
+        spoofed_host_headers = {
+            "Authorization": f"Bearer {token}",
+            "Content-Type": "application/json",
+            "Host": "evil-attacker.example.com",
+            "Referer": "https://evil-attacker.example.com/form"
+        }
+        status, _, body = self.make_request("POST", "/api/posts", headers=spoofed_host_headers, body={
+            "title": "Spoofed Host Bypass Attempt",
+            "theme": "General",
+            "content": "Should be blocked by ALLOWED_HOSTS check"
+        })
+        self.assertEqual(status, 400)
+        self.assertIn("invalid or untrusted host header", body.get("error", "").lower())
+
+        # 6. Valid same-origin Origin header -> 201
         good_headers = {
             "Authorization": f"Bearer {token}",
             "Content-Type": "application/json",
