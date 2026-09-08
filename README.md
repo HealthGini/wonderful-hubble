@@ -3,7 +3,7 @@
 GoodDeeds.space is a community-focused web application designed to promote goodness, build meaningful connections, and facilitate mutual aid. With a warm, accessible, and senior-friendly design philosophy, it connects volunteers, organizers, and neighbors to support each other.
 
 ## 📊 Verification & Test Status
-- **128/128** Automated Unit & Integration Tests Passing 100% OK (`./run_tests.sh`).
+- **132/132** Automated Unit & Integration Tests Passing 100% OK (`./run_tests.sh`).
 - Zero external framework bloat: Pure Python standard-library HTTP server + SQLite backend with a responsive Tailwind CSS Single-Page Application (SPA).
 
 ---
@@ -18,6 +18,7 @@ The core mission of GoodDeeds.space is to encourage small acts of kindness that 
 ### Core Capabilities
 - **Unified Social Feed**: A merged stream of Kudos (appreciation) and Posts (information/stories) sorted using a "smart sort" algorithm that prioritizes items from Spaces the user has joined and items with high engagement.
 - **Spaces**: Dedicated sub-communities where members can chat on the **Chat Board**, share curated resources & events, and invite others.
+- **Real-Time In-App Notifications**: Bell dropdown with live unread badges, 15-second background polling, and instant toast alerts for new Kudos, Comments, and Space Invitations.
 - **Multi-Modal Authentication**: Support for WebAuthn Passkeys (`fido2`), Google OAuth 2.0, and standard Email/Username + Password sessions.
 - **Three-Tiered Moderation & Safety System**: Direct Admin Controls, Community Content Reporting & Admin Moderation Queue (`/#/moderation`), and Automated Server-Side Safety Guardrails.
 - **Google Analytics (GA4)**: Integrated SPA pageview and custom event tracking (`gtag.js` + `window.dataLayer`).
@@ -34,7 +35,7 @@ The application is built on the Python 3.13 standard library and uses SQLite for
 ├── handlers.py         # Core API request handlers, auth, moderation, and business logic
 ├── server.py           # Threaded HTTP server routing API and serving static files
 ├── run.sh              # Shell script to start the server
-├── run_tests.sh        # Shell script to run the automated test suite (128 tests)
+├── run_tests.sh        # Shell script to run the automated test suite (132 tests)
 ├── static/             # Frontend assets
 │   ├── index.html      # Single Page Application (SPA) entry point
 │   ├── app.js          # Frontend application logic (vanilla JS)
@@ -151,6 +152,13 @@ GoodDeeds.space includes a three-tiered moderation and safety system to protect 
 - **Server-Side Keyword Filter & Rate Limiter (`check_content_moderation`)**:
   - Automatically enforced across `POST /api/kudos`, `POST /api/posts`, `POST /api/comments`, and `POST /api/groups/<gid>/chat`.
   - Immediately blocks known spam/malicious phrases (`400 Bad Request`) and enforces per-user rate limits against automated floods.
+
+### 4. CSRF & XSS Protection on State-Changing Endpoints
+- **Cross-Site Request Forgery (CSRF) Defense**:
+  - **Explicit Bearer Token Auth**: API endpoints authenticate via an explicit `Authorization: Bearer <token>` HTTP header (stored in `localStorage`, never ambient cookies). Because browsers never attach custom `Authorization` headers to cross-site `<form>` submissions or cross-origin requests without preflight, endpoints are inherently immune to cookie-based CSRF.
+  - **Server-Side Origin Validation**: In addition, `handle_api_request` in [`handlers.py`](handlers.py) enforces strict `Origin` / `Host` header matching on all state-changing requests (`POST`, `PUT`, `DELETE`). Cross-origin requests with a mismatched `Origin` are immediately rejected with `403 Forbidden: CSRF Origin mismatch.`
+- **Cross-Site Scripting (XSS) Sanitization**:
+  - All user-generated text fields (post titles/content, comments, chat messages, usernames, report notes) are sanitized via `escapeHtml(...)` in [`static/app.js`](static/app.js) before DOM insertion.
 
 ---
 
@@ -316,6 +324,16 @@ Accepts or declines a pending Space invitation.
 
 ---
 
+### Real-Time In-App Notifications Endpoints
+
+#### `GET /api/notifications`
+Retrieves the authenticated user's recent in-app notifications (Kudos received, Comments on posts, Space Invitations) along with `unread_count`. Polled every 15 seconds by the frontend navbar dropdown.
+
+#### `POST /api/notifications/read`
+Marks all notifications (`{}`) or a specific notification (`{"id": 12}`) as read (`is_read = 1`).
+
+---
+
 ### Moderation & Admin Endpoints
 
 #### `POST /api/admin/users/<id>/ban`
@@ -371,6 +389,41 @@ python3 -m unittest discover -s tests -p "test_*.py" -v
 ## Going Live & Production Deployment
 
 This guide outlines the steps required to transition GoodDeeds.space from a local development environment to a production-ready, high-concurrency cloud deployment.
+
+### Interim Step: SQLite WAL Mode & ASGI (FastAPI) Blueprint
+
+Before transitioning to a managed MySQL cluster, two intermediate architectural steps ensure high performance and maintainability as routes grow:
+
+#### 1. SQLite Write-Ahead Logging (WAL) & Lock Contention Prevention
+To prevent `sqlite3.OperationalError: database is locked` under concurrent multi-threaded HTTP requests, [`database.py`](database.py) (`get_db()`) explicitly configures every SQLite connection with:
+```python
+conn = sqlite3.connect(DB_PATH, timeout=30.0)
+conn.execute("PRAGMA foreign_keys = ON")
+conn.execute("PRAGMA journal_mode = WAL")
+conn.execute("PRAGMA synchronous = NORMAL")
+conn.execute("PRAGMA busy_timeout = 5000")
+```
+- **`WAL` mode** allows concurrent reads while a write transaction is in progress.
+- **`busy_timeout = 5000`** instructs SQLite to queue concurrent writers for up to 5 seconds instead of failing immediately.
+
+#### 2. Migrating the Routing Layer to FastAPI / ASGI
+As the API surface grows, migrating the custom `http.server` routing loop in `server.py` / `handlers.py` to **FastAPI** provides asynchronous I/O, automatic **Pydantic** request validation, and interactive **OpenAPI (`/docs`)** documentation:
+```python
+# Example FastAPI ASGI wrapper over modular handlers
+from fastapi import FastAPI, Request, HTTPException
+from fastapi.staticfiles import StaticFiles
+import uvicorn
+
+app = FastAPI(title="GoodDeeds.space API", version="2.0.0")
+app.mount("/static", StaticFiles(directory="static"), name="static")
+
+@app.get("/api/feed")
+async def get_feed(sort: str = "smart", theme: str = None, group_id: str = None):
+    # Delegate to enriched feed query logic
+    ...
+```
+
+---
 
 ### 1. Migrating from SQLite to MySQL
 

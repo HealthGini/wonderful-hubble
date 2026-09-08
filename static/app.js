@@ -1,5 +1,16 @@
 /* gooddeeds.space Client-Side Vanilla JS SPA Controller */
 
+function escapeHtml(unsafeStr) {
+  if (unsafeStr === null || unsafeStr === undefined) return "";
+  return String(unsafeStr)
+    .replace(/&/g, "&amp;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;")
+    .replace(/"/g, "&quot;")
+    .replace(/'/g, "&#039;");
+}
+window.escapeHtml = escapeHtml;
+
 const API_BASE = "/api";
 let currentUser = null;
 let currentToken = localStorage.getItem("gd_token") || null;
@@ -446,6 +457,8 @@ function updateAuthUI(user) {
     document.getElementById("nav-user-name").textContent = user.username;
     document.getElementById("nav-user-avatar").src = user.avatar_url;
     currentGroupFilter = "my_spaces";
+    loadNotifications(false);
+    startNotificationsPolling();
   } else {
     guestBox.classList.remove("hidden");
     userBox.classList.add("hidden");
@@ -453,6 +466,7 @@ function updateAuthUI(user) {
     if (mobileMenuActions) mobileMenuActions.classList.add("hidden");
     if (modLink) modLink.classList.add("hidden");
     currentGroupFilter = "";
+    stopNotificationsPolling();
   }
   populateGroupFilterDropdown();
 }
@@ -622,8 +636,8 @@ async function loadQuickNavGroups() {
 
 function renderFeedCard(item, isProfileView = false) {
   if (!item) return "";
-  const authorName = item.author_name || "Anonymous";
-  const recipientName = item.recipient_name || "Community Member";
+  const authorName = escapeHtml(item.author_name || "Anonymous");
+  const recipientName = escapeHtml(item.recipient_name || "Community Member");
   const isKudos = item.item_type === "KUDOS";
   const cardClass = isKudos ? "kudos-card border-l-8 border-amber-500" : "post-card border-l-8 border-teal-600";
   const itemLink = isKudos ? `/#/kudos/${item.id}` : `/#/post/${item.id}`;
@@ -631,7 +645,7 @@ function renderFeedCard(item, isProfileView = false) {
   // Groups badges
   const groupBadges = (item.groups || []).map(g => `
     <a href="/#/group/${g.id}" class="inline-flex items-center px-3 py-1 rounded-full text-xs font-black bg-stone-200 hover:bg-stone-300 text-stone-800 transition">
-      👥 ${g.name}
+      👥 ${escapeHtml(g.name)}
     </a>
   `).join(" ");
 
@@ -655,17 +669,17 @@ function renderFeedCard(item, isProfileView = false) {
     const canReportComment = currentUser && currentUser.id !== c.user_id;
     return `
     <div class="bg-stone-50 p-4 rounded-2xl border border-stone-200 flex items-start space-x-3 text-base">
-      <img src="${c.author_avatar}" alt="${c.author_name}" class="w-9 h-9 rounded-full object-cover border border-stone-300 shrink-0">
+      <img src="${escapeHtml(c.author_avatar)}" alt="${escapeHtml(c.author_name)}" class="w-9 h-9 rounded-full object-cover border border-stone-300 shrink-0">
       <div class="flex-1 overflow-hidden">
         <div class="flex justify-between items-baseline">
-          <a href="/#/user/${c.author_name}" class="font-black text-stone-900 hover:underline truncate">${c.author_name}</a>
+          <a href="/#/user/${encodeURIComponent(c.author_name || '')}" class="font-black text-stone-900 hover:underline truncate">${escapeHtml(c.author_name)}</a>
           <div class="flex items-center space-x-2 shrink-0 pl-2">
-            <span class="text-xs text-stone-400 font-bold">${c.created_at}</span>
+            <span class="text-xs text-stone-400 font-bold">${escapeHtml(c.created_at)}</span>
             ${canReportComment ? `<button type="button" onclick="openReportModal('COMMENT', ${c.id})" class="text-xs text-stone-400 hover:text-amber-700 font-bold" title="Report comment">🚩</button>` : ""}
             ${canDeleteComment ? `<button type="button" onclick="deleteComment(${c.id}, ${item.id})" class="text-xs text-stone-400 hover:text-red-600 font-bold" title="Delete comment">🗑️</button>` : ""}
           </div>
         </div>
-        <p class="text-stone-800 pt-0.5 font-medium whitespace-pre-line">${c.content}</p>
+        <p class="text-stone-800 pt-0.5 font-medium whitespace-pre-line">${escapeHtml(c.content)}</p>
       </div>
     </div>
   `;
@@ -688,7 +702,7 @@ function renderFeedCard(item, isProfileView = false) {
         <div class="flex items-center space-x-3.5">
           ${isKudos ? `
             <a href="/#/user/${item.recipient_id}">
-              <img src="${item.recipient_avatar || item.author_avatar}" alt="${recipientName}" class="w-12 h-12 rounded-full object-cover border-2 border-amber-400 shadow-sm">
+              <img src="${escapeHtml(item.recipient_avatar || item.author_avatar)}" alt="${recipientName}" class="w-12 h-12 rounded-full object-cover border-2 border-amber-400 shadow-sm">
             </a>
             <div>
               <div class="text-lg font-bold text-slate-900 flex items-center flex-wrap gap-1.5">
@@ -697,22 +711,22 @@ function renderFeedCard(item, isProfileView = false) {
                 <a href="/#/user/${item.author_id}" class="hover:underline font-bold text-slate-700 bg-stone-100 border border-stone-200 px-3 py-0.5 rounded-full text-sm">${authorName}</a>
               </div>
               <div class="text-xs text-slate-400 font-medium pt-0.5">
-                <span>⏱️ ${item.created_at}</span>
+                <span>⏱️ ${escapeHtml(item.created_at)}</span>
                 <span class="px-2">•</span>
                 <a href="${itemLink}" class="text-slate-400 hover:text-indigo-600 transition">Direct Share Link ↗</a>
               </div>
             </div>
           ` : `
             <a href="/#/user/${item.author_id}">
-              <img src="${item.author_avatar}" alt="${authorName}" class="w-12 h-12 rounded-full object-cover border border-slate-200 shadow-sm">
+              <img src="${escapeHtml(item.author_avatar)}" alt="${authorName}" class="w-12 h-12 rounded-full object-cover border border-slate-200 shadow-sm">
             </a>
             <div>
               <div class="text-lg font-bold text-slate-900 flex items-center flex-wrap gap-1.5">
                 <a href="/#/user/${item.author_id}" class="hover:text-indigo-600 transition">${authorName}</a>
-                <span class="px-2.5 py-0.5 bg-indigo-50 text-indigo-700 border border-indigo-100 rounded-full text-xs font-bold">🏷️ ${item.theme}</span>
+                <span class="px-2.5 py-0.5 bg-indigo-50 text-indigo-700 border border-indigo-100 rounded-full text-xs font-bold">🏷️ ${escapeHtml(item.theme)}</span>
               </div>
               <div class="text-xs text-slate-400 font-medium pt-0.5">
-                <span>⏱️ ${item.created_at}</span>
+                <span>⏱️ ${escapeHtml(item.created_at)}</span>
                 <span class="px-2">•</span>
                 <a href="${itemLink}" class="text-slate-400 hover:text-indigo-600 transition">Direct Share Link ↗</a>
               </div>
@@ -724,8 +738,8 @@ function renderFeedCard(item, isProfileView = false) {
 
       <!-- Main Body Content -->
       <div class="space-y-3">
-        ${!isKudos && item.title ? `<h2 class="text-2xl sm:text-3xl font-extrabold text-slate-900 tracking-tight"><a href="${itemLink}" class="hover:text-indigo-600 transition">${item.title}</a></h2>` : ""}
-        <p class="text-slate-700 text-lg whitespace-pre-line font-medium leading-relaxed">${item.content}</p>
+        ${!isKudos && item.title ? `<h2 class="text-2xl sm:text-3xl font-extrabold text-slate-900 tracking-tight"><a href="${itemLink}" class="hover:text-indigo-600 transition">${escapeHtml(item.title)}</a></h2>` : ""}
+        <p class="text-slate-700 text-lg whitespace-pre-line font-medium leading-relaxed">${escapeHtml(item.content)}</p>
         
         ${(() => {
           if (!item.resource_url) return "";
@@ -2127,17 +2141,17 @@ function renderGroupChatList() {
     const canReportMsg = currentUser && currentUser.id !== m.user_id;
     return `
     <div class="bg-white p-5 sm:p-6 rounded-2xl border border-slate-200/80 shadow-sm flex items-start space-x-3.5">
-      <img src="${m.author_avatar}" alt="${m.author_name}" class="w-10 h-10 rounded-full object-cover border border-slate-200 shrink-0">
+      <img src="${escapeHtml(m.author_avatar)}" alt="${escapeHtml(m.author_name)}" class="w-10 h-10 rounded-full object-cover border border-slate-200 shrink-0">
       <div class="flex-1 min-w-0">
         <div class="flex justify-between items-baseline mb-1">
-          <strong class="text-sm font-bold text-slate-900 truncate pr-2">${m.author_name}</strong>
+          <strong class="text-sm font-bold text-slate-900 truncate pr-2">${escapeHtml(m.author_name)}</strong>
           <div class="flex items-center space-x-2 shrink-0">
-            <span class="text-xs text-slate-400 font-medium">${m.created_at}</span>
+            <span class="text-xs text-slate-400 font-medium">${escapeHtml(m.created_at)}</span>
             ${canReportMsg ? `<button type="button" onclick="openReportModal('CHAT', ${m.id})" class="text-xs text-slate-400 hover:text-amber-700 font-bold" title="Report chat message">🚩</button>` : ""}
             ${canDeleteMsg ? `<button type="button" onclick="deleteGroupChatMessage(${m.id})" class="text-xs text-slate-400 hover:text-red-600 font-bold" title="Delete chat message">🗑️</button>` : ""}
           </div>
         </div>
-        <p class="text-base text-slate-800 font-normal whitespace-pre-line leading-relaxed break-words">${m.message}</p>
+        <p class="text-base text-slate-800 font-normal whitespace-pre-line leading-relaxed break-words">${escapeHtml(m.message)}</p>
       </div>
     </div>
   `;
@@ -4496,14 +4510,14 @@ async function loadModerationQueue() {
           <div class="space-y-2 flex-1">
             <div class="flex flex-wrap items-center gap-2">
               ${statusBadge}
-              <span class="px-3 py-1 bg-indigo-50 text-indigo-800 font-bold text-xs rounded-full border border-indigo-200">Type: ${rep.target_type} #${rep.target_id}</span>
-              <span class="text-xs text-stone-400 font-bold">Reported by @${rep.reporter_name || "member"} • ${rep.created_at}</span>
+              <span class="px-3 py-1 bg-indigo-50 text-indigo-800 font-bold text-xs rounded-full border border-indigo-200">Type: ${escapeHtml(rep.target_type)} #${rep.target_id}</span>
+              <span class="text-xs text-stone-400 font-bold">Reported by @${escapeHtml(rep.reporter_name || "member")} • ${escapeHtml(rep.created_at)}</span>
             </div>
-            <div class="text-lg font-black text-stone-900">${rep.reason}</div>
-            ${rep.notes ? `<p class="text-sm text-stone-600 italic bg-stone-50 p-3 rounded-xl border border-stone-200">"${rep.notes}"</p>` : ""}
+            <div class="text-lg font-black text-stone-900">${escapeHtml(rep.reason)}</div>
+            ${rep.notes ? `<p class="text-sm text-stone-600 italic bg-stone-50 p-3 rounded-xl border border-stone-200">"${escapeHtml(rep.notes)}"</p>` : ""}
             <div class="bg-stone-100 p-4 rounded-2xl border border-stone-200 text-sm font-medium text-stone-800">
-              <div class="text-xs font-extrabold uppercase text-stone-400 mb-1">Reported Content Snippet ${rep.target_author_name ? `(Author: @${rep.target_author_name})` : ""}:</div>
-              <div class="whitespace-pre-line">${rep.content_snippet}</div>
+              <div class="text-xs font-extrabold uppercase text-stone-400 mb-1">Reported Content Snippet ${rep.target_author_name ? `(Author: @${escapeHtml(rep.target_author_name)})` : ""}:</div>
+              <div class="whitespace-pre-line">${escapeHtml(rep.content_snippet)}</div>
             </div>
           </div>
           ${isPending ? `
@@ -4542,4 +4556,114 @@ window.openReportModal = openReportModal;
 window.submitContentReport = submitContentReport;
 window.loadModerationQueue = loadModerationQueue;
 window.resolveReport = resolveReport;
+
+/* ================= REAL-TIME IN-APP NOTIFICATIONS ================= */
+
+let notificationsPollTimer = null;
+let lastSeenNotifId = 0;
+
+function startNotificationsPolling() {
+  stopNotificationsPolling();
+  notificationsPollTimer = setInterval(() => {
+    if (currentUser) {
+      loadNotifications(true);
+    }
+  }, 15000);
+}
+
+function stopNotificationsPolling() {
+  if (notificationsPollTimer) {
+    clearInterval(notificationsPollTimer);
+    notificationsPollTimer = null;
+  }
+}
+
+function toggleNotificationsDropdown() {
+  const menu = document.getElementById("notifications-dropdown-menu");
+  if (!menu) return;
+  menu.classList.toggle("hidden");
+}
+
+async function loadNotifications(showToastForNew = false) {
+  if (!currentUser) return;
+  try {
+    const data = await apiFetch("/notifications");
+    const list = data.notifications || [];
+    const unread = data.unread_count || 0;
+
+    const badge = document.getElementById("notifications-unread-badge");
+    if (badge) {
+      if (unread > 0) {
+        badge.textContent = unread > 99 ? "99+" : String(unread);
+        badge.classList.remove("hidden");
+      } else {
+        badge.classList.add("hidden");
+      }
+    }
+
+    if (list.length > 0) {
+      const newestId = list[0].id;
+      if (showToastForNew && lastSeenNotifId > 0 && newestId > lastSeenNotifId && list[0].is_read === 0) {
+        showToast(list[0].message);
+      }
+      if (newestId > lastSeenNotifId) {
+        lastSeenNotifId = newestId;
+      }
+    }
+
+    const container = document.getElementById("notifications-list");
+    if (!container) return;
+    if (list.length === 0) {
+      container.innerHTML = `<p class="px-4 py-6 text-center text-stone-400 text-sm font-medium">No notifications yet</p>`;
+      return;
+    }
+
+    container.innerHTML = list.map(n => `
+      <div onclick="handleNotificationClick(${n.id}, '${escapeHtml(n.link_hash || '')}')" class="px-4 py-3 hover:bg-amber-50/70 transition cursor-pointer flex items-start space-x-3 ${n.is_read === 0 ? "bg-amber-50/40 font-bold" : "opacity-80"}">
+        <div class="flex-1 min-w-0">
+          <p class="text-xs sm:text-sm text-stone-800 leading-snug break-words">${escapeHtml(n.message)}</p>
+          <span class="text-[11px] text-stone-400 font-medium block mt-1">${escapeHtml(n.created_at)}</span>
+        </div>
+        ${n.is_read === 0 ? `<span class="w-2.5 h-2.5 rounded-full bg-amber-500 shrink-0 mt-1.5"></span>` : ""}
+      </div>
+    `).join("");
+  } catch (err) {
+    // Silent fail on background poll
+  }
+}
+
+async function markAllNotificationsRead() {
+  try {
+    await apiFetch("/notifications/read", {
+      method: "POST",
+      body: JSON.stringify({})
+    });
+    await loadNotifications(false);
+  } catch (err) {
+    showToast("❌ " + err.message);
+  }
+}
+
+async function handleNotificationClick(notifId, linkHash) {
+  try {
+    await apiFetch("/notifications/read", {
+      method: "POST",
+      body: JSON.stringify({ id: notifId })
+    });
+    await loadNotifications(false);
+  } catch (e) {}
+  const menu = document.getElementById("notifications-dropdown-menu");
+  if (menu) menu.classList.add("hidden");
+  if (linkHash) {
+    window.location.hash = linkHash.startsWith("#") ? linkHash : linkHash.replace(/^\/#/, "#");
+  }
+}
+
+window.loadNotifications = loadNotifications;
+window.markAllNotificationsRead = markAllNotificationsRead;
+window.handleNotificationClick = handleNotificationClick;
+window.toggleNotificationsDropdown = toggleNotificationsDropdown;
+window.startNotificationsPolling = startNotificationsPolling;
+window.stopNotificationsPolling = stopNotificationsPolling;
+
 

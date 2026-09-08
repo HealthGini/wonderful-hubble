@@ -142,6 +142,24 @@
               </div>
             </div>
             
+            <!-- Real-Time In-App Notifications Bell & Dropdown -->
+            <div class="relative group" id="nav-notifications-container">
+              <button id="nav-notifications-btn" type="button" onclick="toggleNotificationsDropdown()" class="relative p-2 rounded-full bg-stone-100 hover:bg-amber-50 text-stone-700 hover:text-amber-700 border border-stone-200 transition focus:outline-none touch-target" title="In-App Notifications">
+                <span class="text-base">🔔</span>
+                <span id="notifications-unread-badge" class="hidden absolute -top-1 -right-1 px-1.5 py-0.5 bg-red-600 text-white text-[10px] font-black rounded-full shadow">0</span>
+              </button>
+
+              <div id="notifications-dropdown-menu" class="absolute right-0 mt-1.5 w-80 sm:w-96 bg-white border border-stone-200/80 rounded-3xl shadow-xl hidden group-hover:block z-50 py-3 animate-fadeIn text-left">
+                <div class="px-4 py-2 border-b border-stone-100 flex justify-between items-center">
+                  <span class="text-xs font-extrabold tracking-wider text-stone-500 uppercase">Notifications</span>
+                  <button type="button" onclick="markAllNotificationsRead()" class="text-xs font-bold text-amber-600 hover:text-amber-700 transition">Mark all read</button>
+                </div>
+                <div id="notifications-list" class="max-h-80 overflow-y-auto divide-y divide-stone-100">
+                  <p class="px-4 py-6 text-center text-stone-400 text-sm font-medium">No notifications yet</p>
+                </div>
+              </div>
+            </div>
+
             <!-- Consolidated Profile Dropdown -->
             <div class="relative group" id="profile-menu-container">
               <button id="profile-menu-btn" type="button" class="flex items-center space-x-1 p-1 rounded-full hover:bg-stone-100 transition focus:outline-none touch-target" aria-haspopup="true" aria-expanded="false" title="Profile Menu">

@@ -32,6 +32,8 @@ def get_db():
     conn.row_factory = sqlite3.Row
     conn.execute("PRAGMA foreign_keys = ON")
     conn.execute("PRAGMA journal_mode = WAL")
+    conn.execute("PRAGMA synchronous = NORMAL")
+    conn.execute("PRAGMA busy_timeout = 5000")
     return conn
 
 def hash_password(password: str) -> str:
@@ -378,6 +380,21 @@ def init_db():
         status TEXT DEFAULT 'PENDING',
         created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
         FOREIGN KEY (reporter_id) REFERENCES users(id) ON DELETE CASCADE
+    )
+    """)
+
+    cursor.execute("""
+    CREATE TABLE IF NOT EXISTS notifications (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        user_id INTEGER NOT NULL,
+        actor_id INTEGER,
+        notif_type TEXT NOT NULL,
+        target_id INTEGER,
+        message TEXT NOT NULL,
+        link_hash TEXT,
+        is_read INTEGER DEFAULT 0,
+        created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+        FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
     )
     """)
 

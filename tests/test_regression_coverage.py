@@ -2060,6 +2060,125 @@ All 92+ tests run cleanly with `OK`.
         self.assertEqual(chat_res[0], 400)
         self.assertIn("blocked", chat_res[2].get("error", "").lower())
 
+    def test_sqlite_wal_and_concurrency_pragmas(self):
+        """
+        Verifies that database.get_db() configures SQLite WAL mode, synchronous=NORMAL,
+        and busy_timeout=5000 to prevent write-lock contention across concurrent threads.
+        """
+        conn = self.database.get_db()
+        cursor = conn.cursor()
+        cursor.execute("PRAGMA journal_mode")
+        journal_mode = cursor.fetchone()[0]
+        cursor.execute("PRAGMA synchronous")
+        synchronous_val = cursor.fetchone()[0]
+        cursor.execute("PRAGMA busy_timeout")
+        busy_timeout_val = cursor.fetchone()[0]
+        conn.close()
+
+        self.assertEqual(journal_mode.lower(), "wal")
+        self.assertEqual(int(synchronous_val), 1)  # 1 == NORMAL in SQLite
+        self.assertEqual(int(busy_timeout_val), 5000)
+
+    def test_xss_escaping_in_app_js(self):
+        """
+        Verifies that static/app.js defines and exports escapeHtml(unsafeStr)
+        and applies it to sanitize user-generated content across feed cards,
+        comments, chat messages, and moderation reports.
+        """
+        base_dir = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+        app_path = os.path.join(base_dir, "static", "app.js")
+        with open(app_path, "r", encoding="utf-8") as f:
+            js = f.read()
+
+        self.assertIn("function escapeHtml(unsafeStr)", js)
+        self.assertIn("window.escapeHtml = escapeHtml", js)
+        self.assertIn("escapeHtml(item.content)", js)
+        self.assertIn("escapeHtml(c.content)", js)
+        self.assertIn("escapeHtml(m.message)", js)
+        self.assertIn("escapeHtml(rep.content_snippet)", js)
+
+    def test_csrf_origin_validation_on_state_changing_endpoints(self):
+        """
+        Verifies that state-changing endpoints (POST, PUT, DELETE) enforce CSRF Origin
+        validation when an Origin header is provided, rejecting cross-site origins with 403.
+        """
+        token = self.get_token("maya@gooddeeds.space")
+        bad_headers = {
+            "Authorization": f"Bearer {token}",
+            "Content-Type": "application/json",
+            "Host": "localhost:8080",
+            "Origin": "https://evil-attacker.example.com"
+        }
+        status, _, body = self.make_request("POST", "/api/posts", headers=bad_headers, body={
+            "title": "CSRF Attack Attempt",
+            "theme": "General",
+            "content": "Should be blocked by CSRF check"
+        })
+        self.assertEqual(status, 403)
+        self.assertIn("csrf", body.get("error", "").lower())
+
+        good_headers = {
+            "Authorization": f"Bearer {token}",
+            "Content-Type": "application/json",
+            "Host": "localhost:8080",
+            "Origin": "http://localhost:8080"
+        }
+        status, _, body = self.make_request("POST", "/api/posts", headers=good_headers, body={
+            "title": "Legitimate Same-Origin Post",
+            "theme": "General",
+            "content": "Allowed by CSRF check"
+        })
+        self.assertEqual(status, 201)
+
+    def test_in_app_notifications_realtime_polling_and_triggers(self):
+        """
+        Verifies real-time in-app notifications bell, unread badge, polling functions,
+        and automatic notification generation when Kudos are sent.
+        """
+        base_dir = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+        index_path = os.path.join(base_dir, "static", "index.html")
+        app_path = os.path.join(base_dir, "static", "app.js")
+        with open(index_path, "r", encoding="utf-8") as f:
+            html = f.read()
+        with open(app_path, "r", encoding="utf-8") as f:
+            js = f.read()
+
+        self.assertIn('id="nav-notifications-btn"', html)
+        self.assertIn('id="notifications-unread-badge"', html)
+        self.assertIn('id="notifications-dropdown-menu"', html)
+        self.assertIn("window.loadNotifications = loadNotifications", js)
+        self.assertIn("window.markAllNotificationsRead = markAllNotificationsRead", js)
+        self.assertIn("window.startNotificationsPolling = startNotificationsPolling", js)
+
+        token_maya = self.get_token("maya@gooddeeds.space")
+        headers_maya = self.get_auth_headers(token_maya)
+        token_elena = self.get_token("elena@gooddeeds.space")
+        headers_elena = self.get_auth_headers(token_elena)
+
+        # Maya sends Kudos to Elena (user 3)
+        status, _, body = self.make_request("POST", "/api/kudos", headers=headers_maya, body={
+            "recipient_id": 3,
+            "content": "Thank you Elena for helping with the community garden!"
+        })
+        self.assertEqual(status, 201)
+
+        # Elena polls GET /api/notifications and sees the unread KUDOS notification
+        status, _, body = self.make_request("GET", "/api/notifications", headers=headers_elena)
+        self.assertEqual(status, 200)
+        self.assertGreaterEqual(body.get("unread_count", 0), 1)
+        notifs = body.get("notifications", [])
+        self.assertTrue(any(n["notif_type"] == "KUDOS" for n in notifs))
+
+        # Elena marks all notifications as read
+        status, _, body = self.make_request("POST", "/api/notifications/read", headers=headers_elena, body={})
+        self.assertEqual(status, 200)
+        status, _, body = self.make_request("GET", "/api/notifications", headers=headers_elena)
+        self.assertEqual(body.get("unread_count"), 0)
+
+
+
+
+
 
 
 

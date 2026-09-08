@@ -164,6 +164,19 @@ def error_response(msg, status=400):
     """Helper to generate an error JSON response tuple."""
     return json_response({"success": False, "error": msg}, status)
 
+def create_in_app_notification(conn, user_id, actor_id, notif_type, target_id, message, link_hash):
+    """Inserts a real-time in-app notification for the target user."""
+    if not user_id or (actor_id and int(user_id) == int(actor_id)):
+        return
+    try:
+        conn.execute("""
+            INSERT INTO notifications (user_id, actor_id, notif_type, target_id, message, link_hash)
+            VALUES (?, ?, ?, ?, ?, ?)
+        """, (user_id, actor_id, notif_type, target_id, message, link_hash))
+        conn.commit()
+    except Exception as e:
+        print(f"⚠️ Failed to insert in-app notification: {e}")
+
 def send_real_or_simulated_email(recipient_email, subject, text_body, html_body=None):
     """
     Attempts real SMTP email delivery if SMTP_HOST environment variable is set.
@@ -408,6 +421,15 @@ def handle_api_request(method, path, headers, body_bytes):
             pass
 
     user = get_user_from_token(headers)
+
+    # ================== CSRF & ORIGIN PROTECTION ==================
+    if method in ("POST", "PUT", "DELETE"):
+        origin_hdr = (headers.get("Origin") or headers.get("origin") or "").strip() if hasattr(headers, "get") else ""
+        host_hdr = (headers.get("Host") or headers.get("host") or "").strip() if hasattr(headers, "get") else ""
+        if origin_hdr and host_hdr:
+            origin_host = urlparse(origin_hdr).netloc
+            if origin_host and origin_host != host_hdr:
+                return error_response("Forbidden: CSRF Origin mismatch.", 403)
 
     # ================== PLATFORM STATS ENDPOINTS ==================
     if path_only in ("/api/stats", "/api/landing_stats", "/stats", "/landing_stats") and method == "GET":
@@ -1352,6 +1374,16 @@ def handle_api_request(method, path, headers, body_bytes):
         preview = content[:100] + ("..." if len(content) > 100 else "")
         body_text = f"Hello {recip['username']},\n\n{user['username']} gave you public Kudos on gooddeeds.space:\n\n\"{preview}\"\n\nView and celebrate your full Kudos here: /#/kudos/{kudos_id}"
 
+        create_in_app_notification(
+            conn,
+            recipient_id,
+            user["id"],
+            "KUDOS",
+            kudos_id,
+            f"🌟 @{user['username']} gave you Kudos: \"{preview[:50]}\"",
+            f"/#/kudos/{kudos_id}"
+        )
+
         conn.commit()
         conn.close()
 
@@ -1456,6 +1488,22 @@ def handle_api_request(method, path, headers, body_bytes):
         cursor = conn.cursor()
         cursor.execute("INSERT INTO comments (item_id, user_id, content) VALUES (?, ?, ?)", (item_id, user["id"], content))
         cid = cursor.lastrowid
+
+        cursor.execute("SELECT author_id, item_type FROM feed_items WHERE id = ?", (item_id,))
+        parent_row = cursor.fetchone()
+        if parent_row and parent_row["author_id"] != user["id"]:
+            link_prefix = "kudos" if parent_row["item_type"] == "KUDOS" else "post"
+            snippet = content[:50] + ("..." if len(content) > 50 else "")
+            create_in_app_notification(
+                conn,
+                parent_row["author_id"],
+                user["id"],
+                "COMMENT",
+                item_id,
+                f"💬 @{user['username']} commented: \"{snippet}\"",
+                f"/#/{link_prefix}/{item_id}"
+            )
+
         conn.commit()
         cursor.execute("""
             SELECT c.id, c.content, c.created_at, u.username as author_name, u.avatar_url as author_avatar, c.user_id
@@ -1902,6 +1950,18 @@ def handle_api_request(method, path, headers, body_bytes):
 
         for raw_rec in raw_recipients:
             cursor.execute("INSERT INTO group_invitations (group_id, sender_id, recipient_username, message, status) VALUES (?, ?, ?, ?, 'PENDING')", (gid, user["id"], raw_rec, message or "Come join our uplifting space!"))
+            cursor.execute("SELECT id FROM users WHERE LOWER(username) = LOWER(?) OR LOWER(email) = LOWER(?)", (raw_rec, raw_rec))
+            target_urow = cursor.fetchone()
+            if target_urow:
+                create_in_app_notification(
+                    conn,
+                    target_urow["id"],
+                    user["id"],
+                    "INVITATION",
+                    gid,
+                    f"👥 @{user['username']} invited you to join Space: \"{group_name}\"",
+                    f"/#/group/{gid}"
+                )
         conn.commit()
         conn.close()
 
@@ -2106,6 +2166,41 @@ def handle_api_request(method, path, headers, body_bytes):
         conn.commit()
         conn.close()
         return json_response({"success": True, "deleted_id": mid})
+
+    # ================== IN-APP NOTIFICATIONS (POLLING & REALTIME) ==================
+    if path_only == "/api/notifications" and method == "GET":
+        if not user:
+            return error_response("Login required", 401)
+        conn = get_db()
+        cursor = conn.cursor()
+        cursor.execute("""
+            SELECT n.id, n.notif_type, n.target_id, n.message, n.link_hash, n.is_read, n.created_at,
+                   u.username as actor_name, u.avatar_url as actor_avatar
+            FROM notifications n
+            LEFT JOIN users u ON n.actor_id = u.id
+            WHERE n.user_id = ?
+            ORDER BY n.created_at DESC
+            LIMIT 25
+        """, (user["id"],))
+        notifs = [dict(r) for r in cursor.fetchall()]
+        cursor.execute("SELECT COUNT(*) FROM notifications WHERE user_id = ? AND is_read = 0", (user["id"],))
+        unread_count = cursor.fetchone()[0]
+        conn.close()
+        return json_response({"success": True, "notifications": notifs, "unread_count": unread_count})
+
+    if path_only == "/api/notifications/read" and method == "POST":
+        if not user:
+            return error_response("Login required", 401)
+        notif_id = body.get("id")
+        conn = get_db()
+        cursor = conn.cursor()
+        if notif_id:
+            cursor.execute("UPDATE notifications SET is_read = 1 WHERE id = ? AND user_id = ?", (notif_id, user["id"]))
+        else:
+            cursor.execute("UPDATE notifications SET is_read = 1 WHERE user_id = ?", (user["id"],))
+        conn.commit()
+        conn.close()
+        return json_response({"success": True})
 
     # ================== SITE ADMIN USER BAN / SUSPEND ==================
     if path_only.startswith("/api/admin/users/") and path_only.endswith("/ban") and method == "POST":
