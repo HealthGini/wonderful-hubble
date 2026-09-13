@@ -1,0 +1,33 @@
+services:
+  - type: web
+    name: gooddeeds-space
+    runtime: python
+    plan: free
+    branch: main
+    buildCommand: pip install -r requirements.txt
+    startCommand: python3 server.py
+    envVars:
+      # Render injects PORT automatically; server.py should read it via
+      # os.environ.get("PORT", 8080). No need to set this manually.
+      - key: SUPPORT_ALERT_EMAIL
+        value: support@gooddeeds.space
+      # Optional: uncomment and fill these in to send real emails instead of
+      # the simulated outbox. Leave unset for a pure testing prototype.
+      # - key: SMTP_HOST
+      #   sync: false
+      # - key: SMTP_PORT
+      #   value: "587"
+      # - key: SMTP_USER
+      #   sync: false
+      # - key: SMTP_PASSWORD
+      #   sync: false
+    # NOTE: Render's free-tier filesystem is ephemeral. The SQLite file
+    # (gooddeeds.db) will reset on every redeploy or free-tier sleep/wake
+    # cycle. That's fine for short testing windows since init_db() reseeds
+    # data automatically. For persistence across sessions, upgrade to a paid
+    # plan and add a disk block here, e.g.:
+    # disk:
+    #   name: gooddeeds-data
+    #   mountPath: /var/data
+    # ...and point the app's DB path at /var/data/gooddeeds.db.
+    autoDeploy: true
