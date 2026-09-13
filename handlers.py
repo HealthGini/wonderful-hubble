@@ -457,8 +457,13 @@ def handle_api_request(method, path, headers, body_bytes):
         if host_hdr:
             allowed_hosts_env = os.environ.get("ALLOWED_HOSTS", "localhost,127.0.0.1,gooddeeds.space,www.gooddeeds.space")
             allowed_hosts = [h.strip().lower() for h in allowed_hosts_env.split(",") if h.strip()]
+            render_host = os.environ.get("RENDER_EXTERNAL_HOSTNAME", "").strip().lower()
+            if render_host:
+                allowed_hosts.append(render_host)
             host_only = host_hdr.split(":")[0].lower()
-            if "*" not in allowed_hosts and host_only not in allowed_hosts and not host_only.endswith(".googlers.com"):
+            trusted_suffixes = (".onrender.com", ".googlers.com", ".run.app", ".fly.dev", ".railway.app", ".herokuapp.com", ".vercel.app")
+            is_trusted_suffix = any(host_only.endswith(sfx) for sfx in trusted_suffixes)
+            if "*" not in allowed_hosts and host_only not in allowed_hosts and not is_trusted_suffix:
                 return error_response("Bad Request: Invalid or untrusted Host header.", 400)
 
             origin_hdr = (headers.get("Origin") or headers.get("origin") or "").strip() if hasattr(headers, "get") else ""

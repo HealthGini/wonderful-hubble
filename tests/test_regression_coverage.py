@@ -2173,6 +2173,20 @@ class TestRegressionCoverage(GoodDeedsTestCase):
         })
         self.assertEqual(status, 201)
 
+        # 7. Render deployment domain (*.onrender.com) -> 201
+        render_headers = {
+            "Authorization": f"Bearer {token}",
+            "Content-Type": "application/json",
+            "Host": "gooddeeds-space.onrender.com",
+            "Origin": "https://gooddeeds-space.onrender.com"
+        }
+        status, _, body = self.make_request("POST", "/api/posts", headers=render_headers, body={
+            "title": "Render Deployment Post",
+            "theme": "General",
+            "content": "Allowed on *.onrender.com"
+        })
+        self.assertEqual(status, 201)
+
     def test_in_app_notifications_realtime_polling_and_triggers(self):
         """
         Verifies real-time in-app notifications bell, unread badge, polling functions,
