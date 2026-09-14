@@ -72,6 +72,13 @@ class GoodDeedsServerHandler(BaseHTTPRequestHandler):
                 return
             self.serve_static_file()
 
+    def do_HEAD(self):
+        """Handles HEAD requests (used by cloud health checks and load balancers)."""
+        self.send_response(200)
+        self.send_cors_headers()
+        self.send_header("Content-Type", "text/html")
+        self.end_headers()
+
     def do_GET(self):
         """Handles GET requests."""
         self.handle_request("GET")
