@@ -2351,3 +2351,60 @@ class TestRegressionCoverage(GoodDeedsTestCase):
                 os.environ["SUPPORT_ALERT_EMAIL"] = old_env
             elif "SUPPORT_ALERT_EMAIL" in os.environ:
                 del os.environ["SUPPORT_ALERT_EMAIL"]
+
+    def test_feed_reverse_chronological_sort_kudos_vs_post_distinction_and_preview_attachment_verification(self):
+        """
+        Verifies the 3 feed & confirmation enhancements:
+        a) Feed sorts by reverse chronological order ('recent') by default in static/app.js and #feed-sort-select in static/index.html,
+           with newly created Kudos and Posts appearing at the top.
+        b) Kudos and Posts have distinct visual ribbons ('🌟 Gratitude Kudos' vs '📝 Community Post' / '📅 Event Post' / '📚 Resource Post')
+           and distinct card styling in renderFeedCard.
+        c) Step 2 of 2 post confirmation (#post-preview-card / #confirm-post-attachments) displays exact URLs and filenames with
+           clickable window.openAttachment buttons ('Open to Verify ↗') before publishing.
+        """
+        base_dir = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+        with open(os.path.join(base_dir, "static", "index.html"), "r", encoding="utf-8") as f:
+            html = f.read()
+        with open(os.path.join(base_dir, "static", "app.js"), "r", encoding="utf-8") as f:
+            js = f.read()
+
+        # (a) Reverse chronological default sort & UI selector
+        self.assertIn('id="feed-order-select"', html)
+        self.assertIn('value="recent" selected', html)
+        self.assertIn('let currentSortMode = "recent";', js)
+
+        token = self.get_token("maya@gooddeeds.space")
+        headers = {"Authorization": f"Bearer {token}"}
+
+        # Create a new Kudos and then a new Post and verify reverse chronological order
+        status1, _, body1 = self.make_request("POST", "/api/kudos", headers=headers, body={
+            "recipient_id": 3,
+            "content": "First newly created kudos item"
+        })
+        self.assertEqual(status1, 201)
+        kudos_id = body1["item"]["id"]
+
+        status2, _, body2 = self.make_request("POST", "/api/posts", headers=headers, body={
+            "title": "Second Newly Created Post Item",
+            "theme": "Inspiring Stories",
+            "content": "Most recent item in the feed"
+        })
+        self.assertEqual(status2, 201)
+        post_id = body2["item"]["id"]
+
+        status_feed, _, feed_body = self.make_request("GET", "/api/feed?sort=recent")
+        self.assertEqual(status_feed, 200)
+        feed_ids = [item["id"] for item in feed_body["feed"]]
+        self.assertEqual(feed_ids[0], post_id)
+        self.assertEqual(feed_ids[1], kudos_id)
+
+        # (b) Visual distinction between Kudos and Posts in renderFeedCard
+        self.assertIn("🌟 Gratitude Kudos", js)
+        self.assertIn("📝 Community Post", js)
+        self.assertIn("📅 Event Post", js)
+        self.assertIn("📚 Resource Post", js)
+
+        # (c) Interactive clickable URL/file preview in Step 2 of 2 confirmation popup
+        self.assertIn("confirm-post-attachments", js)
+        self.assertIn("preview_attachment_", js)
+        self.assertIn("Open to Verify ↗", js)

@@ -75,16 +75,18 @@ dialog[open] {
 
 /* Modern Card Accents with Soft Curves & Warm Glow */
 .kudos-card {
-  border-left: 5px solid #f59e0b;
-  background: linear-gradient(135deg, #fffdf8 0%, #ffffff 100%);
-  box-shadow: 0 10px 30px -4px rgba(245, 158, 11, 0.06), 0 2px 8px -2px rgba(28, 25, 23, 0.03);
+  border: 2px solid #fde68a;
+  border-left: 8px solid #f59e0b !important;
+  background: linear-gradient(135deg, #fffbeb 0%, #fff7ed 45%, #ffffff 100%) !important;
+  box-shadow: 0 12px 30px -4px rgba(245, 158, 11, 0.12), 0 2px 8px -2px rgba(28, 25, 23, 0.04);
   border-radius: 1.5rem;
 }
 
 .post-card {
-  border-left: 5px solid #6366f1;
-  background: linear-gradient(135deg, #fafaff 0%, #ffffff 100%);
-  box-shadow: 0 10px 30px -4px rgba(99, 102, 241, 0.05), 0 2px 8px -2px rgba(28, 25, 23, 0.03);
+  border: 1px solid #e2e8f0;
+  border-left: 8px solid #4f46e5 !important;
+  background: linear-gradient(135deg, #ffffff 0%, #f8fafc 100%) !important;
+  box-shadow: 0 10px 30px -4px rgba(79, 70, 229, 0.06), 0 2px 8px -2px rgba(28, 25, 23, 0.03);
   border-radius: 1.5rem;
 }
 

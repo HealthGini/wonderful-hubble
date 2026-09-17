@@ -26,7 +26,7 @@ let sessionPromise = null;
 let currentTheme = "";
 let currentFormatFilter = "";
 let currentGroupFilter = "";
-let currentSortMode = "smart";
+let currentSortMode = "recent";
 let currentSearch = "";
 let currentTypeFilter = "";
 let currentMyKudosMode = "";
@@ -694,36 +694,54 @@ function renderFeedCard(item, isProfileView = false) {
     ? (commentsCount > 0 ? "▲ Hide Thread" : "▲ Hide Reply")
     : (commentsCount > 0 ? "▼ Show Thread" : "▼ Write Reply");
 
+  const postSubtypeBadge = (!isKudos)
+    ? ((item.post_subtype === "EVENT" || item.event_date)
+        ? `<span class="inline-flex items-center gap-1.5 px-3.5 py-1 rounded-full text-xs font-extrabold uppercase tracking-wider bg-rose-50 text-rose-800 border border-rose-200 shadow-xs">📅 Event Post</span>`
+        : ((item.post_subtype === "RESOURCE" || item.resource_url)
+            ? `<span class="inline-flex items-center gap-1.5 px-3.5 py-1 rounded-full text-xs font-extrabold uppercase tracking-wider bg-teal-50 text-teal-800 border border-teal-200 shadow-xs">📚 Resource Post</span>`
+            : `<span class="inline-flex items-center gap-1.5 px-3.5 py-1 rounded-full text-xs font-extrabold uppercase tracking-wider bg-indigo-50 text-indigo-800 border border-indigo-200 shadow-xs">📝 Community Post</span>`))
+    : `<span class="inline-flex items-center gap-1.5 px-3.5 py-1 rounded-full text-xs font-extrabold uppercase tracking-wider bg-amber-200/80 text-amber-950 border border-amber-400 shadow-xs">🌟 Gratitude Kudos</span>`;
+
   return `
-    <article class="bg-white rounded-3xl border border-slate-200/80 shadow-sm hover:shadow-md hover:-translate-y-0.5 transition-all duration-200 p-6 sm:p-8 space-y-6 ${cardClass}">
+    <article class="bg-white rounded-3xl border border-slate-200/80 shadow-sm hover:shadow-md hover:-translate-y-0.5 transition-all duration-200 p-6 sm:p-8 space-y-5 ${cardClass}">
       
+      <!-- Card Type Ribbon & Space Badges -->
+      <div class="flex flex-wrap items-center justify-between gap-2 pb-2 border-b ${isKudos ? 'border-amber-200/60' : 'border-slate-100'}">
+        <div class="flex items-center gap-2 flex-wrap">
+          ${postSubtypeBadge}
+          ${!isKudos && item.theme ? `<span class="px-2.5 py-0.5 bg-indigo-50 text-indigo-700 border border-indigo-100 rounded-full text-xs font-bold">🏷️ ${escapeHtml(item.theme)}</span>` : ""}
+        </div>
+        <div class="flex flex-wrap gap-1.5">${groupBadges}</div>
+      </div>
+
       <!-- Author & Recipient Banner -->
       <div class="flex flex-wrap justify-between items-center gap-4">
         <div class="flex items-center space-x-3.5">
           ${isKudos ? `
-            <a href="/#/user/${item.recipient_id}">
-              <img src="${escapeHtml(item.recipient_avatar || item.author_avatar)}" alt="${recipientName}" class="w-12 h-12 rounded-full object-cover border-2 border-amber-400 shadow-sm">
+            <a href="/#/user/${item.recipient_id}" class="relative shrink-0">
+              <img src="${escapeHtml(item.recipient_avatar || item.author_avatar)}" alt="${recipientName}" class="w-12 h-12 rounded-full object-cover border-2 border-amber-500 shadow-sm">
+              <span class="absolute -bottom-1 -right-1 text-sm bg-amber-400 text-white rounded-full w-5 h-5 flex items-center justify-center shadow" title="Kudos Recipient">🌟</span>
             </a>
             <div>
               <div class="text-lg font-bold text-slate-900 flex items-center flex-wrap gap-1.5">
                 <a href="/#/user/${item.recipient_id}" class="hover:text-amber-700 transition font-extrabold text-slate-900">${recipientName}</a>
-                <span class="text-amber-600 font-semibold text-base">received Kudos from</span>
-                <a href="/#/user/${item.author_id}" class="hover:underline font-bold text-slate-700 bg-stone-100 border border-stone-200 px-3 py-0.5 rounded-full text-sm">${authorName}</a>
+                <span class="text-amber-700 font-extrabold text-base">received Kudos from</span>
+                <a href="/#/user/${item.author_id}" class="hover:underline font-bold text-amber-950 bg-amber-100/80 border border-amber-300 px-3 py-0.5 rounded-full text-sm">${authorName}</a>
               </div>
-              <div class="text-xs text-slate-400 font-medium pt-0.5">
+              <div class="text-xs text-slate-500 font-medium pt-0.5">
                 <span>⏱️ ${escapeHtml(item.created_at)}</span>
                 <span class="px-2">•</span>
-                <a href="${itemLink}" class="text-slate-400 hover:text-indigo-600 transition">Direct Share Link ↗</a>
+                <a href="${itemLink}" class="text-slate-500 hover:text-amber-700 transition">Direct Share Link ↗</a>
               </div>
             </div>
           ` : `
-            <a href="/#/user/${item.author_id}">
+            <a href="/#/user/${item.author_id}" class="shrink-0">
               <img src="${escapeHtml(item.author_avatar)}" alt="${authorName}" class="w-12 h-12 rounded-full object-cover border border-slate-200 shadow-sm">
             </a>
             <div>
               <div class="text-lg font-bold text-slate-900 flex items-center flex-wrap gap-1.5">
                 <a href="/#/user/${item.author_id}" class="hover:text-indigo-600 transition">${authorName}</a>
-                <span class="px-2.5 py-0.5 bg-indigo-50 text-indigo-700 border border-indigo-100 rounded-full text-xs font-bold">🏷️ ${escapeHtml(item.theme)}</span>
+                <span class="text-xs text-slate-400 font-semibold">shared a post</span>
               </div>
               <div class="text-xs text-slate-400 font-medium pt-0.5">
                 <span>⏱️ ${escapeHtml(item.created_at)}</span>
@@ -733,13 +751,18 @@ function renderFeedCard(item, isProfileView = false) {
             </div>
           `}
         </div>
-        <div>${groupBadges}</div>
       </div>
 
       <!-- Main Body Content -->
       <div class="space-y-3">
         ${!isKudos && item.title ? `<h2 class="text-2xl sm:text-3xl font-extrabold text-slate-900 tracking-tight"><a href="${itemLink}" class="hover:text-indigo-600 transition">${escapeHtml(item.title)}</a></h2>` : ""}
-        <p class="text-slate-700 text-lg whitespace-pre-line font-medium leading-relaxed">${escapeHtml(item.content)}</p>
+        ${isKudos ? `
+          <div class="bg-amber-100/40 border border-amber-300/80 rounded-2xl p-4 sm:p-5 text-slate-900 text-lg whitespace-pre-line font-semibold leading-relaxed shadow-xs">
+            <span class="text-amber-500 font-serif text-2xl leading-none select-none mr-1">“</span>${escapeHtml(item.content)}<span class="text-amber-500 font-serif text-2xl leading-none select-none ml-1">”</span>
+          </div>
+        ` : `
+          <p class="text-slate-700 text-lg whitespace-pre-line font-medium leading-relaxed">${escapeHtml(item.content)}</p>
+        `}
         
         ${(() => {
           if (!item.resource_url) return "";
@@ -848,7 +871,7 @@ async function loadLandingPreview(isLoadMore = false) {
   let reqLimit = landingPreviewLimit;
   let reqOffset = landingPreviewOffset;
 
-  let url = `/feed?sort=smart&limit=${reqLimit}&offset=${reqOffset}&`;
+  let url = `/feed?sort=recent&limit=${reqLimit}&offset=${reqOffset}&`;
   if (landingGroupFilter) url += `group_id=${encodeURIComponent(landingGroupFilter)}&`;
   if (landingTypeFilter) url += `filter_type=${encodeURIComponent(landingTypeFilter)}&`;
   if (landingThemeFilter) url += `theme=${encodeURIComponent(landingThemeFilter)}&`;
@@ -1230,14 +1253,20 @@ function clearFeedSearchInput() {
 window.clearFeedSearchInput = clearFeedSearchInput;
 
 function changeSortMode(mode) {
-  currentSortMode = mode;
+  currentSortMode = mode || "recent";
+  const sortSel = document.getElementById("feed-order-select");
+  if (sortSel && sortSel.value !== currentSortMode) {
+    sortSel.value = currentSortMode;
+  }
   loadFeed();
 }
+window.changeSortMode = changeSortMode;
 
 function clearAllFilters() {
   currentTheme = "";
   currentFormatFilter = "";
   currentGroupFilter = "";
+  currentSortMode = "recent";
   currentSearch = "";
   currentTypeFilter = "";
   currentMyKudosMode = "";
@@ -1249,6 +1278,8 @@ function clearAllFilters() {
   if (gSel) gSel.value = "";
   const tSel = document.getElementById("feed-type-select");
   if (tSel) tSel.value = "";
+  const sortSel = document.getElementById("feed-order-select");
+  if (sortSel) sortSel.value = "recent";
   document.querySelectorAll(".format-pill").forEach(el => {
     el.className = "format-pill shrink-0 px-3.5 py-1.5 rounded-xl font-bold text-sm bg-white hover:bg-amber-100/60 text-slate-700 transition touch-target shadow-xs";
   });
@@ -1602,14 +1633,36 @@ async function reviewPostStep(e) {
   document.getElementById("post-step-2").classList.remove("hidden");
 
   const previewBox = document.getElementById("post-preview-card");
+  const attachmentsPreviewHtml = attachments.length > 0 ? `
+    <div id="confirm-post-attachments" class="pt-3 border-t border-slate-200/80 space-y-2">
+      <div class="font-extrabold text-indigo-900 text-xs uppercase tracking-wider">📎 Attached Links & Files (${attachments.length}) — Click to Preview & Validate:</div>
+      <div class="flex flex-col gap-2">
+        ${attachments.map((u, idx) => {
+          const previewKey = `preview_attachment_${idx}`;
+          window._attachmentCache[previewKey] = u;
+          const isDataUri = String(u).startsWith("data:");
+          const displayLabel = isDataUri
+            ? formatAttachmentLabel(u, idx, attachments.length)
+            : `🔗 ${escapeHtml(u)}`;
+          return `
+            <button type="button" onclick="window.openAttachment(window._attachmentCache['${previewKey}'], '${previewKey}')" class="w-full text-left flex items-center justify-between gap-3 px-4 py-2.5 rounded-xl bg-white hover:bg-indigo-50 text-indigo-700 hover:text-indigo-900 font-bold text-sm border border-indigo-200 shadow-xs transition touch-target">
+              <span class="truncate underline">${displayLabel}</span>
+              <span class="shrink-0 text-xs font-extrabold bg-indigo-100 text-indigo-800 px-2.5 py-1 rounded-lg">Open to Verify ↗</span>
+            </button>
+          `;
+        }).join("")}
+      </div>
+    </div>
+  ` : "";
+
   previewBox.innerHTML = `
-    <div class="font-extrabold text-2xl text-slate-900 tracking-tight">${title}</div>
+    <div class="font-extrabold text-2xl text-slate-900 tracking-tight">${escapeHtml(title)}</div>
     <div class="flex flex-wrap gap-2 pt-1">
-      <span class="px-3 py-1 bg-indigo-50 text-indigo-700 border border-indigo-200 rounded-full text-xs font-bold">🏷️ ${theme}</span>
+      <span class="px-3 py-1 bg-indigo-50 text-indigo-700 border border-indigo-200 rounded-full text-xs font-bold">🏷️ ${escapeHtml(theme)}</span>
       <span class="px-3 py-1 bg-emerald-50 text-emerald-800 border border-emerald-200 rounded-full text-xs font-bold">${subtype === "Community Event" ? "📅 Event" : subtype === "Community Resource" ? "📚 Resource" : "📝 Post"}</span>
     </div>
-    <p class="text-base text-slate-700 pt-3 whitespace-pre-line font-medium leading-relaxed">${content}</p>
-    ${attachments.length > 0 ? `<div class="pt-3 font-bold text-indigo-600 text-sm">📎 ${attachments.length} Link(s) / File(s) Attached</div>` : ""}
+    <p class="text-base text-slate-700 pt-3 whitespace-pre-line font-medium leading-relaxed">${escapeHtml(content)}</p>
+    ${attachmentsPreviewHtml}
   `;
 }
 
