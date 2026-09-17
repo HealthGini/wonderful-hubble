@@ -2408,3 +2408,38 @@ class TestRegressionCoverage(GoodDeedsTestCase):
         self.assertIn("confirm-post-attachments", js)
         self.assertIn("preview_attachment_", js)
         self.assertIn("Open to Verify ↗", js)
+
+    def test_admin_cannot_promote_or_demote_self_or_site_admin_in_space_roster(self):
+        """
+        Verifies that:
+        1. Site Admins in a Space roster return is_site_admin=1 and group.is_admin=True.
+        2. renderGroupRoster in static/app.js guards role/kick buttons with `canManageRoles && !isSelf && !isMemberSiteAdmin`
+           so no admin sees 'Promote to Admin' or 'Demote from Admin' on themselves or on a Site Admin.
+        3. Backend /api/groups/<id>/members/role rejects self-role changes with 400.
+        """
+        base_dir = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+        with open(os.path.join(base_dir, "static", "app.js"), "r", encoding="utf-8") as f:
+            js = f.read()
+
+        self.assertIn("if (canManageRoles && !isSelf && !isMemberSiteAdmin)", js)
+        self.assertIn("Site Admin", js)
+
+        token_maya = self.get_token("maya@gooddeeds.space")
+        headers_maya = {"Authorization": f"Bearer {token_maya}"}
+
+        # Check Group 1 roster for Maya_Lin (User 1, Site Admin)
+        status_g, _, body_g = self.make_request("GET", "/api/groups/1", headers=headers_maya)
+        self.assertEqual(status_g, 200)
+        roster = body_g["group"]["roster"]
+        maya_member = next((m for m in roster if m["id"] == 1), None)
+        self.assertIsNotNone(maya_member)
+        self.assertEqual(maya_member["is_site_admin"], 1)
+        self.assertTrue(body_g["group"]["is_admin"])
+
+        # Attempting to promote/demote yourself should fail with 400
+        status_self, _, body_self = self.make_request("POST", "/api/groups/1/members/role", headers=headers_maya, body={
+            "user_id": 1,
+            "is_admin": 1
+        })
+        self.assertEqual(status_self, 400)
+

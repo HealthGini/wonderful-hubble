@@ -2464,32 +2464,43 @@ function renderGroupRoster() {
   const canManageRoles = currentUser && (currentUser.is_site_admin === 1 || activeGroupData.is_admin);
 
   const membersHtml = roster.map(m => {
+    const isSelf = Boolean(currentUser && Number(m.id) === Number(currentUser.id));
+    const isMemberSiteAdmin = Number(m.is_site_admin) === 1 || (isSelf && Number(currentUser && currentUser.is_site_admin) === 1);
+    const isEffectiveAdmin = Number(m.is_admin) === 1 || isMemberSiteAdmin;
+
     let adminToggleBtn = "";
     let kickMemberBtn = "";
-    if (canManageRoles) {
-      if (m.is_admin) {
-        adminToggleBtn = `<button onclick="event.preventDefault(); event.stopPropagation(); toggleMemberRole(${activeGroupData.id}, ${m.id}, 0)" class="mt-2 px-3 py-1.5 bg-red-100 hover:bg-red-200 text-red-800 font-bold text-xs rounded-xl transition">Demote from Admin</button>`;
+    if (canManageRoles && !isSelf && !isMemberSiteAdmin) {
+      if (isEffectiveAdmin) {
+        adminToggleBtn = `<button onclick="event.preventDefault(); event.stopPropagation(); toggleMemberRole(${activeGroupData.id}, ${m.id}, 0)" class="px-3 py-1.5 bg-red-100 hover:bg-red-200 text-red-800 font-bold text-xs rounded-xl transition">Demote from Admin</button>`;
       } else {
-        adminToggleBtn = `<button onclick="event.preventDefault(); event.stopPropagation(); toggleMemberRole(${activeGroupData.id}, ${m.id}, 1)" class="mt-2 px-3 py-1.5 bg-amber-100 hover:bg-amber-200 text-amber-900 font-bold text-xs rounded-xl transition">Promote to Admin</button>`;
+        adminToggleBtn = `<button onclick="event.preventDefault(); event.stopPropagation(); toggleMemberRole(${activeGroupData.id}, ${m.id}, 1)" class="px-3 py-1.5 bg-amber-100 hover:bg-amber-200 text-amber-900 font-bold text-xs rounded-xl transition">Promote to Admin</button>`;
       }
-      if (m.id !== (currentUser ? currentUser.id : null)) {
-        kickMemberBtn = `<button onclick="event.preventDefault(); event.stopPropagation(); kickGroupMember(${activeGroupData.id}, ${m.id}, '${m.username}')" class="mt-2 px-3 py-1.5 bg-stone-100 hover:bg-red-600 text-stone-700 hover:text-white font-bold text-xs rounded-xl transition">🚫 Kick/Ban</button>`;
-      }
+      kickMemberBtn = `<button onclick="event.preventDefault(); event.stopPropagation(); kickGroupMember(${activeGroupData.id}, ${m.id}, '${m.username}')" class="px-3 py-1.5 bg-stone-100 hover:bg-red-600 text-stone-700 hover:text-white font-bold text-xs rounded-xl transition">🚫 Kick/Ban</button>`;
     }
 
+    let roleBadgeHtml = `<span class="text-xs bg-teal-100 text-teal-800 px-2.5 py-0.5 rounded-full font-black shrink-0">Member</span>`;
+    if (isMemberSiteAdmin) {
+      roleBadgeHtml = `<span class="text-xs bg-indigo-600 text-white px-2.5 py-0.5 rounded-full font-black shrink-0 shadow-xs">Site Admin</span>`;
+    } else if (isEffectiveAdmin) {
+      roleBadgeHtml = `<span class="text-xs bg-amber-100 text-amber-800 px-2.5 py-0.5 rounded-full font-black shrink-0">Admin</span>`;
+    }
+    const selfBadgeHtml = isSelf ? `<span class="text-[11px] bg-stone-200 text-stone-700 px-2 py-0.5 rounded-full font-bold shrink-0">You</span>` : "";
+
     return `
-    <div class="bg-white p-6 rounded-2xl border-2 border-stone-200 shadow-sm flex items-center justify-between space-x-4 hover:border-amber-500 transition">
-      <a href="/#/user/${m.id}" class="flex items-center space-x-4 truncate flex-1 min-w-0">
-        <img src="${m.avatar_url}" alt="${m.username}" class="w-16 h-16 rounded-full object-cover border-2 ${m.is_admin ? "border-amber-500" : "border-stone-300"} shrink-0">
-        <div class="truncate text-left flex-1">
-          <div class="font-black text-xl text-stone-900 flex items-center space-x-2">
-            <span>${m.username}</span>
-            ${m.is_admin ? `<span class="text-xs bg-amber-100 text-amber-800 px-2.5 py-0.5 rounded-full font-black shrink-0">Admin</span>` : `<span class="text-xs bg-teal-100 text-teal-800 px-2.5 py-0.5 rounded-full font-black shrink-0">Member</span>`}
+    <div class="bg-white p-5 rounded-2xl border-2 ${isEffectiveAdmin ? "border-amber-200" : "border-stone-200"} shadow-sm flex flex-col justify-between gap-3 hover:border-amber-500 transition">
+      <a href="/#/user/${m.id}" class="flex items-start space-x-3.5 min-w-0">
+        <img src="${m.avatar_url}" alt="${m.username}" class="w-14 h-14 rounded-full object-cover border-2 ${isEffectiveAdmin ? "border-amber-500" : "border-stone-300"} shrink-0">
+        <div class="text-left flex-1 min-w-0">
+          <div class="font-black text-base text-stone-900 flex flex-wrap items-center gap-1.5 leading-snug">
+            <span class="truncate max-w-full">${m.username}</span>
+            ${roleBadgeHtml}
+            ${selfBadgeHtml}
           </div>
-          <p class="text-sm font-medium text-stone-500 truncate pt-1">${m.bio || "Community member"}</p>
+          <p class="text-xs font-medium text-stone-500 line-clamp-2 pt-1">${m.bio || "Community member"}</p>
         </div>
       </a>
-      ${(adminToggleBtn || kickMemberBtn) ? `<div class="shrink-0 flex flex-col gap-1 items-end">${adminToggleBtn}${kickMemberBtn}</div>` : ""}
+      ${(adminToggleBtn || kickMemberBtn) ? `<div class="pt-2.5 border-t border-stone-100 flex flex-wrap items-center justify-end gap-2">${adminToggleBtn}${kickMemberBtn}</div>` : ""}
     </div>
     `;
   }).join("");

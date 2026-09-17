@@ -1785,11 +1785,11 @@ def handle_api_request(method, path, headers, body_bytes):
 
         elif subres in ("members", "roster"):
             cursor.execute("""
-                SELECT u.id, u.username, u.avatar_url, u.bio, gm.is_admin, gm.joined_at
+                SELECT u.id, u.username, u.avatar_url, u.bio, u.is_site_admin, gm.is_admin, gm.joined_at
                 FROM group_members gm
                 JOIN users u ON gm.user_id = u.id
                 WHERE gm.group_id = ?
-                ORDER BY gm.is_admin DESC, u.username ASC
+                ORDER BY gm.is_admin DESC, u.is_site_admin DESC, u.username ASC
             """, (gid,))
             rows = [dict(r) for r in cursor.fetchall()]
             conn.close()
@@ -1802,11 +1802,11 @@ def handle_api_request(method, path, headers, body_bytes):
             g_data["themes"] = []
 
         cursor.execute("""
-            SELECT u.id, u.username, u.avatar_url, u.bio, gm.is_admin, gm.joined_at
+            SELECT u.id, u.username, u.avatar_url, u.bio, u.is_site_admin, gm.is_admin, gm.joined_at
             FROM group_members gm
             JOIN users u ON gm.user_id = u.id
             WHERE gm.group_id = ?
-            ORDER BY gm.is_admin DESC, u.username ASC
+            ORDER BY gm.is_admin DESC, u.is_site_admin DESC, u.username ASC
         """, (gid,))
         roster = [dict(r) for r in cursor.fetchall()]
         g_data["roster"] = roster
@@ -1822,7 +1822,7 @@ def handle_api_request(method, path, headers, body_bytes):
 
         uid = user["id"] if user else None
         g_data["is_joined"] = any(m["id"] == uid for m in roster)
-        g_data["is_admin"] = any(m["id"] == uid and m["is_admin"] == 1 for m in roster)
+        g_data["is_admin"] = bool((user and user.get("is_site_admin") == 1) or any(m["id"] == uid and m["is_admin"] == 1 for m in roster))
 
         cursor.execute("""
             SELECT r.*, u.username as added_by_name
@@ -1893,8 +1893,13 @@ def handle_api_request(method, path, headers, body_bytes):
             conn.close()
             return error_response("Forbidden: Requires site super admin or group admin status.", 403)
 
-        cursor.execute("SELECT id FROM users WHERE id = ?", (target_uid,))
-        if not cursor.fetchone():
+        if target_uid == user["id"]:
+            conn.close()
+            return error_response("You cannot promote or demote yourself.", 400)
+
+        cursor.execute("SELECT id, is_site_admin FROM users WHERE id = ?", (target_uid,))
+        target_user_row = cursor.fetchone()
+        if not target_user_row:
             conn.close()
             return error_response("Target user not found.", 404)
 
@@ -1928,7 +1933,8 @@ def handle_api_request(method, path, headers, body_bytes):
             if cursor.fetchone():
                 conn.close()
                 return error_response("You have been banned from joining this space.", 403)
-            cursor.execute("INSERT OR IGNORE INTO group_members (group_id, user_id, is_admin) VALUES (?, ?, 0)", (gid, user["id"]))
+            join_is_admin = 1 if user.get("is_site_admin") == 1 else 0
+            cursor.execute("INSERT OR IGNORE INTO group_members (group_id, user_id, is_admin) VALUES (?, ?, ?)", (gid, user["id"], join_is_admin))
         else:
             cursor.execute("DELETE FROM group_members WHERE group_id = ? AND user_id = ?", (gid, user["id"]))
         conn.commit()
