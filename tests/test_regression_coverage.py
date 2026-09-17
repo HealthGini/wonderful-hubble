@@ -2438,14 +2438,42 @@ class TestRegressionCoverage(GoodDeedsTestCase):
         status_g, _, body_g = self.make_request("GET", "/api/groups/1", headers=headers_maya)
         self.assertEqual(status_g, 200)
         roster = body_g["group"]["roster"]
+        roster_ids = {m["id"] for m in roster}
         maya_member = next((m for m in roster if m["id"] == 1), None)
         self.assertIsNotNone(maya_member)
         self.assertEqual(maya_member["is_site_admin"], 1)
         self.assertTrue(body_g["group"]["is_admin"])
         invitations = body_g["group"].get("invitations", [])
-        if invitations:
-            self.assertIn("sender_id", invitations[0])
-            self.assertIn("recipient_id", invitations[0])
+        for inv in invitations:
+            self.assertIn("sender_id", inv)
+            self.assertIn("recipient_id", inv)
+            if inv["status"] == "PENDING":
+                self.assertNotIn(inv["recipient_id"], roster_ids)
+
+        # Attempting to invite an existing member (Maya_Lin in Group 1) should return 400
+        status_inv_existing, _, _ = self.make_request("POST", "/api/groups/1/invite", headers=headers_maya, body={
+            "emails": "Maya_Lin",
+            "message": "Already a member test"
+        })
+        self.assertEqual(status_inv_existing, 400)
+
+        # Inviting non-member Elena_Wellness to Group 2 creates a PENDING invite, and when Elena joins Group 2, the PENDING invite is removed
+        status_inv_g2, _, _ = self.make_request("POST", "/api/groups/2/invite", headers=headers_maya, body={
+            "emails": "Elena_Wellness",
+            "message": "Come join Group 2!"
+        })
+        self.assertEqual(status_inv_g2, 200)
+        token_elena = self.get_token("elena@gooddeeds.space")
+        headers_elena = {"Authorization": f"Bearer {token_elena}"}
+        status_join_g2, _, _ = self.make_request("POST", "/api/groups/2/join", headers=headers_elena)
+        self.assertEqual(status_join_g2, 200)
+        status_g2, _, body_g2 = self.make_request("GET", "/api/groups/2", headers=headers_elena)
+        self.assertEqual(status_g2, 200)
+        pending_for_elena = [
+            inv for inv in body_g2["group"].get("invitations", [])
+            if inv["status"] == "PENDING" and inv.get("recipient_username", "").lower() == "elena_wellness"
+        ]
+        self.assertEqual(len(pending_for_elena), 0)
 
         # Attempting to promote/demote yourself should fail with 400
         status_self, _, body_self = self.make_request("POST", "/api/groups/1/members/role", headers=headers_maya, body={

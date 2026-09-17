@@ -515,6 +515,21 @@ def init_db():
     except Exception:
         pass
 
+    try:
+        cursor.execute("""
+            DELETE FROM group_invitations
+            WHERE status = 'PENDING'
+              AND EXISTS (
+                SELECT 1 FROM group_members gm
+                JOIN users u ON gm.user_id = u.id
+                WHERE gm.group_id = group_invitations.group_id
+                  AND (LOWER(u.username) = LOWER(group_invitations.recipient_username)
+                       OR LOWER(u.email) = LOWER(group_invitations.recipient_username))
+              )
+        """)
+    except Exception:
+        pass
+
     conn.commit()
     conn.close()
 
@@ -611,11 +626,11 @@ def seed_data(cursor):
     cursor.executemany("INSERT INTO email_outbox (recipient_email, subject, body) VALUES (?, ?, ?)", emails)
 
     invites = [
-        (1, 2, "Maya_Lin", "Join Marcus and our family in Mental Health & Peer Listening!"),
-        (2, 3, "Maya_Lin", "Elena invited you to join Education, Tutoring & Skill Share!"),
-        (3, 4, "Marcus_Vance", "Arthur invited you to join Community Action & Mutual Aid!")
+        (1, 2, "Maya_Lin", "Join Marcus and our family in Mental Health & Peer Listening!", "ACCEPTED"),
+        (2, 3, "Maya_Lin", "Elena invited you to join Education, Tutoring & Skill Share!", "ACCEPTED"),
+        (3, 4, "Marcus_Vance", "Arthur invited you to join Community Action & Mutual Aid!", "ACCEPTED")
     ]
-    cursor.executemany("INSERT INTO group_invitations (group_id, sender_id, recipient_username, message) VALUES (?, ?, ?, ?)", invites)
+    cursor.executemany("INSERT INTO group_invitations (group_id, sender_id, recipient_username, message, status) VALUES (?, ?, ?, ?, ?)", invites)
 
 def format_last_active_date(dt_str: str) -> str:
     if not dt_str:

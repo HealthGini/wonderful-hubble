@@ -1812,6 +1812,19 @@ def handle_api_request(method, path, headers, body_bytes):
         g_data["roster"] = roster
 
         cursor.execute("""
+            DELETE FROM group_invitations
+            WHERE group_id = ? AND status = 'PENDING'
+              AND EXISTS (
+                SELECT 1 FROM group_members gm
+                JOIN users u ON gm.user_id = u.id
+                WHERE gm.group_id = group_invitations.group_id
+                  AND (LOWER(u.username) = LOWER(group_invitations.recipient_username)
+                       OR LOWER(u.email) = LOWER(group_invitations.recipient_username))
+              )
+        """, (gid,))
+        conn.commit()
+
+        cursor.execute("""
             SELECT gi.id, gi.group_id, gi.sender_id, gi.recipient_username, gi.message, gi.status, gi.created_at,
                    u.username as sender_name, u.avatar_url as sender_avatar,
                    ru.id as recipient_id, ru.avatar_url as recipient_avatar
@@ -1819,6 +1832,9 @@ def handle_api_request(method, path, headers, body_bytes):
             JOIN users u ON gi.sender_id = u.id
             LEFT JOIN users ru ON LOWER(ru.username) = LOWER(gi.recipient_username)
             WHERE gi.group_id = ?
+              AND NOT (gi.status = 'PENDING' AND ru.id IS NOT NULL AND EXISTS (
+                  SELECT 1 FROM group_members gm WHERE gm.group_id = gi.group_id AND gm.user_id = ru.id
+              ))
             ORDER BY gi.created_at DESC
         """, (gid,))
         g_data["invitations"] = [dict(r) for r in cursor.fetchall()]
@@ -1938,6 +1954,11 @@ def handle_api_request(method, path, headers, body_bytes):
                 return error_response("You have been banned from joining this space.", 403)
             join_is_admin = 1 if user.get("is_site_admin") == 1 else 0
             cursor.execute("INSERT OR IGNORE INTO group_members (group_id, user_id, is_admin) VALUES (?, ?, ?)", (gid, user["id"], join_is_admin))
+            cursor.execute("""
+                DELETE FROM group_invitations
+                WHERE group_id = ? AND status = 'PENDING'
+                  AND (LOWER(recipient_username) = LOWER(?) OR LOWER(recipient_username) = LOWER(?))
+            """, (gid, user["username"], user["email"]))
         else:
             cursor.execute("DELETE FROM group_members WHERE group_id = ? AND user_id = ?", (gid, user["id"]))
         conn.commit()
@@ -2006,29 +2027,43 @@ def handle_api_request(method, path, headers, body_bytes):
         group_name = grow["name"]
 
         raw_recipients = [e.strip() for e in emails_raw.split(",") if e.strip()]
+        valid_recipients = []
         email_list = []
+        already_members = []
+
         for rec in raw_recipients:
-            if "@" in rec:
-                email_list.append(rec)
+            cursor.execute("SELECT id, username, email FROM users WHERE LOWER(username) = LOWER(?) OR LOWER(email) = LOWER(?) OR id = ?", (rec, rec, int(rec) if rec.isdigit() else -1))
+            urow = cursor.fetchone()
+            if urow:
+                cursor.execute("SELECT 1 FROM group_members WHERE group_id = ? AND user_id = ?", (gid, urow["id"]))
+                if cursor.fetchone():
+                    already_members.append(urow["username"])
+                    continue
+                valid_recipients.append((rec, urow))
+                email_list.append(urow["email"])
             else:
-                cursor.execute("SELECT email FROM users WHERE username = ? OR id = ?", (rec, rec if rec.isdigit() else -1))
-                urow = cursor.fetchone()
-                if urow and urow["email"]:
-                    email_list.append(urow["email"])
+                valid_recipients.append((rec, None))
+                if "@" in rec:
+                    email_list.append(rec)
                 else:
                     email_list.append(f"{rec.lower().replace(' ', '_')}@gooddeeds.space")
 
-        if not email_list:
+        if not valid_recipients:
             conn.close()
+            if already_members:
+                return error_response(f"{', '.join(already_members)} is already a member of this space.", 400)
             return error_response("Please enter valid recipient email addresses or usernames")
 
         subject = f"💌 You've been invited to join \"{group_name}\" on gooddeeds.space!"
         body_text = f"Hello!\n\n{user['username']} ({user['email']}) has invited you to join the community space \"{group_name}\" on gooddeeds.space.\n\nPersonal Note:\n\"{message or 'Join us in promoting goodness and building meaningful community connections!'}\"\n\nClick here to join this space free today:\nhttp://localhost:8080/#/group/{gid}\n\nPromote goodness — one good deed at a time."
 
-        for raw_rec in raw_recipients:
+        for raw_rec, target_urow in valid_recipients:
+            cursor.execute("""
+                DELETE FROM group_invitations
+                WHERE group_id = ? AND status = 'PENDING'
+                  AND LOWER(recipient_username) = LOWER(?)
+            """, (gid, raw_rec))
             cursor.execute("INSERT INTO group_invitations (group_id, sender_id, recipient_username, message, status) VALUES (?, ?, ?, ?, 'PENDING')", (gid, user["id"], raw_rec, message or "Come join our uplifting space!"))
-            cursor.execute("SELECT id FROM users WHERE LOWER(username) = LOWER(?) OR LOWER(email) = LOWER(?)", (raw_rec, raw_rec))
-            target_urow = cursor.fetchone()
             if target_urow:
                 create_in_app_notification(
                     conn,
@@ -2090,6 +2125,11 @@ def handle_api_request(method, path, headers, body_bytes):
         if action == "accept":
             cursor.execute("INSERT OR IGNORE INTO group_members (group_id, user_id, is_admin) VALUES (?, ?, 0)", (gid, user["id"]))
             cursor.execute("UPDATE group_invitations SET status = 'ACCEPTED' WHERE id = ?", (invite_id,))
+            cursor.execute("""
+                DELETE FROM group_invitations
+                WHERE group_id = ? AND status = 'PENDING' AND id != ?
+                  AND (LOWER(recipient_username) = LOWER(?) OR LOWER(recipient_username) = LOWER(?))
+            """, (gid, invite_id, user["username"], user["email"]))
             msg = "✅ Invitation accepted! You are now a member of this space."
         else:
             cursor.execute("UPDATE group_invitations SET status = 'REJECTED' WHERE id = ?", (invite_id,))

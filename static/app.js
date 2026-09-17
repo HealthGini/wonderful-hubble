@@ -2460,7 +2460,15 @@ function renderGroupRoster() {
   const container = document.getElementById("group-roster-list");
   if (!container || !activeGroupData) return;
   const roster = activeGroupData.roster || [];
-  const invites = activeGroupData.invitations || [];
+  const memberIds = new Set(roster.map(m => Number(m.id)));
+  const memberUsernames = new Set(roster.map(m => String(m.username || "").toLowerCase()));
+  const invites = (activeGroupData.invitations || []).filter(inv => {
+    if (inv.status === "PENDING") {
+      if (inv.recipient_id && memberIds.has(Number(inv.recipient_id))) return false;
+      if (inv.recipient_username && memberUsernames.has(String(inv.recipient_username).toLowerCase())) return false;
+    }
+    return true;
+  });
   const canManageRoles = currentUser && (currentUser.is_site_admin === 1 || activeGroupData.is_admin);
 
   const membersHtml = roster.map(m => {
