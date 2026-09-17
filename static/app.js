@@ -2016,7 +2016,7 @@ async function loadGroupDetail(gid) {
         <div class="space-y-2">
           <div class="flex items-center space-x-3">
             <h1 class="text-3xl sm:text-4xl font-black text-stone-900">${activeGroupData.name}</h1>
-            ${isGroupAdmin ? `<span class="px-3 py-1 bg-amber-500 text-white font-black text-xs rounded-full">Space Admin</span>` : isSiteAdmin ? `<span class="px-3 py-1 bg-indigo-600 text-white font-black text-xs rounded-full">Site Admin</span>` : ""}
+            ${(isGroupAdmin || isSiteAdmin) ? `<span class="px-3 py-1 bg-amber-500 text-white font-black text-xs rounded-full shadow-xs">Space Admin</span>` : ""}
           </div>
           <p class="text-stone-700 font-medium text-lg max-w-2xl">${activeGroupData.description}</p>
           <div class="flex flex-wrap gap-2 pt-1">
@@ -2480,10 +2480,8 @@ function renderGroupRoster() {
     }
 
     let roleBadgeHtml = `<span class="text-xs bg-teal-100 text-teal-800 px-2.5 py-0.5 rounded-full font-black shrink-0">Member</span>`;
-    if (isMemberSiteAdmin) {
-      roleBadgeHtml = `<span class="text-xs bg-indigo-600 text-white px-2.5 py-0.5 rounded-full font-black shrink-0 shadow-xs">Site Admin</span>`;
-    } else if (isEffectiveAdmin) {
-      roleBadgeHtml = `<span class="text-xs bg-amber-100 text-amber-800 px-2.5 py-0.5 rounded-full font-black shrink-0">Admin</span>`;
+    if (isEffectiveAdmin) {
+      roleBadgeHtml = `<span class="text-xs bg-amber-100 text-amber-800 px-2.5 py-0.5 rounded-full font-black shrink-0 shadow-xs">Space Admin</span>`;
     }
     const selfBadgeHtml = isSelf ? `<span class="text-[11px] bg-stone-200 text-stone-700 px-2 py-0.5 rounded-full font-bold shrink-0">You</span>` : "";
 
@@ -2508,30 +2506,61 @@ function renderGroupRoster() {
   let invitesHtml = "";
   if (invites.length > 0) {
     invitesHtml = `
-      <div class="col-span-1 md:col-span-2 pt-8 border-t-4 border-slate-200 mt-6 text-left space-y-4 font-sans">
+      <div class="col-span-1 sm:col-span-2 lg:col-span-3 col-span-full pt-8 border-t-4 border-slate-200 mt-6 text-left space-y-4 font-sans">
         <div class="flex flex-wrap items-center justify-between gap-2">
           <div>
             <h3 class="text-xl font-black text-slate-900 flex items-center space-x-2"><span>💌</span><span>Sent Space Invitations Roster</span></h3>
-            <p class="text-xs text-slate-500 font-medium">Track everyone invited to join this space and their real-time status.</p>
+            <p class="text-xs text-slate-500 font-medium">Click any invitation below to inspect the full membership invitation details, sender, and status.</p>
           </div>
           <span class="text-xs font-black bg-indigo-100 text-indigo-900 px-3.5 py-1 rounded-full border border-indigo-200">${invites.length} Tracked</span>
         </div>
-        <div class="grid grid-cols-1 sm:grid-cols-2 gap-4 pt-1">
+        <div class="grid grid-cols-1 md:grid-cols-2 gap-4 pt-1">
           ${invites.map(inv => {
             let badgeClass = "bg-amber-100 text-amber-900 border-amber-300";
             let statusIcon = "⏱️";
             if (inv.status === "ACCEPTED") { badgeClass = "bg-emerald-100 text-emerald-900 border-emerald-300"; statusIcon = "✅"; }
             if (inv.status === "REJECTED") { badgeClass = "bg-red-100 text-red-900 border-red-300"; statusIcon = "✕"; }
+            const isRecipientSelf = Boolean(currentUser && inv.recipient_username && String(currentUser.username || "").toLowerCase() === String(inv.recipient_username).toLowerCase());
+            const recipientLink = inv.recipient_id
+              ? `<a href="/#/user/${inv.recipient_id}" onclick="event.stopPropagation()" class="text-indigo-700 hover:text-indigo-900 hover:underline font-black">@${escapeHtml(inv.recipient_username)}</a>`
+              : `<strong class="text-indigo-700 font-black">@${escapeHtml(inv.recipient_username)}</strong>`;
+            const senderLink = inv.sender_id
+              ? `<a href="/#/user/${inv.sender_id}" onclick="event.stopPropagation()" class="text-slate-800 hover:text-indigo-700 hover:underline font-extrabold">@${escapeHtml(inv.sender_name)}</a>`
+              : `<strong class="text-slate-800 font-extrabold">${escapeHtml(inv.sender_name)}</strong>`;
+
             return `
-              <div class="bg-slate-50 p-5 rounded-2xl border-2 border-slate-200 flex items-center justify-between gap-3 transition hover:bg-slate-100/80">
-                <div class="truncate text-left min-w-0">
-                  <div class="font-bold text-base text-slate-900 truncate flex items-center space-x-1.5"><span>Invited:</span> <strong class="text-indigo-700 font-black">${inv.recipient_username}</strong></div>
-                  <div class="text-xs text-slate-500 font-medium truncate pt-0.5">Sent by <strong>${inv.sender_name}</strong> • ${inv.created_at || 'Just now'}</div>
-                  ${inv.message ? `<div class="text-xs text-slate-400 italic truncate mt-0.5">"${inv.message}"</div>` : ''}
+              <div onclick="openSpaceInvitationModal(${inv.id})" role="button" tabindex="0" class="bg-white p-5 rounded-2xl border-2 border-slate-200 hover:border-indigo-500 hover:shadow-md flex flex-col justify-between gap-3.5 transition cursor-pointer group">
+                <div class="space-y-2.5 text-left min-w-0">
+                  <div class="flex flex-wrap items-start justify-between gap-2">
+                    <div class="text-base font-bold text-slate-900 leading-snug">
+                      <span>Invited Member:</span> ${recipientLink}
+                      ${isRecipientSelf ? `<span class="ml-1 text-[11px] bg-indigo-100 text-indigo-800 px-2 py-0.5 rounded-full font-black">You</span>` : ""}
+                    </div>
+                    <span class="px-3 py-1 rounded-xl border text-xs font-black shrink-0 flex items-center space-x-1 shadow-xs ${badgeClass}">
+                      <span>${statusIcon}</span><span>${escapeHtml(inv.status)}</span>
+                    </span>
+                  </div>
+                  <div class="text-xs text-slate-600 font-medium">
+                    Sent by ${senderLink} • <span class="text-slate-500">${escapeHtml(inv.created_at || 'Just now')}</span>
+                  </div>
+                  ${inv.message ? `
+                    <div class="p-3 rounded-xl bg-slate-50 border border-slate-200/80 text-xs text-slate-700 italic whitespace-normal break-words leading-relaxed">
+                      “${escapeHtml(inv.message)}”
+                    </div>
+                  ` : ""}
                 </div>
-                <span class="px-3 py-1.5 rounded-xl border text-xs font-black shrink-0 flex items-center space-x-1 shadow-sm ${badgeClass}">
-                  <span>${statusIcon}</span><span>${inv.status}</span>
-                </span>
+                <div class="pt-2.5 border-t border-slate-100 flex flex-wrap items-center justify-between gap-2">
+                  <span class="text-xs font-extrabold text-indigo-600 group-hover:text-indigo-800 flex items-center gap-1">
+                    <span>🔍 View Invitation Details</span>
+                    <span>↗</span>
+                  </span>
+                  ${(inv.status === "PENDING" && isRecipientSelf) ? `
+                    <div class="flex items-center gap-2" onclick="event.stopPropagation()">
+                      <button type="button" onclick="respondGroupInvite(${inv.id}, 'reject')" class="px-3 py-1.5 bg-slate-100 hover:bg-red-100 text-slate-700 hover:text-red-800 font-bold text-xs rounded-xl transition">Decline</button>
+                      <button type="button" onclick="respondGroupInvite(${inv.id}, 'accept')" class="px-3.5 py-1.5 bg-emerald-600 hover:bg-emerald-700 text-white font-black text-xs rounded-xl shadow-xs transition">✅ Accept & Join</button>
+                    </div>
+                  ` : ""}
+                </div>
               </div>
             `;
           }).join("")}
@@ -2542,6 +2571,75 @@ function renderGroupRoster() {
 
   container.innerHTML = membersHtml + invitesHtml;
 }
+
+function openSpaceInvitationModal(inviteId) {
+  if (!activeGroupData || !Array.isArray(activeGroupData.invitations)) return;
+  const inv = activeGroupData.invitations.find(i => Number(i.id) === Number(inviteId));
+  if (!inv) return;
+  const bodyEl = document.getElementById("space-invitation-detail-body");
+  if (!bodyEl) return;
+
+  let badgeClass = "bg-amber-100 text-amber-900 border-amber-300";
+  let statusIcon = "⏱️";
+  if (inv.status === "ACCEPTED") { badgeClass = "bg-emerald-100 text-emerald-900 border-emerald-300"; statusIcon = "✅"; }
+  if (inv.status === "REJECTED") { badgeClass = "bg-red-100 text-red-900 border-red-300"; statusIcon = "✕"; }
+
+  const isRecipientSelf = Boolean(currentUser && inv.recipient_username && String(currentUser.username || "").toLowerCase() === String(inv.recipient_username).toLowerCase());
+  const recipientHref = inv.recipient_id ? `/#/user/${inv.recipient_id}` : "";
+  const senderHref = inv.sender_id ? `/#/user/${inv.sender_id}` : "";
+
+  bodyEl.innerHTML = `
+    <div class="p-4 rounded-2xl bg-slate-50 border border-slate-200 flex items-center justify-between gap-3">
+      <div class="flex items-center space-x-3 min-w-0">
+        <img src="${escapeHtml(activeGroupData.icon_url || '')}" alt="${escapeHtml(activeGroupData.name || 'Space')}" class="w-12 h-12 rounded-2xl object-cover border border-teal-600 shrink-0">
+        <div class="min-w-0">
+          <div class="text-xs font-extrabold uppercase tracking-wider text-teal-700">Community Space</div>
+          <div class="text-lg font-black text-slate-900 truncate">${escapeHtml(activeGroupData.name || "")}</div>
+        </div>
+      </div>
+      <span class="px-3.5 py-1.5 rounded-xl border text-xs font-black shrink-0 flex items-center space-x-1 shadow-xs ${badgeClass}">
+        <span>${statusIcon}</span><span>${escapeHtml(inv.status)}</span>
+      </span>
+    </div>
+
+    <div class="grid grid-cols-1 sm:grid-cols-2 gap-3">
+      <div class="p-4 rounded-2xl border border-slate-200 bg-white space-y-1">
+        <div class="text-[11px] font-black uppercase tracking-wider text-slate-400">Invited Member</div>
+        <div class="font-black text-base text-indigo-700 flex items-center justify-between gap-2">
+          <span>@${escapeHtml(inv.recipient_username)}</span>
+          ${recipientHref ? `<a href="${recipientHref}" onclick="closeModal('modal-space-invitation-detail')" class="text-xs font-bold bg-indigo-50 hover:bg-indigo-100 text-indigo-700 px-2.5 py-1 rounded-lg transition">View Profile ↗</a>` : ""}
+        </div>
+      </div>
+      <div class="p-4 rounded-2xl border border-slate-200 bg-white space-y-1">
+        <div class="text-[11px] font-black uppercase tracking-wider text-slate-400">Invited By</div>
+        <div class="font-black text-base text-slate-900 flex items-center justify-between gap-2">
+          <span>@${escapeHtml(inv.sender_name)}</span>
+          ${senderHref ? `<a href="${senderHref}" onclick="closeModal('modal-space-invitation-detail')" class="text-xs font-bold bg-slate-100 hover:bg-slate-200 text-slate-700 px-2.5 py-1 rounded-lg transition">View Profile ↗</a>` : ""}
+        </div>
+      </div>
+    </div>
+
+    <div class="p-4 rounded-2xl border border-slate-200 bg-amber-50/40 space-y-1.5">
+      <div class="flex items-center justify-between text-xs font-bold text-slate-500">
+        <span>Personal Invitation Note</span>
+        <span>Sent: ${escapeHtml(inv.created_at || "Just now")}</span>
+      </div>
+      <p class="text-sm font-medium text-slate-800 italic whitespace-normal break-words leading-relaxed">
+        “${escapeHtml(inv.message || "You have been invited to join this community space on GoodDeeds.space!")}”
+      </p>
+    </div>
+
+    <div class="flex flex-wrap items-center justify-end gap-3 pt-2 border-t border-slate-100">
+      ${(inv.status === "PENDING" && isRecipientSelf) ? `
+        <button type="button" onclick="respondGroupInvite(${inv.id}, 'reject')" class="px-5 py-2.5 bg-slate-100 hover:bg-red-100 text-slate-700 hover:text-red-800 font-bold text-sm rounded-xl transition">Decline Invitation</button>
+        <button type="button" onclick="respondGroupInvite(${inv.id}, 'accept')" class="px-6 py-2.5 bg-emerald-600 hover:bg-emerald-700 text-white font-black text-sm rounded-xl shadow transition">✅ Accept & Join Space</button>
+      ` : ""}
+      <button type="button" onclick="closeModal('modal-space-invitation-detail')" class="px-5 py-2.5 bg-slate-900 hover:bg-black text-white font-bold text-sm rounded-xl transition">Close</button>
+    </div>
+  `;
+  openModal("modal-space-invitation-detail");
+}
+window.openSpaceInvitationModal = openSpaceInvitationModal;
 
 async function handleCreateGroup(e) {
   e.preventDefault();
@@ -3013,8 +3111,11 @@ async function respondGroupInvite(inviteId, action) {
       body: JSON.stringify({ invite_id: inviteId, action })
     });
     showToast(data.message);
+    closeModal("modal-space-invitation-detail");
     checkPendingInvitations();
-    if (action === "accept" && data.group_id) {
+    if (activeGroupData && activeGroupData.id) {
+      loadGroupDetails(activeGroupData.id);
+    } else if (action === "accept" && data.group_id) {
       setTimeout(() => navigateTo(`/group/${data.group_id}`), 400);
     }
   } catch (err) {

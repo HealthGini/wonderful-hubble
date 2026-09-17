@@ -1812,9 +1812,12 @@ def handle_api_request(method, path, headers, body_bytes):
         g_data["roster"] = roster
 
         cursor.execute("""
-            SELECT gi.id, gi.recipient_username, gi.message, gi.status, gi.created_at, u.username as sender_name
+            SELECT gi.id, gi.group_id, gi.sender_id, gi.recipient_username, gi.message, gi.status, gi.created_at,
+                   u.username as sender_name, u.avatar_url as sender_avatar,
+                   ru.id as recipient_id, ru.avatar_url as recipient_avatar
             FROM group_invitations gi
             JOIN users u ON gi.sender_id = u.id
+            LEFT JOIN users ru ON LOWER(ru.username) = LOWER(gi.recipient_username)
             WHERE gi.group_id = ?
             ORDER BY gi.created_at DESC
         """, (gid,))
