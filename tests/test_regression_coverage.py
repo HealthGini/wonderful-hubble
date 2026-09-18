@@ -2368,15 +2368,15 @@ class TestRegressionCoverage(GoodDeedsTestCase):
         with open(os.path.join(base_dir, "static", "app.js"), "r", encoding="utf-8") as f:
             js = f.read()
 
-        # (a) Reverse chronological default sort & UI selector
-        self.assertIn('id="feed-order-select"', html)
-        self.assertIn('value="recent" selected', html)
-        self.assertIn('let currentSortMode = "recent";', js)
+        # (a) Default balanced sort ('smart') without manual sort dropdown in UI
+        self.assertNotIn('id="feed-sort-select"', html)
+        self.assertNotIn('id="feed-order-select"', html)
+        self.assertIn('let currentSortMode = "smart";', js)
 
         token = self.get_token("maya@gooddeeds.space")
         headers = {"Authorization": f"Bearer {token}"}
 
-        # Create a new Kudos and then a new Post and verify reverse chronological order
+        # Create a new Kudos and then a new Post and verify default balanced sort surfaces new items and rewards likes
         status1, _, body1 = self.make_request("POST", "/api/kudos", headers=headers, body={
             "recipient_id": 3,
             "content": "First newly created kudos item"
@@ -2392,11 +2392,17 @@ class TestRegressionCoverage(GoodDeedsTestCase):
         self.assertEqual(status2, 201)
         post_id = body2["item"]["id"]
 
-        status_feed, _, feed_body = self.make_request("GET", "/api/feed?sort=recent")
+        status_feed, _, feed_body = self.make_request("GET", "/api/feed", headers=headers)
         self.assertEqual(status_feed, 200)
         feed_ids = [item["id"] for item in feed_body["feed"]]
         self.assertEqual(feed_ids[0], post_id)
         self.assertEqual(feed_ids[1], kudos_id)
+
+        # Reacting to kudos_id boosts its popularity so it rises above the unliked post_id
+        self.make_request("POST", "/api/react", headers=headers, body={"item_id": kudos_id, "emoji": "🌟"})
+        status_feed2, _, feed_body2 = self.make_request("GET", "/api/feed", headers=headers)
+        self.assertEqual(status_feed2, 200)
+        self.assertEqual(feed_body2["feed"][0]["id"], kudos_id)
 
         # (b) Visual distinction between Kudos and Posts in renderFeedCard
         self.assertIn("🌟 Gratitude Kudos", js)

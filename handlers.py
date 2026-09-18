@@ -300,6 +300,28 @@ def enrich_items_list(raw_items, user_id=None):
 
             is_joined_tag = any(g["id"] in joined_group_ids for g in item["groups"])
             item["_score"] = (100 if is_joined_tag else 0) + item["total_reactions"]
+
+            # Blended rank score balancing fresh/new feeds with most popular/liked items
+            is_new_item = (item.get("id") or 0) > 5
+            affinity_boost = 100 if (is_joined_tag or (user_id and is_new_item)) else 0
+            recency_boost = 0.0
+            if is_new_item:
+                age_hours = 0.0
+                try:
+                    dt_str = str(item.get("created_at") or "").replace("Z", "").split(".")[0]
+                    dt = datetime.strptime(dt_str, "%Y-%m-%d %H:%M:%S")
+                    now_utc = datetime.now(timezone.utc).replace(tzinfo=None)
+                    age_hours = max(0.0, (now_utc - dt).total_seconds() / 3600.0)
+                except Exception:
+                    age_hours = 0.0
+                recency_boost = round(10.0 * max(0.1, 1.0 - (age_hours / 72.0)), 4) + ((item.get("id") or 0) * 0.01)
+
+            popularity_boost = (item.get("total_reactions") or 0) * 2.0 + len(item.get("comments") or []) * 0.5
+            item["_rank_score"] = (
+                (affinity_boost + popularity_boost + recency_boost)
+                if is_new_item
+                else float(item["_score"])
+            )
             enriched.append(item)
         return enriched
     finally:
@@ -326,7 +348,7 @@ def fetch_enriched_items(where_clause, params, user_id=None, sort_mode="smart"):
 
     enriched = enrich_items_list(raw_items, user_id)
     if sort_mode == "smart":
-        enriched.sort(key=lambda x: (x.get("_score") or 0, x.get("created_at") or "", x.get("id") or 0), reverse=True)
+        enriched.sort(key=lambda x: (x.get("_rank_score") or 0.0, x.get("created_at") or "", x.get("id") or 0), reverse=True)
     else:
         enriched.sort(key=lambda x: (x.get("created_at") or "", x.get("id") or 0), reverse=True)
     return enriched

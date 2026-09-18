@@ -26,7 +26,7 @@ let sessionPromise = null;
 let currentTheme = "";
 let currentFormatFilter = "";
 let currentGroupFilter = "";
-let currentSortMode = "recent";
+let currentSortMode = "smart";
 let currentSearch = "";
 let currentTypeFilter = "";
 let currentMyKudosMode = "";
@@ -871,7 +871,7 @@ async function loadLandingPreview(isLoadMore = false) {
   let reqLimit = landingPreviewLimit;
   let reqOffset = landingPreviewOffset;
 
-  let url = `/feed?sort=recent&limit=${reqLimit}&offset=${reqOffset}&`;
+  let url = `/feed?sort=smart&limit=${reqLimit}&offset=${reqOffset}&`;
   if (landingGroupFilter) url += `group_id=${encodeURIComponent(landingGroupFilter)}&`;
   if (landingTypeFilter) url += `filter_type=${encodeURIComponent(landingTypeFilter)}&`;
   if (landingThemeFilter) url += `theme=${encodeURIComponent(landingThemeFilter)}&`;
@@ -1253,11 +1253,7 @@ function clearFeedSearchInput() {
 window.clearFeedSearchInput = clearFeedSearchInput;
 
 function changeSortMode(mode) {
-  currentSortMode = mode || "recent";
-  const sortSel = document.getElementById("feed-order-select");
-  if (sortSel && sortSel.value !== currentSortMode) {
-    sortSel.value = currentSortMode;
-  }
+  currentSortMode = mode || "smart";
   loadFeed();
 }
 window.changeSortMode = changeSortMode;
@@ -1266,7 +1262,7 @@ function clearAllFilters() {
   currentTheme = "";
   currentFormatFilter = "";
   currentGroupFilter = "";
-  currentSortMode = "recent";
+  currentSortMode = "smart";
   currentSearch = "";
   currentTypeFilter = "";
   currentMyKudosMode = "";
@@ -1278,8 +1274,6 @@ function clearAllFilters() {
   if (gSel) gSel.value = "";
   const tSel = document.getElementById("feed-type-select");
   if (tSel) tSel.value = "";
-  const sortSel = document.getElementById("feed-order-select");
-  if (sortSel) sortSel.value = "recent";
   document.querySelectorAll(".format-pill").forEach(el => {
     el.className = "format-pill shrink-0 px-3.5 py-1.5 rounded-xl font-bold text-sm bg-white hover:bg-amber-100/60 text-slate-700 transition touch-target shadow-xs";
   });
