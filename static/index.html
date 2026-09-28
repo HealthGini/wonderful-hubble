@@ -275,7 +275,7 @@
       </div>
 
       <!-- ================== LANDING VISION & MISSION SECTION ================== -->
-      <section id="landing-vision-section" class="bg-white p-8 sm:p-12 rounded-3xl border border-stone-200/80 shadow-sm space-y-8">
+      <section id="landing-vision-section" class="hidden bg-white p-8 sm:p-12 rounded-3xl border border-stone-200/80 shadow-sm space-y-8">
         <div class="text-center max-w-3xl mx-auto space-y-3">
           <h2 class="text-3xl sm:text-4xl font-black text-stone-900">☀️ Why Join GoodDeeds.space?</h2>
           <p class="text-stone-600 font-medium text-lg sm:text-xl leading-relaxed">
@@ -315,18 +315,22 @@
           <h2 class="text-3xl font-black text-stone-900">☀️ Live Community Highlights</h2>
           <a href="/#/feed" class="font-black text-amber-700 hover:underline text-lg">View All Posts & Kudos →</a>
         </div>
-        <div id="landing-filter-bar" class="bg-white px-5 py-3.5 sm:px-6 sm:py-4 rounded-2xl border border-slate-200/80 shadow-sm space-y-2 my-4">
-          <div class="flex flex-wrap gap-3 items-center justify-between">
-            <div class="flex flex-wrap gap-3 items-center">
-              <select id="landing-group-select" onchange="filterLandingByGroup(this.value)" class="px-4 py-2.5 rounded-xl border border-slate-300 font-bold text-sm bg-white focus:border-amber-500 cursor-pointer touch-target">
-                <option value="">All Spaces</option>
-              </select>
-              <select id="landing-type-select" onchange="filterLandingByType(this.value)" class="px-4 py-2.5 rounded-xl border border-slate-300 font-bold text-sm bg-white focus:border-amber-500 cursor-pointer touch-target">
-                <option value="">All Kudos and Posts</option>
-                <option value="KUDOS">Kudos Only</option>
-                <option value="POST">Posts Only</option>
-              </select>
+        <div id="landing-filter-bar" class="bg-white px-5 py-3.5 sm:px-6 sm:py-4 rounded-3xl border border-slate-200/80 shadow-sm space-y-2 my-4">
+          <div class="flex flex-col lg:flex-row gap-3">
+            <!-- Keyword Search -->
+            <div class="relative flex-1">
+              <span class="absolute inset-y-0 left-0 pl-4 flex items-center pointer-events-none text-slate-400 text-lg" aria-hidden="true">🔍</span>
+              <input type="search" id="landing-search-input" placeholder="Search Kudos, Posts, Events, Resources, Audience, Geography, Contact, or Username..." class="w-full pl-11 pr-11 py-3 rounded-xl border border-slate-300 font-medium text-sm bg-slate-50 focus:bg-white focus:border-indigo-600 transition">
+              <button id="landing-search-clear-btn" type="button" onclick="clearLandingSearchInput()" class="hidden absolute inset-y-0 right-0 pr-3.5 flex items-center text-slate-400 hover:text-slate-700 font-bold text-sm transition" title="Clear search" aria-label="Clear search">✕</button>
             </div>
+            <select id="landing-group-select" onchange="filterLandingByGroup(this.value)" class="px-4 py-3 rounded-xl border border-slate-300 font-bold text-sm bg-white focus:border-indigo-600 cursor-pointer touch-target">
+              <option value="">All Spaces</option>
+            </select>
+            <select id="landing-type-select" onchange="filterLandingByType(this.value)" class="px-4 py-3 rounded-xl border border-slate-300 font-bold text-sm bg-white focus:border-indigo-600 cursor-pointer touch-target">
+              <option value="">All Kudos and Posts</option>
+              <option value="KUDOS">Kudos Only</option>
+              <option value="POST">Posts Only</option>
+            </select>
             <button type="button" id="btn-toggle-landing-theme-pills" onclick="toggleLandingThemePillsBar()" class="hidden px-3.5 py-2.5 rounded-xl border border-slate-300 font-bold text-sm bg-white hover:bg-slate-50 text-slate-700 transition items-center space-x-1.5 shrink-0 touch-target" title="Toggle Type Filters" aria-label="Toggle Type Filters" aria-expanded="true">
               <span id="landing-theme-pills-active-indicator" class="hidden w-2 h-2 rounded-full bg-amber-500"></span>
               <span id="landing-theme-pills-toggle-icon" class="text-xs text-slate-500 font-black">▲</span>

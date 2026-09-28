@@ -2579,9 +2579,13 @@ class TestRegressionCoverage(GoodDeedsTestCase):
             self.assertIn(field_name, pdf_bytes)
         self.assertIn('href="/GoodDeeds_Post_Submission_Form.pdf"', html)
 
-        # Verify compact Type filter bar whitespace and hidden expand/collapse arrow buttons
+        # Verify compact Type filter bar whitespace, hidden expand/collapse arrow buttons, hidden landing vision section, and consistent landing search box
+        self.assertIn('id="landing-vision-section" class="hidden ', html)
         self.assertIn('id="feed-filter-bar-card" class="bg-white px-5 py-3.5 sm:px-6 sm:py-4 rounded-3xl border border-slate-200/80 shadow-sm space-y-2"', html)
-        self.assertIn('id="landing-filter-bar" class="bg-white px-5 py-3.5 sm:px-6 sm:py-4 rounded-2xl border border-slate-200/80 shadow-sm space-y-2 my-4"', html)
+        self.assertIn('id="landing-filter-bar" class="bg-white px-5 py-3.5 sm:px-6 sm:py-4 rounded-3xl border border-slate-200/80 shadow-sm space-y-2 my-4"', html)
+        self.assertIn('id="landing-search-input" placeholder="Search Kudos, Posts, Events, Resources, Audience, Geography, Contact, or Username..."', html)
+        self.assertIn('id="landing-search-clear-btn"', html)
+        self.assertIn("window.clearLandingSearchInput = clearLandingSearchInput", js)
         self.assertIn('id="btn-toggle-theme-pills" onclick="toggleThemePillsBar()" class="hidden ', html)
         self.assertIn('id="btn-toggle-landing-theme-pills" onclick="toggleLandingThemePillsBar()" class="hidden ', html)
         self.assertIn('id="theme-pills-bar" class="pt-0"', html)

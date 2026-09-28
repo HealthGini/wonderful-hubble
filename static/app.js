@@ -50,6 +50,7 @@ let landingGroupFilter = "";
 let landingTypeFilter = "";
 let landingThemeFilter = "";
 let landingFormatFilter = "";
+let landingSearchFilter = "";
 let allGroupsCache = [];
 
 // Wizard temporary draft storage
@@ -127,6 +128,30 @@ function setupEventListeners() {
           currentMyKudosMode = "";
         }
         loadFeed();
+      }, 300);
+    });
+  }
+
+  let landingSearchTimeout;
+  const landingSearch = document.getElementById("landing-search-input");
+  const landingSearchClearBtn = document.getElementById("landing-search-clear-btn");
+
+  function updateLandingSearchClearBtn() {
+    if (!landingSearch || !landingSearchClearBtn) return;
+    if (landingSearch.value.trim().length > 0) {
+      landingSearchClearBtn.classList.remove("hidden");
+    } else {
+      landingSearchClearBtn.classList.add("hidden");
+    }
+  }
+
+  if (landingSearch) {
+    landingSearch.addEventListener("input", (e) => {
+      updateLandingSearchClearBtn();
+      clearTimeout(landingSearchTimeout);
+      landingSearchTimeout = setTimeout(() => {
+        landingSearchFilter = e.target.value.trim();
+        loadLandingPreview();
       }, 300);
     });
   }
@@ -897,6 +922,7 @@ async function loadLandingPreview(isLoadMore = false) {
   if (landingTypeFilter) url += `filter_type=${encodeURIComponent(landingTypeFilter)}&`;
   if (landingThemeFilter) url += `theme=${encodeURIComponent(landingThemeFilter)}&`;
   if (landingFormatFilter) url += `subtype=${encodeURIComponent(landingFormatFilter)}&`;
+  if (landingSearchFilter) url += `search=${encodeURIComponent(landingSearchFilter)}&`;
 
   try {
     const data = await apiFetch(url);
@@ -1272,6 +1298,16 @@ function clearFeedSearchInput() {
   clearAllFilters();
 }
 window.clearFeedSearchInput = clearFeedSearchInput;
+
+function clearLandingSearchInput() {
+  const sInput = document.getElementById("landing-search-input");
+  if (sInput) sInput.value = "";
+  const clearBtn = document.getElementById("landing-search-clear-btn");
+  if (clearBtn) clearBtn.classList.add("hidden");
+  landingSearchFilter = "";
+  loadLandingPreview();
+}
+window.clearLandingSearchInput = clearLandingSearchInput;
 
 function changeSortMode(mode) {
   currentSortMode = mode || "smart";
