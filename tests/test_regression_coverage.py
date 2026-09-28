@@ -2579,4 +2579,12 @@ class TestRegressionCoverage(GoodDeedsTestCase):
             self.assertIn(field_name, pdf_bytes)
         self.assertIn('href="/GoodDeeds_Post_Submission_Form.pdf"', html)
 
-
+        # Verify compact Type filter bar whitespace and hidden expand/collapse arrow buttons
+        self.assertIn('id="feed-filter-bar-card" class="bg-white px-5 py-3.5 sm:px-6 sm:py-4 rounded-3xl border border-slate-200/80 shadow-sm space-y-2"', html)
+        self.assertIn('id="landing-filter-bar" class="bg-white px-5 py-3.5 sm:px-6 sm:py-4 rounded-2xl border border-slate-200/80 shadow-sm space-y-2 my-4"', html)
+        self.assertIn('id="btn-toggle-theme-pills" onclick="toggleThemePillsBar()" class="hidden ', html)
+        self.assertIn('id="btn-toggle-landing-theme-pills" onclick="toggleLandingThemePillsBar()" class="hidden ', html)
+        self.assertIn('id="theme-pills-bar" class="pt-0"', html)
+        self.assertIn('id="landing-theme-pills-bar" class="pt-0"', html)
+        self.assertIn('id="feed-type-pills-row" class="overflow-x-auto whitespace-nowrap scrollbar-none py-0 flex items-center gap-2"', html)
+        self.assertIn('id="landing-type-pills-row" class="overflow-x-auto whitespace-nowrap scrollbar-none py-0 flex items-center gap-2"', html)

@@ -315,7 +315,7 @@
           <h2 class="text-3xl font-black text-stone-900">☀️ Live Community Highlights</h2>
           <a href="/#/feed" class="font-black text-amber-700 hover:underline text-lg">View All Posts & Kudos →</a>
         </div>
-        <div id="landing-filter-bar" class="bg-white p-5 sm:p-6 rounded-2xl border border-slate-200/80 shadow-sm space-y-4 my-4">
+        <div id="landing-filter-bar" class="bg-white px-5 py-3.5 sm:px-6 sm:py-4 rounded-2xl border border-slate-200/80 shadow-sm space-y-2 my-4">
           <div class="flex flex-wrap gap-3 items-center justify-between">
             <div class="flex flex-wrap gap-3 items-center">
               <select id="landing-group-select" onchange="filterLandingByGroup(this.value)" class="px-4 py-2.5 rounded-xl border border-slate-300 font-bold text-sm bg-white focus:border-amber-500 cursor-pointer touch-target">
@@ -327,12 +327,12 @@
                 <option value="POST">Posts Only</option>
               </select>
             </div>
-            <button type="button" id="btn-toggle-landing-theme-pills" onclick="toggleLandingThemePillsBar()" class="px-3.5 py-2.5 rounded-xl border border-slate-300 font-bold text-sm bg-white hover:bg-slate-50 text-slate-700 transition flex items-center space-x-1.5 shrink-0 touch-target" title="Toggle Type Filters" aria-label="Toggle Type Filters" aria-expanded="true">
+            <button type="button" id="btn-toggle-landing-theme-pills" onclick="toggleLandingThemePillsBar()" class="hidden px-3.5 py-2.5 rounded-xl border border-slate-300 font-bold text-sm bg-white hover:bg-slate-50 text-slate-700 transition items-center space-x-1.5 shrink-0 touch-target" title="Toggle Type Filters" aria-label="Toggle Type Filters" aria-expanded="true">
               <span id="landing-theme-pills-active-indicator" class="hidden w-2 h-2 rounded-full bg-amber-500"></span>
               <span id="landing-theme-pills-toggle-icon" class="text-xs text-slate-500 font-black">▲</span>
             </button>
           </div>
-          <div id="landing-theme-pills-bar" class="space-y-2" role="group" aria-label="Landing Filter by Type">
+          <div id="landing-theme-pills-bar" class="pt-0" role="group" aria-label="Landing Filter by Type">
             <!-- Line 1: Primary Topics (Hidden per user preference; Type filter retained) -->
             <div id="landing-topic-pills-row" class="hidden overflow-x-auto whitespace-nowrap scrollbar-none py-1 items-center gap-2">
               <span class="text-xs font-black uppercase tracking-wider text-slate-500 pr-1 shrink-0">Topic:</span>
@@ -344,12 +344,12 @@
             </div>
 
             <!-- Filter by Type -->
-            <div id="landing-type-pills-row" class="overflow-x-auto whitespace-nowrap scrollbar-none py-0.5 flex items-center gap-2">
+            <div id="landing-type-pills-row" class="overflow-x-auto whitespace-nowrap scrollbar-none py-0 flex items-center gap-2">
               <span class="text-xs font-black uppercase tracking-wider text-amber-800 shrink-0 flex items-center gap-1 pr-1">
                 <span>Type:</span>
               </span>
-              <button type="button" onclick="filterLandingByFormat('EVENT')" class="landing-format-pill shrink-0 px-3.5 py-1.5 rounded-xl font-bold text-xs bg-white hover:bg-amber-100/70 text-slate-700 transition touch-target shadow-xs border border-amber-200/60">📅 Events</button>
-              <button type="button" onclick="filterLandingByFormat('RESOURCE')" class="landing-format-pill shrink-0 px-3.5 py-1.5 rounded-xl font-bold text-xs bg-white hover:bg-amber-100/70 text-slate-700 transition touch-target shadow-xs border border-amber-200/60">📎 Resources</button>
+              <button type="button" onclick="filterLandingByFormat('EVENT')" class="landing-format-pill shrink-0 px-3 py-1 rounded-xl font-bold text-xs bg-white hover:bg-amber-100/70 text-slate-700 transition shadow-xs border border-amber-200/60">📅 Events</button>
+              <button type="button" onclick="filterLandingByFormat('RESOURCE')" class="landing-format-pill shrink-0 px-3 py-1 rounded-xl font-bold text-xs bg-white hover:bg-amber-100/70 text-slate-700 transition shadow-xs border border-amber-200/60">📎 Resources</button>
             </div>
           </div>
         </div>
@@ -381,7 +381,7 @@
         </div>
       </div>
       <!-- Controls Filter Bar Card -->
-      <div class="bg-white p-6 sm:p-8 rounded-3xl border border-slate-200/80 shadow-sm space-y-4">
+      <div id="feed-filter-bar-card" class="bg-white px-5 py-3.5 sm:px-6 sm:py-4 rounded-3xl border border-slate-200/80 shadow-sm space-y-2">
         <!-- Filter & Search Bar -->
         <div class="flex flex-col lg:flex-row gap-3">
           <!-- Keyword Search -->
@@ -403,15 +403,15 @@
             <option value="POST">Posts Only</option>
           </select>
 
-          <!-- Toggle Type Sub-Filters Button -->
-          <button type="button" id="btn-toggle-theme-pills" onclick="toggleThemePillsBar()" class="px-4 py-3 rounded-xl border border-slate-300 font-bold text-sm bg-white hover:bg-slate-50 text-slate-700 transition flex items-center justify-center space-x-1.5 shrink-0 touch-target" title="Toggle Type Filters" aria-label="Toggle Type Filters" aria-expanded="true">
+          <!-- Toggle Type Sub-Filters Button (Hidden; compact Type row is always shown) -->
+          <button type="button" id="btn-toggle-theme-pills" onclick="toggleThemePillsBar()" class="hidden px-4 py-3 rounded-xl border border-slate-300 font-bold text-sm bg-white hover:bg-slate-50 text-slate-700 transition items-center justify-center space-x-1.5 shrink-0 touch-target" title="Toggle Type Filters" aria-label="Toggle Type Filters" aria-expanded="true">
             <span id="theme-pills-active-indicator" class="hidden w-2 h-2 rounded-full bg-amber-500"></span>
             <span id="theme-pills-toggle-icon" class="text-xs text-slate-500 font-black">▲</span>
           </button>
         </div>
 
         <!-- Type Filter Pills Bar -->
-        <div id="theme-pills-bar" class="space-y-2" role="group" aria-label="Filter by Type">
+        <div id="theme-pills-bar" class="pt-0" role="group" aria-label="Filter by Type">
           <!-- Line 1: Primary Topics (Hidden per user preference; Type filter retained) -->
           <div id="feed-topic-pills-row" class="hidden overflow-x-auto whitespace-nowrap scrollbar-none py-1.5 items-center gap-2">
             <span class="text-xs font-black uppercase tracking-wider text-slate-500 pr-1 shrink-0">Topic:</span>
@@ -423,12 +423,12 @@
           </div>
 
           <!-- Filter by Type -->
-          <div id="feed-type-pills-row" class="overflow-x-auto whitespace-nowrap scrollbar-none py-1.5 flex items-center gap-2">
+          <div id="feed-type-pills-row" class="overflow-x-auto whitespace-nowrap scrollbar-none py-0 flex items-center gap-2" data-scroll-row="overflow-x-auto whitespace-nowrap scrollbar-none py-1.5 flex items-center gap-2">
             <span class="text-xs font-black uppercase tracking-wider text-amber-800 shrink-0 flex items-center gap-1 pr-1">
               <span>Type:</span>
             </span>
-            <button type="button" onclick="filterByFormat('EVENT')" class="format-pill shrink-0 px-3.5 py-1.5 rounded-xl font-bold text-xs bg-white hover:bg-amber-100/70 text-slate-700 transition touch-target shadow-xs border border-amber-200/60">📅 Events</button>
-            <button type="button" onclick="filterByFormat('RESOURCE')" class="format-pill shrink-0 px-3.5 py-1.5 rounded-xl font-bold text-xs bg-white hover:bg-amber-100/70 text-slate-700 transition touch-target shadow-xs border border-amber-200/60">📎 Resources</button>
+            <button type="button" onclick="filterByFormat('EVENT')" class="format-pill shrink-0 px-3 py-1 rounded-xl font-bold text-xs bg-white hover:bg-amber-100/70 text-slate-700 transition shadow-xs border border-amber-200/60">📅 Events</button>
+            <button type="button" onclick="filterByFormat('RESOURCE')" class="format-pill shrink-0 px-3 py-1 rounded-xl font-bold text-xs bg-white hover:bg-amber-100/70 text-slate-700 transition shadow-xs border border-amber-200/60">📎 Resources</button>
           </div>
         </div>
       </div>

@@ -30,6 +30,11 @@ a.touch-target {
   min-width: 48px;
 }
 
+button.format-pill,
+button.landing-format-pill {
+  min-height: 32px;
+}
+
 /* Sleek High Contrast Focus States with Warm Amber Glow */
 *:focus-visible {
   outline: 2px solid #f59e0b !important;

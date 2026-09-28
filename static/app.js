@@ -1102,9 +1102,9 @@ function filterByFormat(fmt) {
   document.querySelectorAll(".format-pill").forEach(el => {
     const onclickAttr = el.getAttribute("onclick") || "";
     if (currentFormatFilter !== "" && onclickAttr.includes(`'${currentFormatFilter}'`)) {
-      el.className = "format-pill shrink-0 px-3.5 py-1.5 rounded-xl font-bold text-sm bg-amber-500 text-white shadow-sm transition touch-target";
+      el.className = "format-pill shrink-0 px-3 py-1 rounded-xl font-bold text-xs bg-amber-500 text-white shadow-sm transition border border-amber-500";
     } else {
-      el.className = "format-pill shrink-0 px-3.5 py-1.5 rounded-xl font-bold text-sm bg-white hover:bg-amber-100/60 text-slate-700 transition touch-target shadow-xs";
+      el.className = "format-pill shrink-0 px-3 py-1 rounded-xl font-bold text-xs bg-white hover:bg-amber-100/70 text-slate-700 transition shadow-xs border border-amber-200/60";
     }
   });
   updateThemePillsCollapseUI();
@@ -1141,9 +1141,9 @@ function updateThemePillsCollapseUI() {
     if (toggleBtn) {
       toggleBtn.setAttribute("aria-expanded", "false");
       if (hasActive) {
-        toggleBtn.className = "px-4 py-3 rounded-xl border border-amber-400 font-bold text-sm bg-amber-50 text-amber-900 transition flex items-center justify-center space-x-2 shrink-0 touch-target shadow-xs";
+        toggleBtn.className = "hidden px-4 py-3 rounded-xl border border-amber-400 font-bold text-sm bg-amber-50 text-amber-900 transition items-center justify-center space-x-2 shrink-0 touch-target shadow-xs";
       } else {
-        toggleBtn.className = "px-4 py-3 rounded-xl border border-slate-300 font-bold text-sm bg-slate-50 hover:bg-slate-100 text-slate-700 transition flex items-center justify-center space-x-2 shrink-0 touch-target";
+        toggleBtn.className = "hidden px-4 py-3 rounded-xl border border-slate-300 font-bold text-sm bg-slate-50 hover:bg-slate-100 text-slate-700 transition items-center justify-center space-x-2 shrink-0 touch-target";
       }
     }
   } else {
@@ -1152,9 +1152,9 @@ function updateThemePillsCollapseUI() {
     if (toggleBtn) {
       toggleBtn.setAttribute("aria-expanded", "true");
       if (hasActive) {
-        toggleBtn.className = "px-4 py-3 rounded-xl border border-amber-400 font-bold text-sm bg-amber-50 text-amber-900 transition flex items-center justify-center space-x-2 shrink-0 touch-target shadow-xs";
+        toggleBtn.className = "hidden px-4 py-3 rounded-xl border border-amber-400 font-bold text-sm bg-amber-50 text-amber-900 transition items-center justify-center space-x-2 shrink-0 touch-target shadow-xs";
       } else {
-        toggleBtn.className = "px-4 py-3 rounded-xl border border-slate-300 font-bold text-sm bg-white hover:bg-slate-50 text-slate-700 transition flex items-center justify-center space-x-2 shrink-0 touch-target";
+        toggleBtn.className = "hidden px-4 py-3 rounded-xl border border-slate-300 font-bold text-sm bg-white hover:bg-slate-50 text-slate-700 transition items-center justify-center space-x-2 shrink-0 touch-target";
       }
     }
   }
@@ -1296,7 +1296,7 @@ function clearAllFilters() {
   const tSel = document.getElementById("feed-type-select");
   if (tSel) tSel.value = "";
   document.querySelectorAll(".format-pill").forEach(el => {
-    el.className = "format-pill shrink-0 px-3.5 py-1.5 rounded-xl font-bold text-sm bg-white hover:bg-amber-100/60 text-slate-700 transition touch-target shadow-xs";
+    el.className = "format-pill shrink-0 px-3 py-1 rounded-xl font-bold text-xs bg-white hover:bg-amber-100/70 text-slate-700 transition shadow-xs border border-amber-200/60";
   });
   filterByTheme("");
 }
@@ -3355,9 +3355,9 @@ function filterLandingByFormat(fmt) {
   document.querySelectorAll(".landing-format-pill").forEach(el => {
     const onclickAttr = el.getAttribute("onclick") || "";
     if (landingFormatFilter !== "" && onclickAttr.includes(`'${landingFormatFilter}'`)) {
-      el.className = "landing-format-pill shrink-0 px-3.5 py-1.5 rounded-xl font-bold text-sm bg-amber-500 text-white shadow-sm transition touch-target";
+      el.className = "landing-format-pill shrink-0 px-3 py-1 rounded-xl font-bold text-xs bg-amber-500 text-white shadow-sm transition border border-amber-500";
     } else {
-      el.className = "landing-format-pill shrink-0 px-3.5 py-1.5 rounded-xl font-bold text-sm bg-white hover:bg-amber-100/60 text-slate-700 transition touch-target shadow-xs";
+      el.className = "landing-format-pill shrink-0 px-3 py-1 rounded-xl font-bold text-xs bg-white hover:bg-amber-100/70 text-slate-700 transition shadow-xs border border-amber-200/60";
     }
   });
   updateLandingThemePillsCollapseUI();
@@ -3390,9 +3390,9 @@ function updateLandingThemePillsCollapseUI() {
     if (toggleBtn) {
       toggleBtn.setAttribute("aria-expanded", "false");
       if (hasActive) {
-        toggleBtn.className = "px-3.5 py-2.5 rounded-xl border border-amber-400 font-bold text-sm bg-amber-50 text-amber-900 transition flex items-center space-x-1.5 shrink-0 touch-target shadow-xs";
+        toggleBtn.className = "hidden px-3.5 py-2.5 rounded-xl border border-amber-400 font-bold text-sm bg-amber-50 text-amber-900 transition items-center space-x-1.5 shrink-0 touch-target shadow-xs";
       } else {
-        toggleBtn.className = "px-3.5 py-2.5 rounded-xl border border-slate-300 font-bold text-sm bg-slate-50 hover:bg-slate-100 text-slate-700 transition flex items-center space-x-1.5 shrink-0 touch-target";
+        toggleBtn.className = "hidden px-3.5 py-2.5 rounded-xl border border-slate-300 font-bold text-sm bg-slate-50 hover:bg-slate-100 text-slate-700 transition items-center space-x-1.5 shrink-0 touch-target";
       }
     }
   } else {
@@ -3401,9 +3401,9 @@ function updateLandingThemePillsCollapseUI() {
     if (toggleBtn) {
       toggleBtn.setAttribute("aria-expanded", "true");
       if (hasActive) {
-        toggleBtn.className = "px-3.5 py-2.5 rounded-xl border border-amber-400 font-bold text-sm bg-amber-50 text-amber-900 transition flex items-center space-x-1.5 shrink-0 touch-target shadow-xs";
+        toggleBtn.className = "hidden px-3.5 py-2.5 rounded-xl border border-amber-400 font-bold text-sm bg-amber-50 text-amber-900 transition items-center space-x-1.5 shrink-0 touch-target shadow-xs";
       } else {
-        toggleBtn.className = "px-3.5 py-2.5 rounded-xl border border-slate-300 font-bold text-sm bg-white hover:bg-slate-50 text-slate-700 transition flex items-center space-x-1.5 shrink-0 touch-target";
+        toggleBtn.className = "hidden px-3.5 py-2.5 rounded-xl border border-slate-300 font-bold text-sm bg-white hover:bg-slate-50 text-slate-700 transition items-center space-x-1.5 shrink-0 touch-target";
       }
     }
   }
