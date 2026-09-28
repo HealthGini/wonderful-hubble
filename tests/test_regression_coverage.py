@@ -2555,4 +2555,28 @@ class TestRegressionCoverage(GoodDeedsTestCase):
             found_ids = [i["id"] for i in body_search["feed"]]
             self.assertIn(post_item["id"], found_ids, f"Expected post {post_item['id']} for search query '{query}'")
 
+        # Verify fillable PDF intake form exists in static/ and has interactive AcroForm fields
+        pdf_path = os.path.join(base_dir, "static", "GoodDeeds_Post_Submission_Form.pdf")
+        self.assertTrue(os.path.exists(pdf_path))
+        with open(pdf_path, "rb") as pf:
+            pdf_bytes = pf.read()
+        self.assertTrue(pdf_bytes.startswith(b"%PDF-1.7"))
+        self.assertIn(b"/AcroForm", pdf_bytes)
+        for field_name in [
+            b"/T (title)",
+            b"/T (subtype_general)",
+            b"/T (subtype_event)",
+            b"/T (subtype_resource)",
+            b"/T (event_date)",
+            b"/T (description)",
+            b"/T (target_audience)",
+            b"/T (target_geography)",
+            b"/T (contact_info)",
+            b"/T (link_1)",
+            b"/T (link_2)",
+            b"/T (link_3)",
+        ]:
+            self.assertIn(field_name, pdf_bytes)
+        self.assertIn('href="/GoodDeeds_Post_Submission_Form.pdf"', html)
+
 

@@ -932,9 +932,14 @@
   <dialog id="modal-post" class="p-0 rounded-3xl max-w-2xl w-full shadow-2xl border border-slate-200 bg-white m-auto max-h-[90vh] overflow-y-auto">
     <div class="p-8 sm:p-12 space-y-8 bg-white relative">
       <button type="button" onclick="closeModal('modal-post')" class="absolute top-4 right-4 sm:top-6 sm:right-6 w-10 h-10 rounded-full flex items-center justify-center text-stone-400 hover:text-stone-700 hover:bg-stone-100 text-2xl font-black transition touch-target" aria-label="Close modal" title="Close">✕</button>
-      <div class="text-center space-y-1.5 border-b border-slate-100 pb-5 pr-8 pl-8">
+      <div class="text-center space-y-2 border-b border-slate-100 pb-5 pr-8 pl-8">
         <h3 class="text-3xl font-extrabold text-slate-800 tracking-tight">Share Story, Event or Resource</h3>
         <p class="text-slate-500 font-medium text-sm">Publish public announcements, inspiring experiences, and community guides.</p>
+        <div class="pt-1">
+          <a id="download-fillable-post-pdf-link" href="/GoodDeeds_Post_Submission_Form.pdf" download="GoodDeeds_Post_Submission_Form.pdf" target="_blank" rel="noopener" class="inline-flex items-center space-x-1.5 px-3.5 py-1.5 rounded-xl bg-teal-50 hover:bg-teal-100 text-teal-900 border border-teal-200 font-bold text-xs transition shadow-2xs">
+            <span>📄</span><span>Download Fillable PDF Intake Form (for Email Submissions)</span>
+          </a>
+        </div>
       </div>
 
       <div id="post-step-1" class="space-y-6">
