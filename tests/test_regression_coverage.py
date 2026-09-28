@@ -81,7 +81,7 @@ class TestRegressionCoverage(GoodDeedsTestCase):
         self.assertNotIn("Posts Hub", html_content)
 
         # Assert #feed-search-input placeholder
-        self.assertIn('placeholder="Search Kudos, Posts, Events, Resources, or Username..."', html_content)
+        self.assertIn('placeholder="Search Kudos, Posts, Events, Resources, Audience, Geography, Contact, or Username..."', html_content)
 
         # Assert #feed-sort-select dropdown is completely absent
         self.assertNotIn('id="feed-sort-select"', html_content)
@@ -1412,7 +1412,7 @@ class TestRegressionCoverage(GoodDeedsTestCase):
         index_path = os.path.join(base_dir, "static", "index.html")
         with open(index_path, "r", encoding="utf-8") as f:
             html = f.read()
-        self.assertIn('placeholder="Search Kudos, Posts, Events, Resources, or Username..."', html)
+        self.assertIn('placeholder="Search Kudos, Posts, Events, Resources, Audience, Geography, Contact, or Username..."', html)
 
     def test_feed_monthly_winner_tags_removed(self):
         """
@@ -2487,4 +2487,72 @@ class TestRegressionCoverage(GoodDeedsTestCase):
             "is_admin": 1
         })
         self.assertEqual(status_self, 400)
+
+    def test_post_required_audience_geography_and_contact_info(self):
+        """
+        Verifies that creating a Post requires:
+        1. Target Audience (target_audience / #post-target-audience)
+        2. Target Geographical Areas (target_geography / #post-target-geography)
+        3. Key Contact Information (contact_info / #post-contact-info), with special emphasis for Community Events & Resources.
+        4. 'Choose a Theme' field (#post-theme-field-container) is hidden when creating a post, and Topic search rows (#feed-topic-pills-row, #landing-topic-pills-row) are hidden while Type search (#feed-type-pills-row, #landing-type-pills-row) is kept.
+        5. Backend POST /api/posts validates when metadata keys are provided, persists all 3 fields, and makes them searchable in GET /api/feed?search=...
+        """
+        base_dir = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+        with open(os.path.join(base_dir, "static", "index.html"), "r", encoding="utf-8") as f:
+            html = f.read()
+        with open(os.path.join(base_dir, "static", "app.js"), "r", encoding="utf-8") as f:
+            js = f.read()
+
+        self.assertIn('id="post-target-audience"', html)
+        self.assertIn('id="post-target-geography"', html)
+        self.assertIn('id="post-contact-info"', html)
+        self.assertIn('id="post-contact-event-resource-badge"', html)
+        self.assertIn('id="post-theme-field-container" class="hidden"', html)
+        self.assertIn('id="feed-topic-pills-row" class="hidden', html)
+        self.assertIn('id="landing-topic-pills-row" class="hidden', html)
+        self.assertIn('id="feed-type-pills-row"', html)
+        self.assertIn('id="landing-type-pills-row"', html)
+        self.assertIn("Essential for Community Events &amp; Resources", html)
+        self.assertIn("Please provide Target Audience, Target Geographical Areas, and Key Contact Information.", js)
+        self.assertIn("👥 Target Audience", js)
+        self.assertIn("📍 Geographical Areas", js)
+        self.assertIn("📇 Key Contact", js)
+
+        token_maya = self.get_token("maya@gooddeeds.space")
+        headers_maya = {"Authorization": f"Bearer {token_maya}"}
+
+        # Missing required fields when metadata keys are included should fail with 400
+        status_missing, _, body_missing = self.make_request("POST", "/api/posts", headers=headers_maya, body={
+            "title": "Neighborhood Tool Library",
+            "content": "Borrow gardening and repair tools for free.",
+            "post_subtype": "RESOURCE",
+            "target_audience": "Homeowners & Renters",
+            "target_geography": "",
+            "contact_info": ""
+        })
+        self.assertEqual(status_missing, 400)
+        self.assertIn("Target audience, target geographical areas, and key contact information are required", body_missing.get("error", ""))
+
+        # Valid post (even without explicit theme) with all 3 required fields succeeds and persists them
+        status_ok, _, body_ok = self.make_request("POST", "/api/posts", headers=headers_maya, body={
+            "title": "Neighborhood Tool Library",
+            "content": "Borrow gardening and repair tools for free.",
+            "post_subtype": "RESOURCE",
+            "target_audience": "Local Residents & DIY Volunteers",
+            "target_geography": "East Bay & Oakland Neighborhoods",
+            "contact_info": "Maya Lin — maya@gooddeeds.space / (510) 555-0192"
+        })
+        self.assertEqual(status_ok, 201)
+        post_item = body_ok["post"]
+        self.assertEqual(post_item["target_audience"], "Local Residents & DIY Volunteers")
+        self.assertEqual(post_item["target_geography"], "East Bay & Oakland Neighborhoods")
+        self.assertEqual(post_item["contact_info"], "Maya Lin — maya@gooddeeds.space / (510) 555-0192")
+
+        # Search by target_geography, target_audience, contact_info, and multi-token cross-field query in GET /api/feed
+        for query in ["Oakland", "DIY Volunteers", "555-0192", "Oakland DIY"]:
+            status_search, _, body_search = self.make_request("GET", f"/api/feed?search={query.replace(' ', '%20')}")
+            self.assertEqual(status_search, 200)
+            found_ids = [i["id"] for i in body_search["feed"]]
+            self.assertIn(post_item["id"], found_ids, f"Expected post {post_item['id']} for search query '{query}'")
+
 

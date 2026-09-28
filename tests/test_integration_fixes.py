@@ -79,7 +79,7 @@ class TestIntegrationFixes(BaseTestCase):
         self.assertNotIn("📝 Posts Hub", html_content)
 
         # 2. Feed Toolbar
-        self.assertIn('placeholder="Search Kudos, Posts, Events, Resources, or Username..."', html_content)
+        self.assertIn('placeholder="Search Kudos, Posts, Events, Resources, Audience, Geography, Contact, or Username..."', html_content)
         self.assertNotIn('id="feed-sort-select"', html_content)
         self.assertIn('id="theme-pills-bar"', html_content)
         for topic in ["All", "✨ Inspiring Stories", "🌱 Wellbeing & Care", "💡 Skills & Learning", "🤝 Community & Action"]:

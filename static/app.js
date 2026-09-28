@@ -709,7 +709,6 @@ function renderFeedCard(item, isProfileView = false) {
       <div class="flex flex-wrap items-center justify-between gap-2 pb-2 border-b ${isKudos ? 'border-amber-200/60' : 'border-slate-100'}">
         <div class="flex items-center gap-2 flex-wrap">
           ${postSubtypeBadge}
-          ${!isKudos && item.theme ? `<span class="px-2.5 py-0.5 bg-indigo-50 text-indigo-700 border border-indigo-100 rounded-full text-xs font-bold">🏷️ ${escapeHtml(item.theme)}</span>` : ""}
         </div>
         <div class="flex flex-wrap gap-1.5">${groupBadges}</div>
       </div>
@@ -762,6 +761,28 @@ function renderFeedCard(item, isProfileView = false) {
           </div>
         ` : `
           <p class="text-slate-700 text-lg whitespace-pre-line font-medium leading-relaxed">${escapeHtml(item.content)}</p>
+          ${(item.target_audience || item.target_geography || item.contact_info) ? `
+            <div class="mt-3 p-3.5 sm:p-4 rounded-2xl bg-indigo-50/50 border border-indigo-100/90 grid grid-cols-1 sm:grid-cols-3 gap-3 text-xs">
+              ${item.target_audience ? `
+                <div class="flex flex-col gap-0.5">
+                  <span class="font-extrabold uppercase tracking-wider text-[10px] text-indigo-600">👥 Target Audience</span>
+                  <span class="font-bold text-slate-800 text-sm">${escapeHtml(item.target_audience)}</span>
+                </div>
+              ` : ""}
+              ${item.target_geography ? `
+                <div class="flex flex-col gap-0.5">
+                  <span class="font-extrabold uppercase tracking-wider text-[10px] text-indigo-600">📍 Geographical Areas</span>
+                  <span class="font-bold text-slate-800 text-sm">${escapeHtml(item.target_geography)}</span>
+                </div>
+              ` : ""}
+              ${item.contact_info ? `
+                <div class="flex flex-col gap-0.5 ${(item.post_subtype === "EVENT" || item.post_subtype === "RESOURCE") ? "bg-white/90 p-2 rounded-xl border border-indigo-200 shadow-2xs" : ""}">
+                  <span class="font-extrabold uppercase tracking-wider text-[10px] text-indigo-700">📇 Key Contact ${(item.post_subtype === "EVENT" || item.post_subtype === "RESOURCE") ? "• Event / Resource" : ""}</span>
+                  <span class="font-bold text-slate-900 text-sm break-words">${escapeHtml(item.contact_info)}</span>
+                </div>
+              ` : ""}
+            </div>
+          ` : ""}
         `}
         
         ${(() => {
@@ -1520,17 +1541,39 @@ async function handleGiveKudos(e) {
 function togglePostSubtype(subtype) {
   const container = document.getElementById("post-event-date-container");
   const dateInput = document.getElementById("post-event-date");
-  if (!container) return;
+  const contactBox = document.getElementById("post-contact-box");
+  const contactBadge = document.getElementById("post-contact-event-resource-badge");
+  const isEvent = (subtype === "Community Event" || subtype === "EVENT");
+  const isResource = (subtype === "Community Resource" || subtype === "RESOURCE");
 
-  if (subtype === "Community Event" || subtype === "EVENT") {
-    container.classList.remove("hidden");
-    const today = new Date().toISOString().split("T")[0];
-    if (dateInput) {
-      dateInput.setAttribute("min", today);
-      if (!dateInput.value) dateInput.value = today;
+  if (container) {
+    if (isEvent) {
+      container.classList.remove("hidden");
+      const today = new Date().toISOString().split("T")[0];
+      if (dateInput) {
+        dateInput.setAttribute("min", today);
+        if (!dateInput.value) dateInput.value = today;
+      }
+    } else {
+      container.classList.add("hidden");
     }
-  } else {
-    container.classList.add("hidden");
+  }
+
+  if (contactBox) {
+    if (isEvent || isResource) {
+      contactBox.classList.remove("border-slate-200", "bg-slate-50/70");
+      contactBox.classList.add("border-indigo-300", "bg-indigo-50/70", "ring-2", "ring-indigo-100");
+    } else {
+      contactBox.classList.remove("border-indigo-300", "bg-indigo-50/70", "ring-2", "ring-indigo-100");
+      contactBox.classList.add("border-slate-200", "bg-slate-50/70");
+    }
+  }
+  if (contactBadge) {
+    if (isEvent || isResource) {
+      contactBadge.classList.remove("hidden");
+    } else {
+      contactBadge.classList.add("hidden");
+    }
   }
 }
 
@@ -1577,8 +1620,12 @@ async function populateGroupCheckboxes(containerId, inputName) {
 async function reviewPostStep(e) {
   if (e) e.preventDefault();
   const title = document.getElementById("post-input-title").value.trim();
-  const theme = document.getElementById("post-input-theme").value;
+  const themeEl = document.getElementById("post-input-theme");
+  const theme = (themeEl && themeEl.value) ? themeEl.value : "General";
   let content = document.getElementById("post-input-content").value.trim();
+  const target_audience = document.getElementById("post-target-audience") ? document.getElementById("post-target-audience").value.trim() : "";
+  const target_geography = document.getElementById("post-target-geography") ? document.getElementById("post-target-geography").value.trim() : "";
+  const contact_info = document.getElementById("post-contact-info") ? document.getElementById("post-contact-info").value.trim() : "";
   const subtypeRadio = document.querySelector("input[name='post_subtype']:checked, input[name='post-subtype']:checked");
   const rawSubtype = subtypeRadio ? subtypeRadio.value : "GENERAL";
   const subtype = rawSubtype === "Community Event" ? "EVENT" : (rawSubtype === "Community Resource" ? "RESOURCE" : (rawSubtype === "General Post" ? "GENERAL" : rawSubtype));
@@ -1589,7 +1636,12 @@ async function reviewPostStep(e) {
     return;
   }
 
-  if (subtype === "Community Event" && eventDate) {
+  if (!target_audience || !target_geography || !contact_info) {
+    showToast("Please provide Target Audience, Target Geographical Areas, and Key Contact Information.");
+    return;
+  }
+
+  if ((subtype === "Community Event" || subtype === "EVENT") && eventDate) {
     content = `📅 Event Date: ${eventDate}\n\n${content}`;
   }
 
@@ -1621,7 +1673,18 @@ async function reviewPostStep(e) {
 
   const resource_url = attachments.length > 0 ? JSON.stringify(attachments) : "";
 
-  draftPost = { title, theme, content, resource_url, group_ids };
+  draftPost = {
+    title,
+    theme,
+    content,
+    resource_url,
+    group_ids,
+    post_subtype: subtype,
+    event_date: eventDate,
+    target_audience,
+    target_geography,
+    contact_info
+  };
 
   document.getElementById("post-step-1").classList.add("hidden");
   document.getElementById("post-step-2").classList.remove("hidden");
@@ -1652,10 +1715,23 @@ async function reviewPostStep(e) {
   previewBox.innerHTML = `
     <div class="font-extrabold text-2xl text-slate-900 tracking-tight">${escapeHtml(title)}</div>
     <div class="flex flex-wrap gap-2 pt-1">
-      <span class="px-3 py-1 bg-indigo-50 text-indigo-700 border border-indigo-200 rounded-full text-xs font-bold">🏷️ ${escapeHtml(theme)}</span>
-      <span class="px-3 py-1 bg-emerald-50 text-emerald-800 border border-emerald-200 rounded-full text-xs font-bold">${subtype === "Community Event" ? "📅 Event" : subtype === "Community Resource" ? "📚 Resource" : "📝 Post"}</span>
+      <span class="px-3 py-1 bg-emerald-50 text-emerald-800 border border-emerald-200 rounded-full text-xs font-bold">${(subtype === "Community Event" || subtype === "EVENT") ? "📅 Event" : (subtype === "Community Resource" || subtype === "RESOURCE") ? "📚 Resource" : "📝 Post"}</span>
     </div>
     <p class="text-base text-slate-700 pt-3 whitespace-pre-line font-medium leading-relaxed">${escapeHtml(content)}</p>
+    <div class="mt-3 p-3.5 rounded-2xl bg-indigo-50/60 border border-indigo-100 grid grid-cols-1 sm:grid-cols-3 gap-3 text-xs">
+      <div>
+        <div class="font-extrabold uppercase tracking-wider text-[10px] text-indigo-600">👥 Target Audience</div>
+        <div class="font-bold text-slate-800 text-sm">${escapeHtml(target_audience)}</div>
+      </div>
+      <div>
+        <div class="font-extrabold uppercase tracking-wider text-[10px] text-indigo-600">📍 Geographical Areas</div>
+        <div class="font-bold text-slate-800 text-sm">${escapeHtml(target_geography)}</div>
+      </div>
+      <div>
+        <div class="font-extrabold uppercase tracking-wider text-[10px] text-indigo-700">📇 Key Contact</div>
+        <div class="font-bold text-slate-900 text-sm break-words">${escapeHtml(contact_info)}</div>
+      </div>
+    </div>
     ${attachmentsPreviewHtml}
   `;
 }
@@ -1705,6 +1781,9 @@ async function confirmPublishPost() {
     document.getElementById("post-input-title").value = "";
     document.getElementById("post-input-content").value = "";
     document.getElementById("post-input-url").value = "";
+    if (document.getElementById("post-target-audience")) document.getElementById("post-target-audience").value = "";
+    if (document.getElementById("post-target-geography")) document.getElementById("post-target-geography").value = "";
+    if (document.getElementById("post-contact-info")) document.getElementById("post-contact-info").value = "";
     backToPostStep1();
     showToast("✅ Post published permanently to community feed!");
     if (window.location.hash.startsWith("#/group/")) {

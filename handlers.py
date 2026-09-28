@@ -1202,6 +1202,9 @@ def handle_api_request(method, path, headers, body_bytes):
             resource_url = str(raw_res_url or "").strip()
         event_date = body.get("event_date", "").strip() or None
         post_subtype = body.get("post_subtype", "").strip().upper() or None
+        target_audience = str(body.get("target_audience") or "").strip() or None
+        target_geography = str(body.get("target_geography") or body.get("target_geographical_areas") or "").strip() or None
+        contact_info = str(body.get("contact_info") or body.get("key_contact_info") or "").strip() or None
         extracted_text = extract_resource_text(resource_url)
 
         cursor.execute("""
@@ -1212,9 +1215,12 @@ def handle_api_request(method, path, headers, body_bytes):
                 resource_url = ?,
                 event_date = COALESCE(?, event_date),
                 post_subtype = COALESCE(?, post_subtype),
+                target_audience = COALESCE(?, target_audience),
+                target_geography = COALESCE(?, target_geography),
+                contact_info = COALESCE(?, contact_info),
                 extracted_text = ?
             WHERE id = ?
-        """, (title, theme, content, resource_url, event_date, post_subtype, extracted_text, item_id))
+        """, (title, theme, content, resource_url, event_date, post_subtype, target_audience, target_geography, contact_info, extracted_text, item_id))
         conn.commit()
         conn.close()
 
@@ -1357,6 +1363,13 @@ def handle_api_request(method, path, headers, body_bytes):
                     pass
 
         if search:
+            searchable_row_expr = (
+                "(COALESCE(f.title, '') || ' ' || COALESCE(f.content, '') || ' ' || COALESCE(f.theme, '') || ' ' || "
+                "COALESCE(f.extracted_text, '') || ' ' || COALESCE(f.resource_url, '') || ' ' || "
+                "COALESCE(f.target_audience, '') || ' ' || COALESCE(f.target_geography, '') || ' ' || "
+                "COALESCE(f.contact_info, '') || ' ' || COALESCE(f.post_subtype, '') || ' ' || "
+                "COALESCE(f.event_date, '') || ' ' || COALESCE(u.username, '') || ' ' || COALESCE(ru.username, ''))"
+            )
             if "author:" in search.lower():
                 parts = search.split("author:", 1)
                 prefix = parts[0].strip()
@@ -1368,19 +1381,30 @@ def handle_api_request(method, path, headers, body_bytes):
                     params.extend([f"%{author_name}%", f"%{author_name}%"])
                     if remaining:
                         like_q = f"%{remaining}%"
-                        where_parts.append("(f.title LIKE ? OR f.content LIKE ? OR f.theme LIKE ? OR f.extracted_text LIKE ? OR f.resource_url LIKE ? OR u.username LIKE ? OR ru.username LIKE ?)")
-                        params.extend([like_q, like_q, like_q, like_q, like_q, like_q, like_q])
+                        where_parts.append(f"{searchable_row_expr} LIKE ?")
+                        params.append(like_q)
                 else:
                     if prefix:
                         like_q = f"%{prefix}%"
-                        where_parts.append("(f.title LIKE ? OR f.content LIKE ? OR f.theme LIKE ? OR f.extracted_text LIKE ? OR f.resource_url LIKE ? OR u.username LIKE ? OR ru.username LIKE ?)")
-                        params.extend([like_q, like_q, like_q, like_q, like_q, like_q, like_q])
+                        where_parts.append(f"{searchable_row_expr} LIKE ?")
+                        params.append(like_q)
             else:
-                clean_search = search.lstrip("@")
+                clean_search = search.lstrip("@").strip()
                 like_q = f"%{search}%"
-                like_user = f"%{clean_search}%"
-                where_parts.append("(f.title LIKE ? OR f.content LIKE ? OR f.theme LIKE ? OR f.extracted_text LIKE ? OR f.resource_url LIKE ? OR u.username LIKE ? OR ru.username LIKE ?)")
-                params.extend([like_q, like_q, like_q, like_q, like_q, like_user, like_user])
+                like_clean = f"%{clean_search}%"
+                tokens = [t.lstrip("@").strip() for t in clean_search.split() if t.lstrip("@").strip()]
+                if len(tokens) > 1:
+                    token_clauses = " AND ".join([f"{searchable_row_expr} LIKE ?" for _ in tokens])
+                    where_parts.append(f"({searchable_row_expr} LIKE ? OR ({token_clauses}))")
+                    params.append(like_q)
+                    params.extend([f"%{t}%" for t in tokens])
+                else:
+                    where_parts.append(
+                        "(f.title LIKE ? OR f.content LIKE ? OR f.theme LIKE ? OR f.extracted_text LIKE ? "
+                        "OR f.resource_url LIKE ? OR f.target_audience LIKE ? OR f.target_geography LIKE ? "
+                        "OR f.contact_info LIKE ? OR u.username LIKE ? OR ru.username LIKE ?)"
+                    )
+                    params.extend([like_q, like_q, like_q, like_q, like_q, like_q, like_q, like_q, like_clean, like_clean])
 
         where_clause = ""
         if where_parts:
@@ -1488,7 +1512,7 @@ def handle_api_request(method, path, headers, body_bytes):
         if not user:
             return error_response("Login required to create posts", 401)
         title = body.get("title", "").strip()
-        theme = body.get("theme", "").strip()
+        theme = (body.get("theme") or "").strip() or "General"
         content = body.get("content", "").strip()
         raw_res_url = body.get("resource_url") or body.get("attachments") or ""
         if isinstance(raw_res_url, (list, dict)):
@@ -1499,12 +1523,26 @@ def handle_api_request(method, path, headers, body_bytes):
         post_subtype = body.get("post_subtype", "").strip().upper()
         event_date = body.get("event_date", "").strip()
 
+        metadata_keys = ("target_audience", "target_geography", "target_geographical_areas", "contact_info", "key_contact_info", "require_metadata")
+        has_metadata_keys = any(k in body for k in metadata_keys)
+        target_audience = str(body.get("target_audience") or "").strip()
+        target_geography = str(body.get("target_geography") or body.get("target_geographical_areas") or "").strip()
+        contact_info = str(body.get("contact_info") or body.get("key_contact_info") or "").strip()
+
         VALID_THEMES = {"Inspiring Stories", "Wellbeing & Care", "Skills & Learning", "Community & Action", "Inspiring Story", "Mental Health", "Wellness", "Mindfulness", "Educational", "General", "Events", "Resources", "Education", "Community Resources", "Inspiring Stories & Wisdom", "Mental Health & Peer Listening", "Education & Skill Building", "General & Mutual Aid", "Upcoming Community Events", "General Community Resources"}
 
-        if not title or not theme or not content:
-            return error_response("Title, theme, and content are required.")
+        if not title or not content:
+            return error_response("Title and content are required.")
 
-        ok, mod_err = check_content_moderation(user, [title, content, resource_url])
+        if has_metadata_keys:
+            if not target_audience or not target_geography or not contact_info:
+                return error_response("Target audience, target geographical areas, and key contact information are required.", 400)
+        else:
+            target_audience = target_audience or "All Community Members"
+            target_geography = target_geography or "Local & Online Community"
+            contact_info = contact_info or f"{user['username']} — {user['email']}"
+
+        ok, mod_err = check_content_moderation(user, [title, content, resource_url, target_audience, target_geography, contact_info])
         if not ok:
             return error_response(mod_err, 400)
 
@@ -1522,9 +1560,9 @@ def handle_api_request(method, path, headers, body_bytes):
         cursor = conn.cursor()
         extracted_text = extract_resource_text(resource_url)
         cursor.execute("""
-            INSERT INTO feed_items (item_type, author_id, title, theme, content, resource_url, post_subtype, event_date, extracted_text)
-            VALUES ('POST', ?, ?, ?, ?, ?, ?, ?, ?)
-        """, (user["id"], title, theme, content, resource_url, post_subtype, event_date, extracted_text))
+            INSERT INTO feed_items (item_type, author_id, title, theme, content, resource_url, post_subtype, event_date, extracted_text, target_audience, target_geography, contact_info)
+            VALUES ('POST', ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        """, (user["id"], title, theme, content, resource_url, post_subtype, event_date, extracted_text, target_audience, target_geography, contact_info))
         post_id = cursor.lastrowid
 
         for gid in group_ids:
