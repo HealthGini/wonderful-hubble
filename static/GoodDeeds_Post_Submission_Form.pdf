@@ -7,146 +7,101 @@ endobj
 << /Type /Font /Subtype /Type1 /BaseFont /Helvetica-Bold /Encoding /WinAnsiEncoding >>
 endobj
 3 0 obj
-<< /Type /Font /Subtype /Type1 /BaseFont /ZapfDingbats >>
-endobj
-4 0 obj
-<< /Length 4584 >>
+<< /Length 3684 >>
 stream
 q 0.985 0.982 0.972 rg 0.0 0.0 612.0 792.0 re f Q
 q 0.060 0.460 0.430 rg 36.0 700.0 540.0 64.0 re f Q
 q 0.960 0.620 0.040 rg 36.0 696.0 540.0 4.0 re f Q
-BT /F2 14 Tf 1.000 1.000 1.000 rg 1 0 0 1 52.0 738.0 Tm (GoodDeeds.space  |  Community Post, Event & Resource Intake Form) Tj ET
-BT /F1 9.5 Tf 0.900 0.980 0.960 rg 1 0 0 1 52.0 716.0 Tm (Fill out the fields below, save this PDF, and return by email to publish on GoodDeeds.space.) Tj ET
+BT /F2 15 Tf 1.000 1.000 1.000 rg 1 0 0 1 52.0 738.0 Tm (Community Resource Intake Form) Tj ET
+BT /F1 9.5 Tf 0.900 0.980 0.960 rg 1 0 0 1 52.0 716.0 Tm (Fill out the fields below, save this PDF, and email the completed form to Joe Stevens at stevensfmly@msn.com.) Tj ET
 q 0.80 w 1.000 0.980 0.920 rg 0.950 0.780 0.350 RG 36.0 650.0 540.0 36.0 re B Q
 BT /F2 9 Tf 0.450 0.250 0.020 rg 1 0 0 1 48.0 670.0 Tm (All fields marked with * are required. You can type directly into each box and copy/paste freely.) Tj ET
-BT /F1 8.5 Tf 0.450 0.300 0.100 rg 1 0 0 1 48.0 657.0 Tm (Standardized intake form for Community Resources, Events, and Stories on GoodDeeds.space.) Tj ET
+BT /F1 8.8 Tf 0.450 0.300 0.100 rg 1 0 0 1 48.0 657.0 Tm (Please return your completed Community Resource form by email to Joe Stevens at stevensfmly@msn.com.) Tj ET
 q 1.00 w 1.000 1.000 1.000 rg 0.820 0.850 0.900 RG 36.0 52.0 540.0 588.0 re B Q
-BT /F2 10.5 Tf 0.120 0.160 0.230 rg 1 0 0 1 52.0 618.0 Tm (1. Title *) Tj ET
-BT /F1 8.5 Tf 0.400 0.450 0.520 rg 1 0 0 1 106.0 618.0 Tm (\(Organization, Program, Resource Offering, or Event Title\)) Tj ET
-q 0.90 w 0.970 0.980 1.000 rg 0.650 0.720 0.850 RG 52.0 584.0 508.0 26.0 re B Q
-BT /F2 10.5 Tf 0.120 0.160 0.230 rg 1 0 0 1 52.0 564.0 Tm (2. Post Subtype *) Tj ET
-BT /F1 8.5 Tf 0.400 0.450 0.520 rg 1 0 0 1 145.0 564.0 Tm (\(Click to check one\)) Tj ET
-q 0.90 w 0.970 0.980 1.000 rg 0.550 0.620 0.780 RG 52.0 536.0 16.0 16.0 re B Q
-BT /F2 9.5 Tf 0.180 0.220 0.300 rg 1 0 0 1 74.0 540.0 Tm (General Post) Tj ET
-q 0.90 w 0.970 0.980 1.000 rg 0.550 0.620 0.780 RG 160.0 536.0 16.0 16.0 re B Q
-BT /F2 9.5 Tf 0.180 0.220 0.300 rg 1 0 0 1 182.0 540.0 Tm (Community Event) Tj ET
-q 0.90 w 0.970 0.980 1.000 rg 0.550 0.620 0.780 RG 290.0 536.0 16.0 16.0 re B Q
-BT /F2 9.5 Tf 0.180 0.220 0.300 rg 1 0 0 1 312.0 540.0 Tm (Community Resource) Tj ET
-BT /F2 9.5 Tf 0.120 0.160 0.230 rg 1 0 0 1 430.0 564.0 Tm (Event Date \(if Event\)) Tj ET
-BT /F1 8 Tf 0.450 0.500 0.580 rg 1 0 0 1 430.0 553.0 Tm (Format: YYYY-MM-DD) Tj ET
-q 0.90 w 0.970 0.980 1.000 rg 0.650 0.720 0.850 RG 430.0 528.0 130.0 22.0 re B Q
-BT /F2 10.5 Tf 0.120 0.160 0.230 rg 1 0 0 1 52.0 508.0 Tm (3. Description *) Tj ET
-BT /F1 8.5 Tf 0.400 0.450 0.520 rg 1 0 0 1 138.0 508.0 Tm (\(Detailed description of your resource offering, services, story, or event announcement\)) Tj ET
-q 0.90 w 0.970 0.980 1.000 rg 0.650 0.720 0.850 RG 52.0 396.0 508.0 104.0 re B Q
-BT /F2 10.5 Tf 0.120 0.160 0.230 rg 1 0 0 1 52.0 376.0 Tm (4. Target Audience *) Tj ET
-BT /F1 8.2 Tf 0.400 0.450 0.520 rg 1 0 0 1 162.0 376.0 Tm (Who is this intended for? \(e.g., Families, Seniors, Youth, Unhoused Neighbors, All Members\)) Tj ET
-q 0.90 w 0.970 0.980 1.000 rg 0.650 0.720 0.850 RG 52.0 342.0 508.0 26.0 re B Q
-BT /F2 10.5 Tf 0.120 0.160 0.230 rg 1 0 0 1 52.0 322.0 Tm (5. Target Geographical Areas *) Tj ET
-BT /F1 8.2 Tf 0.400 0.450 0.520 rg 1 0 0 1 212.0 322.0 Tm (Cities, neighborhoods, or service areas \(e.g., Northshore / NUHSA, King County, Online\)) Tj ET
-q 0.90 w 0.970 0.980 1.000 rg 0.650 0.720 0.850 RG 52.0 288.0 508.0 26.0 re B Q
-q 1.00 w 0.950 0.960 1.000 rg 0.450 0.500 0.880 RG 46.0 206.0 520.0 70.0 re B Q
-BT /F2 10.5 Tf 0.180 0.200 0.550 rg 1 0 0 1 54.0 262.0 Tm (6. Key Contact Information *   [Essential for Community Events & Resources]) Tj ET
-BT /F1 8.2 Tf 0.280 0.320 0.450 rg 1 0 0 1 54.0 249.0 Tm (Organizer/point-of-contact name, email, phone number, or intake hours so community members know who to reach:) Tj ET
-q 0.90 w 1.000 1.000 1.000 rg 0.550 0.600 0.880 RG 54.0 214.0 504.0 28.0 re B Q
-BT /F2 10.5 Tf 0.120 0.160 0.230 rg 1 0 0 1 52.0 188.0 Tm (7. Website & Resource Links \(Optional\)) Tj ET
-BT /F1 8.3 Tf 0.400 0.450 0.520 rg 1 0 0 1 256.0 188.0 Tm (\(Direct URLs to your website, registration page, or online guides\)) Tj ET
-BT /F2 9 Tf 0.300 0.350 0.450 rg 1 0 0 1 52.0 165.0 Tm (Link 1:) Tj ET
-q 0.80 w 0.970 0.980 1.000 rg 0.650 0.720 0.850 RG 92.0 157.0 468.0 22.0 re B Q
-BT /F2 9 Tf 0.300 0.350 0.450 rg 1 0 0 1 52.0 137.0 Tm (Link 2:) Tj ET
-q 0.80 w 0.970 0.980 1.000 rg 0.650 0.720 0.850 RG 92.0 129.0 468.0 22.0 re B Q
-BT /F2 9 Tf 0.300 0.350 0.450 rg 1 0 0 1 52.0 109.0 Tm (Link 3:) Tj ET
-q 0.80 w 0.970 0.980 1.000 rg 0.650 0.720 0.850 RG 92.0 101.0 468.0 22.0 re B Q
-BT /F2 8.8 Tf 0.060 0.460 0.430 rg 1 0 0 1 52.0 74.0 Tm (Thank you for partnering with GoodDeeds.space to make community resources and events easily accessible!) Tj ET
-BT /F1 8.3 Tf 0.400 0.450 0.520 rg 1 0 0 1 52.0 61.0 Tm (Questions or ready to submit? Save this completed PDF and attach it in your reply email.) Tj ET
+BT /F2 10.5 Tf 0.120 0.160 0.230 rg 1 0 0 1 52.0 616.0 Tm (1. Resource Title *) Tj ET
+BT /F1 8.5 Tf 0.400 0.450 0.520 rg 1 0 0 1 150.0 616.0 Tm (\(Organization, Program, or Community Resource Name\)) Tj ET
+q 0.90 w 0.970 0.980 1.000 rg 0.650 0.720 0.850 RG 52.0 580.0 508.0 28.0 re B Q
+BT /F2 10.5 Tf 0.120 0.160 0.230 rg 1 0 0 1 52.0 558.0 Tm (2. Resource Description *) Tj ET
+BT /F1 8.3 Tf 0.400 0.450 0.520 rg 1 0 0 1 182.0 558.0 Tm (\(Detailed description of the community resource, services offered, eligibility, and how to access\)) Tj ET
+q 0.90 w 0.970 0.980 1.000 rg 0.650 0.720 0.850 RG 52.0 418.0 508.0 132.0 re B Q
+BT /F2 10.5 Tf 0.120 0.160 0.230 rg 1 0 0 1 52.0 396.0 Tm (3. Target Audience *) Tj ET
+BT /F1 8.2 Tf 0.400 0.450 0.520 rg 1 0 0 1 162.0 396.0 Tm (Who is this resource intended for? \(e.g., Families, Seniors, Youth, Unhoused Neighbors, All Residents\)) Tj ET
+q 0.90 w 0.970 0.980 1.000 rg 0.650 0.720 0.850 RG 52.0 358.0 508.0 30.0 re B Q
+BT /F2 10.5 Tf 0.120 0.160 0.230 rg 1 0 0 1 52.0 336.0 Tm (4. Target Geographical Areas *) Tj ET
+BT /F1 8.2 Tf 0.400 0.450 0.520 rg 1 0 0 1 212.0 336.0 Tm (Cities, neighborhoods, or service areas covered \(e.g., Northshore / NUHSA, King County, Online\)) Tj ET
+q 0.90 w 0.970 0.980 1.000 rg 0.650 0.720 0.850 RG 52.0 298.0 508.0 30.0 re B Q
+q 1.00 w 0.950 0.960 1.000 rg 0.450 0.500 0.880 RG 46.0 210.0 520.0 74.0 re B Q
+BT /F2 10.5 Tf 0.180 0.200 0.550 rg 1 0 0 1 54.0 268.0 Tm (5. Key Contact Information *   [Essential for Community Resources]) Tj ET
+BT /F1 8.2 Tf 0.280 0.320 0.450 rg 1 0 0 1 54.0 255.0 Tm (Point-of-contact name, email, phone number, address, or intake hours so community members know who to reach:) Tj ET
+q 0.90 w 1.000 1.000 1.000 rg 0.550 0.600 0.880 RG 54.0 218.0 504.0 30.0 re B Q
+BT /F2 10.5 Tf 0.120 0.160 0.230 rg 1 0 0 1 52.0 190.0 Tm (6. Website & Resource Links \(Optional\)) Tj ET
+BT /F1 8.3 Tf 0.400 0.450 0.520 rg 1 0 0 1 256.0 190.0 Tm (\(Direct URLs to your website, intake page, or online resource guides\)) Tj ET
+BT /F2 9 Tf 0.300 0.350 0.450 rg 1 0 0 1 52.0 166.0 Tm (Link 1:) Tj ET
+q 0.80 w 0.970 0.980 1.000 rg 0.650 0.720 0.850 RG 92.0 158.0 468.0 22.0 re B Q
+BT /F2 9 Tf 0.300 0.350 0.450 rg 1 0 0 1 52.0 138.0 Tm (Link 2:) Tj ET
+q 0.80 w 0.970 0.980 1.000 rg 0.650 0.720 0.850 RG 92.0 130.0 468.0 22.0 re B Q
+BT /F2 9 Tf 0.300 0.350 0.450 rg 1 0 0 1 52.0 110.0 Tm (Link 3:) Tj ET
+q 0.80 w 0.970 0.980 1.000 rg 0.650 0.720 0.850 RG 92.0 102.0 468.0 22.0 re B Q
+BT /F2 9.5 Tf 0.060 0.460 0.430 rg 1 0 0 1 52.0 76.0 Tm (Please email the completed form to Joe Stevens at stevensfmly@msn.com) Tj ET
+BT /F1 8.3 Tf 0.400 0.450 0.520 rg 1 0 0 1 52.0 62.0 Tm (Thank you for sharing your community resource information so neighbors can easily find and access support.) Tj ET
 endstream
+endobj
+4 0 obj
+<< /Type /Pages /Kids [5 0 R] /Count 1 >>
 endobj
 5 0 obj
-<< /Type /XObject /Subtype /Form /BBox [0 0 16 16] /Resources << >> /Length 3 >>
-stream
-q Q
-endstream
+<< /Type /Page /Parent 4 0 R /MediaBox [0 0 612 792] /Contents 3 0 R /Resources << /Font << /F1 1 0 R /F2 2 0 R >> >> /Annots [6 0 R 7 0 R 8 0 R 9 0 R 10 0 R 11 0 R 12 0 R 13 0 R] >>
 endobj
 6 0 obj
-<< /Type /XObject /Subtype /Form /BBox [0 0 16 16] /Resources << /Font << /ZaDb 3 0 R >> >> /Length 55 >>
-stream
-q 0.06 0.46 0.43 rg BT /ZaDb 12 Tf 2.5 3 Td (4) Tj ET Q
-endstream
+<< /Type /Annot /Subtype /Widget /FT /Tx /P 5 0 R /T (title) /TU (1. Resource Title \(Required\)) /V () /Rect [54.0 582.0 558.0 606.0] /F 4 /Ff 0 /DA (/F1 10 Tf 0.08 0.10 0.16 rg) >>
 endobj
 7 0 obj
-<< /Type /Pages /Kids [8 0 R] /Count 1 >>
+<< /Type /Annot /Subtype /Widget /FT /Tx /P 5 0 R /T (description) /TU (2. Resource Description \(Required - details of the community resource and services offered\)) /V () /Rect [54.0 420.0 558.0 548.0] /F 4 /Ff 4096 /DA (/F1 10 Tf 0.08 0.10 0.16 rg) >>
 endobj
 8 0 obj
-<< /Type /Page /Parent 7 0 R /MediaBox [0 0 612 792] /Contents 4 0 R /Resources << /Font << /F1 1 0 R /F2 2 0 R /ZaDb 3 0 R >> >> /Annots [9 0 R 10 0 R 11 0 R 12 0 R 13 0 R 14 0 R 15 0 R 16 0 R 17 0 R 18 0 R 19 0 R 20 0 R] >>
+<< /Type /Annot /Subtype /Widget /FT /Tx /P 5 0 R /T (target_audience) /TU (3. Target Audience \(Required - e.g. Families, Seniors, Youth, All Residents\)) /V () /Rect [54.0 360.0 558.0 386.0] /F 4 /Ff 0 /DA (/F1 10 Tf 0.08 0.10 0.16 rg) >>
 endobj
 9 0 obj
-<< /Type /Annot /Subtype /Widget /FT /Tx /P 8 0 R /T (title) /TU (1. Title \(Required\)) /V () /Rect [54.0 586.0 558.0 608.0] /F 4 /Ff 0 /DA (/F1 10 Tf 0.08 0.10 0.16 rg) >>
+<< /Type /Annot /Subtype /Widget /FT /Tx /P 5 0 R /T (target_geography) /TU (4. Target Geographical Areas \(Required - e.g. Northshore / NUHSA Area, Online\)) /V () /Rect [54.0 300.0 558.0 326.0] /F 4 /Ff 0 /DA (/F1 10 Tf 0.08 0.10 0.16 rg) >>
 endobj
 10 0 obj
-<< /Type /Annot /Subtype /Widget /FT /Btn /P 8 0 R /T (subtype_general) /TU (General Post) /V /Off /AS /Off /Rect [52.0 536.0 68.0 552.0] /F 4 /DA (/ZaDb 12 Tf 0.06 0.46 0.43 rg) /AP << /N << /Yes 6 0 R /Off 5 0 R >> >> >>
+<< /Type /Annot /Subtype /Widget /FT /Tx /P 5 0 R /T (contact_info) /TU (5. Key Contact Information \(Required - Name, Email, Phone, Intake Hours\)) /V () /Rect [56.0 220.0 556.0 246.0] /F 4 /Ff 0 /DA (/F1 10 Tf 0.08 0.10 0.16 rg) >>
 endobj
 11 0 obj
-<< /Type /Annot /Subtype /Widget /FT /Btn /P 8 0 R /T (subtype_event) /TU (Community Event) /V /Off /AS /Off /Rect [160.0 536.0 176.0 552.0] /F 4 /DA (/ZaDb 12 Tf 0.06 0.46 0.43 rg) /AP << /N << /Yes 6 0 R /Off 5 0 R >> >> >>
+<< /Type /Annot /Subtype /Widget /FT /Tx /P 5 0 R /T (link_1) /TU (Website or Resource Link 1 \(Optional\)) /V () /Rect [94.0 160.0 558.0 178.0] /F 4 /Ff 0 /DA (/F1 10 Tf 0.08 0.10 0.16 rg) >>
 endobj
 12 0 obj
-<< /Type /Annot /Subtype /Widget /FT /Btn /P 8 0 R /T (subtype_resource) /TU (Community Resource) /V /Off /AS /Off /Rect [290.0 536.0 306.0 552.0] /F 4 /DA (/ZaDb 12 Tf 0.06 0.46 0.43 rg) /AP << /N << /Yes 6 0 R /Off 5 0 R >> >> >>
+<< /Type /Annot /Subtype /Widget /FT /Tx /P 5 0 R /T (link_2) /TU (Website or Resource Link 2 \(Optional\)) /V () /Rect [94.0 132.0 558.0 150.0] /F 4 /Ff 0 /DA (/F1 10 Tf 0.08 0.10 0.16 rg) >>
 endobj
 13 0 obj
-<< /Type /Annot /Subtype /Widget /FT /Tx /P 8 0 R /T (event_date) /TU (Event Date \(YYYY-MM-DD, if Community Event\)) /V () /Rect [432.0 530.0 558.0 548.0] /F 4 /Ff 0 /DA (/F1 10 Tf 0.08 0.10 0.16 rg) >>
+<< /Type /Annot /Subtype /Widget /FT /Tx /P 5 0 R /T (link_3) /TU (Website or Resource Link 3 \(Optional\)) /V () /Rect [94.0 104.0 558.0 122.0] /F 4 /Ff 0 /DA (/F1 10 Tf 0.08 0.10 0.16 rg) >>
 endobj
 14 0 obj
-<< /Type /Annot /Subtype /Widget /FT /Tx /P 8 0 R /T (description) /TU (3. Description \(Required - story, resource details, or announcement\)) /V () /Rect [54.0 398.0 558.0 498.0] /F 4 /Ff 4096 /DA (/F1 10 Tf 0.08 0.10 0.16 rg) >>
+<< /Fields [6 0 R 7 0 R 8 0 R 9 0 R 10 0 R 11 0 R 12 0 R 13 0 R] /NeedAppearances true /DR << /Font << /F1 1 0 R /F2 2 0 R >> >> /DA (/F1 10 Tf 0.08 0.10 0.16 rg) >>
 endobj
 15 0 obj
-<< /Type /Annot /Subtype /Widget /FT /Tx /P 8 0 R /T (target_audience) /TU (4. Target Audience \(Required - e.g. Families, Seniors, Youth, All Members\)) /V () /Rect [54.0 344.0 558.0 366.0] /F 4 /Ff 0 /DA (/F1 10 Tf 0.08 0.10 0.16 rg) >>
-endobj
-16 0 obj
-<< /Type /Annot /Subtype /Widget /FT /Tx /P 8 0 R /T (target_geography) /TU (5. Target Geographical Areas \(Required - e.g. Northshore / NUHSA Area, Online\)) /V () /Rect [54.0 290.0 558.0 312.0] /F 4 /Ff 0 /DA (/F1 10 Tf 0.08 0.10 0.16 rg) >>
-endobj
-17 0 obj
-<< /Type /Annot /Subtype /Widget /FT /Tx /P 8 0 R /T (contact_info) /TU (6. Key Contact Information \(Required - Name, Email, Phone\)) /V () /Rect [56.0 216.0 556.0 240.0] /F 4 /Ff 0 /DA (/F1 10 Tf 0.08 0.10 0.16 rg) >>
-endobj
-18 0 obj
-<< /Type /Annot /Subtype /Widget /FT /Tx /P 8 0 R /T (link_1) /TU (Website or Resource Link 1 \(Optional\)) /V () /Rect [94.0 159.0 558.0 177.0] /F 4 /Ff 0 /DA (/F1 10 Tf 0.08 0.10 0.16 rg) >>
-endobj
-19 0 obj
-<< /Type /Annot /Subtype /Widget /FT /Tx /P 8 0 R /T (link_2) /TU (Website or Resource Link 2 \(Optional\)) /V () /Rect [94.0 131.0 558.0 149.0] /F 4 /Ff 0 /DA (/F1 10 Tf 0.08 0.10 0.16 rg) >>
-endobj
-20 0 obj
-<< /Type /Annot /Subtype /Widget /FT /Tx /P 8 0 R /T (link_3) /TU (Website or Resource Link 3 \(Optional\)) /V () /Rect [94.0 103.0 558.0 121.0] /F 4 /Ff 0 /DA (/F1 10 Tf 0.08 0.10 0.16 rg) >>
-endobj
-21 0 obj
-<< /Fields [9 0 R 10 0 R 11 0 R 12 0 R 13 0 R 14 0 R 15 0 R 16 0 R 17 0 R 18 0 R 19 0 R 20 0 R] /NeedAppearances true /DR << /Font << /F1 1 0 R /F2 2 0 R /ZaDb 3 0 R >> >> /DA (/F1 10 Tf 0.08 0.10 0.16 rg) >>
-endobj
-22 0 obj
-<< /Type /Catalog /Pages 7 0 R /AcroForm 21 0 R >>
+<< /Type /Catalog /Pages 4 0 R /AcroForm 14 0 R >>
 endobj
 xref
-0 23
+0 16
 0000000000 65535 f 
 0000000015 00000 n 
 0000000112 00000 n 
 0000000214 00000 n 
-0000000287 00000 n 
-0000004923 00000 n 
-0000005040 00000 n 
-0000005234 00000 n 
-0000005291 00000 n 
-0000005532 00000 n 
-0000005721 00000 n 
-0000005960 00000 n 
-0000006202 00000 n 
-0000006450 00000 n 
-0000006670 00000 n 
-0000006918 00000 n 
-0000007173 00000 n 
-0000007433 00000 n 
-0000007669 00000 n 
-0000007878 00000 n 
-0000008087 00000 n 
-0000008296 00000 n 
-0000008521 00000 n 
+0000003950 00000 n 
+0000004007 00000 n 
+0000004205 00000 n 
+0000004403 00000 n 
+0000004673 00000 n 
+0000004929 00000 n 
+0000005188 00000 n 
+0000005438 00000 n 
+0000005647 00000 n 
+0000005856 00000 n 
+0000006065 00000 n 
+0000006247 00000 n 
 trailer
-<< /Size 23 /Root 22 0 R >>
+<< /Size 16 /Root 15 0 R >>
 startxref
-8588
+6314
 %%EOF

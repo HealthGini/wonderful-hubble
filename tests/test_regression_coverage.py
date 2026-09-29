@@ -2555,19 +2555,25 @@ class TestRegressionCoverage(GoodDeedsTestCase):
             found_ids = [i["id"] for i in body_search["feed"]]
             self.assertIn(post_item["id"], found_ids, f"Expected post {post_item['id']} for search query '{query}'")
 
-        # Verify fillable PDF intake form exists in static/ and has interactive AcroForm fields
+        # Verify fillable PDF intake form exists in static/, focuses purely on community resources,
+        # has no mention of GoodDeeds.space or events/general posts, and directs completed forms to Joe Stevens at stevensfmly@msn.com
         pdf_path = os.path.join(base_dir, "static", "GoodDeeds_Post_Submission_Form.pdf")
         self.assertTrue(os.path.exists(pdf_path))
         with open(pdf_path, "rb") as pf:
             pdf_bytes = pf.read()
         self.assertTrue(pdf_bytes.startswith(b"%PDF-1.7"))
         self.assertIn(b"/AcroForm", pdf_bytes)
+        self.assertNotIn(b"GoodDeeds.space", pdf_bytes)
+        self.assertNotIn(b"General Post", pdf_bytes)
+        self.assertNotIn(b"Community Event", pdf_bytes)
+        self.assertNotIn(b"/T (subtype_general)", pdf_bytes)
+        self.assertNotIn(b"/T (subtype_event)", pdf_bytes)
+        self.assertNotIn(b"/T (event_date)", pdf_bytes)
+        self.assertIn(b"Community Resource Intake Form", pdf_bytes)
+        self.assertIn(b"Joe Stevens", pdf_bytes)
+        self.assertIn(b"stevensfmly@msn.com", pdf_bytes)
         for field_name in [
             b"/T (title)",
-            b"/T (subtype_general)",
-            b"/T (subtype_event)",
-            b"/T (subtype_resource)",
-            b"/T (event_date)",
             b"/T (description)",
             b"/T (target_audience)",
             b"/T (target_geography)",
@@ -2578,6 +2584,7 @@ class TestRegressionCoverage(GoodDeedsTestCase):
         ]:
             self.assertIn(field_name, pdf_bytes)
         self.assertIn('href="/GoodDeeds_Post_Submission_Form.pdf"', html)
+        self.assertIn('download="Community_Resource_Intake_Form.pdf"', html)
 
         # Verify compact Type filter bar whitespace, hidden expand/collapse arrow buttons, hidden landing vision section, and consistent landing search box
         self.assertIn('id="landing-vision-section" class="hidden ', html)
