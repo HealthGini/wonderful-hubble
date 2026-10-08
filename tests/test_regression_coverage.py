@@ -109,8 +109,9 @@ class TestRegressionCoverage(GoodDeedsTestCase):
             self.assertNotEqual(pos, -1, f"Pill '{pill}' not found in expected order in theme-pills-bar")
             last_pos = pos
 
-        self.assertIn('Events', pills_segment)
-        self.assertIn('Resources', pills_segment)
+        self.assertIn('📝 General Post', pills_segment)
+        self.assertIn('📅 Community Event', pills_segment)
+        self.assertIn('📚 Community Resource', pills_segment)
 
     def test_theme_order_and_space_categories(self):
         """
@@ -1329,21 +1330,45 @@ class TestRegressionCoverage(GoodDeedsTestCase):
         Verifies that topic and format filtering are supported on the backend /api/feed endpoint
         and in the UI via distinct labeled capsules and format pills (filterByFormat / filterLandingByFormat).
         """
-        # Test backend format filtering for EVENT
-        status, _, body = self.make_request("GET", "/api/feed?subtype=EVENT")
+        # Test backend format filtering for GENERAL
+        status, _, body_gen = self.make_request("GET", "/api/feed?subtype=GENERAL")
         self.assertEqual(status, 200)
-        self.assertIn("feed", body)
-        for item in body["feed"]:
-            if item["item_type"] == "POST":
-                self.assertTrue(item.get("post_subtype") == "EVENT" or bool(item.get("event_date")))
+        self.assertIn("feed", body_gen)
+        self.assertGreater(len(body_gen["feed"]), 0)
+        general_ids = set()
+        for item in body_gen["feed"]:
+            self.assertEqual(item["item_type"], "POST")
+            self.assertIn(item.get("post_subtype") or "GENERAL", ("GENERAL", ""))
+            self.assertFalse(bool(item.get("event_date")))
+            general_ids.add(item["id"])
 
-        # Test backend format filtering for RESOURCE
-        status, _, body = self.make_request("GET", "/api/feed?subtype=RESOURCE")
+        # Test backend format filtering for EVENT
+        status, _, body_evt = self.make_request("GET", "/api/feed?subtype=EVENT")
         self.assertEqual(status, 200)
-        self.assertIn("feed", body)
-        for item in body["feed"]:
-            if item["item_type"] == "POST":
-                self.assertTrue(item.get("post_subtype") == "RESOURCE" or bool(item.get("resource_url")))
+        self.assertIn("feed", body_evt)
+        self.assertGreater(len(body_evt["feed"]), 0)
+        event_ids = set()
+        for item in body_evt["feed"]:
+            self.assertEqual(item["item_type"], "POST")
+            self.assertTrue(item.get("post_subtype") == "EVENT" or bool(item.get("event_date")))
+            event_ids.add(item["id"])
+
+        # Test backend format filtering for RESOURCE (must exclude EVENT posts even if they have resource_url)
+        status, _, body_res = self.make_request("GET", "/api/feed?subtype=RESOURCE")
+        self.assertEqual(status, 200)
+        self.assertIn("feed", body_res)
+        self.assertGreater(len(body_res["feed"]), 0)
+        resource_ids = set()
+        for item in body_res["feed"]:
+            self.assertEqual(item["item_type"], "POST")
+            self.assertNotEqual(item.get("post_subtype"), "EVENT")
+            self.assertFalse(bool(item.get("event_date")))
+            self.assertTrue(item.get("post_subtype") == "RESOURCE" or bool(item.get("resource_url")))
+            resource_ids.add(item["id"])
+
+        self.assertTrue(general_ids.isdisjoint(event_ids))
+        self.assertTrue(event_ids.isdisjoint(resource_ids))
+        self.assertTrue(general_ids.isdisjoint(resource_ids))
 
         # Verify UI markup has both Topic and Format labeled capsules
         base_dir = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
@@ -1357,10 +1382,15 @@ class TestRegressionCoverage(GoodDeedsTestCase):
 
         self.assertIn("Topic:", html)
         self.assertIn("Type:", html)
+        self.assertIn("filterByFormat('GENERAL')", html)
         self.assertIn("filterByFormat('EVENT')", html)
         self.assertIn("filterByFormat('RESOURCE')", html)
+        self.assertIn("filterLandingByFormat('GENERAL')", html)
         self.assertIn("filterLandingByFormat('EVENT')", html)
         self.assertIn("filterLandingByFormat('RESOURCE')", html)
+        self.assertIn("📝 General Post", html)
+        self.assertIn("📅 Community Event", html)
+        self.assertIn("📚 Community Resource", html)
         self.assertIn("window.filterByFormat = filterByFormat", js)
         self.assertIn("window.filterLandingByFormat = filterLandingByFormat", js)
 
@@ -2406,9 +2436,9 @@ class TestRegressionCoverage(GoodDeedsTestCase):
 
         # (b) Visual distinction between Kudos and Posts in renderFeedCard
         self.assertIn("🌟 Gratitude Kudos", js)
-        self.assertIn("📝 Community Post", js)
-        self.assertIn("📅 Event Post", js)
-        self.assertIn("📚 Resource Post", js)
+        self.assertIn("📝 General Post", js)
+        self.assertIn("📅 Community Event", js)
+        self.assertIn("📚 Community Resource", js)
 
         # (c) Interactive clickable URL/file preview in Step 2 of 2 confirmation popup
         self.assertIn("confirm-post-attachments", js)
@@ -2599,3 +2629,18 @@ class TestRegressionCoverage(GoodDeedsTestCase):
         self.assertIn('id="landing-theme-pills-bar" class="pt-0"', html)
         self.assertIn('id="feed-type-pills-row" class="overflow-x-auto whitespace-nowrap scrollbar-none py-0 flex items-center gap-2"', html)
         self.assertIn('id="landing-type-pills-row" class="overflow-x-auto whitespace-nowrap scrollbar-none py-0 flex items-center gap-2"', html)
+
+        # Verify compact search/filter card mode with Why it matched indicators, per-card expand/collapse, and Expand All / Collapse All toggle
+        self.assertIn('id="feed-search-results-toolbar"', html)
+        self.assertIn('id="landing-search-results-toolbar"', html)
+        self.assertIn("function buildSearchMatchInfo(item, searchContext)", js)
+        self.assertIn("function toggleSearchCardExpand(itemId)", js)
+        self.assertIn("window.toggleSearchCardExpand = toggleSearchCardExpand", js)
+        self.assertIn("function toggleExpandAllSearchCards()", js)
+        self.assertIn("window.toggleExpandAllSearchCards = toggleExpandAllSearchCards", js)
+        self.assertIn("🎯 Why it matched:", js)
+        self.assertIn("▼ Expand Card", js)
+        self.assertIn("▲ Collapse Card", js)
+        self.assertIn("▼ Expand All Cards", js)
+        self.assertIn("▲ Collapse All Cards", js)
+

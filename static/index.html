@@ -352,12 +352,14 @@
               <span class="text-xs font-black uppercase tracking-wider text-amber-800 shrink-0 flex items-center gap-1 pr-1">
                 <span>Type:</span>
               </span>
-              <button type="button" onclick="filterLandingByFormat('EVENT')" class="landing-format-pill shrink-0 px-3 py-1 rounded-xl font-bold text-xs bg-white hover:bg-amber-100/70 text-slate-700 transition shadow-xs border border-amber-200/60">📅 Events</button>
-              <button type="button" onclick="filterLandingByFormat('RESOURCE')" class="landing-format-pill shrink-0 px-3 py-1 rounded-xl font-bold text-xs bg-white hover:bg-amber-100/70 text-slate-700 transition shadow-xs border border-amber-200/60">📎 Resources</button>
+              <button type="button" onclick="filterLandingByFormat('GENERAL')" class="landing-format-pill shrink-0 px-3 py-1 rounded-xl font-bold text-xs bg-white hover:bg-amber-100/70 text-slate-700 transition shadow-xs border border-amber-200/60">📝 General Post</button>
+              <button type="button" onclick="filterLandingByFormat('EVENT')" class="landing-format-pill shrink-0 px-3 py-1 rounded-xl font-bold text-xs bg-white hover:bg-amber-100/70 text-slate-700 transition shadow-xs border border-amber-200/60">📅 Community Event</button>
+              <button type="button" onclick="filterLandingByFormat('RESOURCE')" class="landing-format-pill shrink-0 px-3 py-1 rounded-xl font-bold text-xs bg-white hover:bg-amber-100/70 text-slate-700 transition shadow-xs border border-amber-200/60">📚 Community Resource</button>
             </div>
           </div>
         </div>
         <div id="landing-space-info-banner" class="hidden animate-fadeIn my-4"></div>
+        <div id="landing-search-results-toolbar" class="hidden mb-4"></div>
         <div id="landing-public-feed-preview" class="grid grid-cols-1 md:grid-cols-2 gap-6">
           <p class="text-stone-500 font-bold text-center col-span-2 py-8">Loading highlights...</p>
         </div>
@@ -431,11 +433,15 @@
             <span class="text-xs font-black uppercase tracking-wider text-amber-800 shrink-0 flex items-center gap-1 pr-1">
               <span>Type:</span>
             </span>
-            <button type="button" onclick="filterByFormat('EVENT')" class="format-pill shrink-0 px-3 py-1 rounded-xl font-bold text-xs bg-white hover:bg-amber-100/70 text-slate-700 transition shadow-xs border border-amber-200/60">📅 Events</button>
-            <button type="button" onclick="filterByFormat('RESOURCE')" class="format-pill shrink-0 px-3 py-1 rounded-xl font-bold text-xs bg-white hover:bg-amber-100/70 text-slate-700 transition shadow-xs border border-amber-200/60">📎 Resources</button>
+            <button type="button" onclick="filterByFormat('GENERAL')" class="format-pill shrink-0 px-3 py-1 rounded-xl font-bold text-xs bg-white hover:bg-amber-100/70 text-slate-700 transition shadow-xs border border-amber-200/60">📝 General Post</button>
+            <button type="button" onclick="filterByFormat('EVENT')" class="format-pill shrink-0 px-3 py-1 rounded-xl font-bold text-xs bg-white hover:bg-amber-100/70 text-slate-700 transition shadow-xs border border-amber-200/60">📅 Community Event</button>
+            <button type="button" onclick="filterByFormat('RESOURCE')" class="format-pill shrink-0 px-3 py-1 rounded-xl font-bold text-xs bg-white hover:bg-amber-100/70 text-slate-700 transition shadow-xs border border-amber-200/60">📚 Community Resource</button>
           </div>
         </div>
       </div>
+
+      <!-- Compact Search / Filter Results Toolbar -->
+      <div id="feed-search-results-toolbar" class="hidden"></div>
 
       <!-- Feed Cards Stream -->
       <div id="feed-items-container" class="space-y-6">

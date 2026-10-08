@@ -1321,9 +1321,11 @@ def handle_api_request(method, path, headers, body_bytes):
         subtype_param = query.get("subtype", [""])[0].strip().upper()
         if subtype_param:
             if subtype_param == "EVENT":
-                where_parts.append("(f.post_subtype = 'EVENT' OR (f.event_date IS NOT NULL AND f.event_date != ''))")
+                where_parts.append("(f.item_type = 'POST' AND (f.post_subtype = 'EVENT' OR (f.event_date IS NOT NULL AND f.event_date != '')))")
             elif subtype_param == "RESOURCE":
-                where_parts.append("(f.post_subtype = 'RESOURCE' OR (f.resource_url IS NOT NULL AND f.resource_url != '' AND f.resource_url != '[]'))")
+                where_parts.append("(f.item_type = 'POST' AND (f.post_subtype IS NULL OR f.post_subtype != 'EVENT') AND (f.event_date IS NULL OR f.event_date = '') AND (f.post_subtype = 'RESOURCE' OR (f.resource_url IS NOT NULL AND f.resource_url != '' AND f.resource_url != '[]')))")
+            elif subtype_param == "GENERAL":
+                where_parts.append("(f.item_type = 'POST' AND (f.post_subtype IS NULL OR (f.post_subtype != 'EVENT' AND f.post_subtype != 'RESOURCE')) AND (f.event_date IS NULL OR f.event_date = '') AND (f.resource_url IS NULL OR f.resource_url = '' OR f.resource_url = '[]'))")
             else:
                 where_parts.append("f.post_subtype = ?")
                 params.append(subtype_param)
@@ -1338,7 +1340,7 @@ def handle_api_request(method, path, headers, body_bytes):
             if theme == "Events":
                 where_parts.append("(f.post_subtype = 'EVENT' OR f.theme = 'Events' OR (f.event_date IS NOT NULL AND f.event_date != ''))")
             elif theme == "Resources":
-                where_parts.append("(f.post_subtype = 'RESOURCE' OR f.theme = 'Resources' OR (f.resource_url IS NOT NULL AND f.resource_url != '' AND f.resource_url != '[]'))")
+                where_parts.append("((f.post_subtype IS NULL OR f.post_subtype != 'EVENT') AND (f.event_date IS NULL OR f.event_date = '') AND (f.post_subtype = 'RESOURCE' OR f.theme = 'Resources' OR (f.resource_url IS NOT NULL AND f.resource_url != '' AND f.resource_url != '[]')))")
             elif theme in THEME_ALIASES:
                 aliases = THEME_ALIASES[theme]
                 where_parts.append(f"f.theme IN ({','.join(['?']*len(aliases))})")

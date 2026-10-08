@@ -659,13 +659,290 @@ async function loadQuickNavGroups() {
 
 /* ================= FEED CARDS RENDERER ================= */
 
-function renderFeedCard(item, isProfileView = false) {
+let expandedSearchCards = new Set();
+let expandAllSearchCards = false;
+
+function isSearchOrTypeFilterActive(isLanding = false) {
+  if (isLanding) {
+    return Boolean((landingSearchFilter && landingSearchFilter.trim()) || landingFormatFilter || landingTypeFilter);
+  }
+  return Boolean((currentSearch && currentSearch.trim()) || currentFormatFilter || currentTypeFilter);
+}
+
+function getSearchTokens(rawQuery) {
+  if (!rawQuery || typeof rawQuery !== "string") return [];
+  const cleaned = rawQuery.replace(/author:\S+/gi, " ").trim();
+  const tokens = cleaned
+    .split(/\s+/)
+    .map(t => t.replace(/^@/, "").trim())
+    .filter(t => t.length >= 2);
+  if (tokens.length === 0 && rawQuery.trim().length > 0) {
+    const fallback = rawQuery.replace(/^author:/i, "").replace(/^@/, "").trim();
+    if (fallback) return [fallback];
+  }
+  return tokens;
+}
+
+function escapeRegExp(str) {
+  return String(str).replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+}
+
+function highlightSearchMatches(text, rawQuery) {
+  const safe = escapeHtml(text || "");
+  const tokens = getSearchTokens(rawQuery);
+  if (!safe || tokens.length === 0) return safe;
+  const pattern = tokens.map(t => escapeRegExp(escapeHtml(t))).filter(Boolean).join("|");
+  if (!pattern) return safe;
+  try {
+    const regex = new RegExp(`(${pattern})`, "gi");
+    return safe.replace(regex, `<mark class="bg-amber-200/90 text-slate-900 px-1 rounded font-extrabold">$1</mark>`);
+  } catch (e) {
+    return safe;
+  }
+}
+
+function extractMatchingSnippet(text, rawQuery, maxLen = 150) {
+  if (!text) return "";
+  const clean = String(text).replace(/\s+/g, " ").trim();
+  if (!clean) return "";
+  const tokens = getSearchTokens(rawQuery);
+  if (tokens.length > 0) {
+    const lower = clean.toLowerCase();
+    let matchIdx = -1;
+    for (const tok of tokens) {
+      const idx = lower.indexOf(tok.toLowerCase());
+      if (idx !== -1) {
+        matchIdx = idx;
+        break;
+      }
+    }
+    if (matchIdx !== -1) {
+      const start = Math.max(0, matchIdx - 45);
+      const end = Math.min(clean.length, start + maxLen);
+      const prefix = start > 0 ? "…" : "";
+      const suffix = end < clean.length ? "…" : "";
+      return prefix + highlightSearchMatches(clean.slice(start, end), rawQuery) + suffix;
+    }
+  }
+  const slice = clean.slice(0, maxLen);
+  const suffix = clean.length > maxLen ? "…" : "";
+  return highlightSearchMatches(slice, rawQuery) + suffix;
+}
+
+function buildSearchMatchInfo(item, searchContext) {
+  const query = (searchContext && searchContext.query) ? searchContext.query.trim() : "";
+  const formatFilter = (searchContext && searchContext.formatFilter) ? searchContext.formatFilter.trim().toUpperCase() : "";
+  const typeFilter = (searchContext && searchContext.typeFilter) ? searchContext.typeFilter.trim().toUpperCase() : "";
+  const tokens = getSearchTokens(query);
+
+  const reasons = [];
+  const isKudos = item.item_type === "KUDOS";
+  const isEvent = !isKudos && (item.post_subtype === "EVENT" || Boolean(item.event_date));
+  const isResource = !isKudos && !isEvent && (item.post_subtype === "RESOURCE" || Boolean(item.resource_url));
+
+  if (formatFilter === "RESOURCE") {
+    reasons.push("📚 Community Resource");
+  } else if (formatFilter === "EVENT") {
+    reasons.push(item.event_date ? `📅 Community Event (${escapeHtml(item.event_date)})` : "📅 Community Event");
+  } else if (formatFilter === "GENERAL") {
+    reasons.push("📝 General Post");
+  } else if (typeFilter === "KUDOS") {
+    reasons.push("🌟 Gratitude Kudos");
+  } else if (typeFilter === "POST") {
+    reasons.push(isEvent ? "📅 Community Event" : (isResource ? "📚 Community Resource" : "📝 General Post"));
+  }
+
+  let matchedInExtractedFile = false;
+  if (tokens.length > 0) {
+    const checkField = (val) => {
+      if (!val) return false;
+      const lower = String(val).toLowerCase();
+      return tokens.some(t => lower.includes(t.toLowerCase()));
+    };
+    if (checkField(item.title)) reasons.push("Matched in Title");
+    if (checkField(item.target_audience)) reasons.push("👥 Target Audience");
+    if (checkField(item.target_geography)) reasons.push("📍 Geography");
+    if (checkField(item.contact_info)) reasons.push("📇 Key Contact");
+    if (checkField(item.resource_url) || checkField(item.extracted_text)) {
+      reasons.push("📎 Attached Resource / File");
+      if (checkField(item.extracted_text) && !checkField(item.content)) {
+        matchedInExtractedFile = true;
+      }
+    }
+    if (checkField(item.content)) reasons.push("Matched in Description");
+    if (checkField(item.author_name) || checkField(item.recipient_name) || /^author:/i.test(query)) {
+      reasons.push("👤 Member / Author");
+    }
+    if (checkField(item.event_date)) reasons.push("📅 Event Date");
+  }
+
+  if (reasons.length === 0) {
+    if (isKudos) reasons.push("🌟 Gratitude Kudos");
+    else if (isEvent) reasons.push("📅 Community Event");
+    else if (isResource) reasons.push("📚 Community Resource");
+    else reasons.push("📝 General Post");
+  }
+
+  const snippetSource = matchedInExtractedFile ? item.extracted_text : item.content;
+  const snippetHtml = extractMatchingSnippet(snippetSource, query, 145);
+
+  return {
+    reasons,
+    snippetHtml,
+    matchedInExtractedFile,
+    query
+  };
+}
+
+function toggleSearchCardExpand(itemId) {
+  const detailsEl = document.getElementById(`feed-card-details-${itemId}`);
+  const compactExtraEl = document.getElementById(`feed-card-compact-extra-${itemId}`);
+  const btnEl = document.getElementById(`btn-expand-card-${itemId}`);
+  const articleEl = document.getElementById(`feed-card-${itemId}`);
+  if (!detailsEl) return;
+
+  const isCurrentlyHidden = detailsEl.classList.contains("hidden");
+  if (isCurrentlyHidden) {
+    detailsEl.classList.remove("hidden");
+    if (compactExtraEl) compactExtraEl.classList.add("hidden");
+    if (btnEl) btnEl.innerHTML = `<span>▲ Collapse Card</span>`;
+    if (articleEl) {
+      articleEl.classList.remove("p-4", "sm:p-5", "space-y-2.5");
+      articleEl.classList.add("p-6", "sm:p-8", "space-y-5");
+    }
+    expandedSearchCards.add(Number(itemId));
+  } else {
+    detailsEl.classList.add("hidden");
+    if (compactExtraEl) compactExtraEl.classList.remove("hidden");
+    if (btnEl) btnEl.innerHTML = `<span>▼ Expand Card</span>`;
+    if (articleEl) {
+      articleEl.classList.remove("p-6", "sm:p-8", "space-y-5");
+      articleEl.classList.add("p-4", "sm:p-5", "space-y-2.5");
+    }
+    expandedSearchCards.delete(Number(itemId));
+    expandAllSearchCards = false;
+  }
+  syncExpandAllToolbarButtonState();
+}
+window.toggleSearchCardExpand = toggleSearchCardExpand;
+
+function toggleExpandAllSearchCards() {
+  const allCards = Array.from(document.querySelectorAll("[data-search-card-id]"));
+  if (allCards.length === 0) return;
+
+  const anyCollapsed = allCards.some(card => {
+    const id = card.getAttribute("data-search-card-id");
+    const detailsEl = document.getElementById(`feed-card-details-${id}`);
+    return detailsEl && detailsEl.classList.contains("hidden");
+  });
+
+  expandAllSearchCards = anyCollapsed;
+  if (!expandAllSearchCards) {
+    expandedSearchCards.clear();
+  }
+
+  allCards.forEach(card => {
+    const itemId = Number(card.getAttribute("data-search-card-id"));
+    const detailsEl = document.getElementById(`feed-card-details-${itemId}`);
+    const compactExtraEl = document.getElementById(`feed-card-compact-extra-${itemId}`);
+    const btnEl = document.getElementById(`btn-expand-card-${itemId}`);
+    if (!detailsEl) return;
+
+    if (expandAllSearchCards) {
+      detailsEl.classList.remove("hidden");
+      if (compactExtraEl) compactExtraEl.classList.add("hidden");
+      if (btnEl) btnEl.innerHTML = `<span>▲ Collapse Card</span>`;
+      card.classList.remove("p-4", "sm:p-5", "space-y-2.5");
+      card.classList.add("p-6", "sm:p-8", "space-y-5");
+      expandedSearchCards.add(itemId);
+    } else {
+      detailsEl.classList.add("hidden");
+      if (compactExtraEl) compactExtraEl.classList.remove("hidden");
+      if (btnEl) btnEl.innerHTML = `<span>▼ Expand Card</span>`;
+      card.classList.remove("p-6", "sm:p-8", "space-y-5");
+      card.classList.add("p-4", "sm:p-5", "space-y-2.5");
+    }
+  });
+
+  syncExpandAllToolbarButtonState();
+}
+window.toggleExpandAllSearchCards = toggleExpandAllSearchCards;
+
+function syncExpandAllToolbarButtonState() {
+  const allCards = Array.from(document.querySelectorAll("[data-search-card-id]"));
+  const allExpanded = allCards.length > 0 && allCards.every(card => {
+    const id = card.getAttribute("data-search-card-id");
+    const detailsEl = document.getElementById(`feed-card-details-${id}`);
+    return detailsEl && !detailsEl.classList.contains("hidden");
+  });
+  ["btn-expand-all-cards", "btn-landing-expand-all-cards"].forEach(btnId => {
+    const btn = document.getElementById(btnId);
+    if (btn) {
+      btn.innerHTML = allExpanded
+        ? `<span>▲ Collapse All Cards</span>`
+        : `<span>▼ Expand All Cards</span>`;
+    }
+  });
+}
+
+function renderSearchResultsToolbar(count, isLanding = false) {
+  const toolbarId = isLanding ? "landing-search-results-toolbar" : "feed-search-results-toolbar";
+  const toolbarEl = document.getElementById(toolbarId);
+  if (!toolbarEl) return;
+
+  if (!isSearchOrTypeFilterActive(isLanding) || count === 0) {
+    toolbarEl.classList.add("hidden");
+    toolbarEl.innerHTML = "";
+    return;
+  }
+
+  const query = isLanding ? landingSearchFilter : currentSearch;
+  const formatFilter = isLanding ? landingFormatFilter : currentFormatFilter;
+  const typeFilter = isLanding ? landingTypeFilter : currentTypeFilter;
+
+  const activeChips = [];
+  if (formatFilter === "RESOURCE") activeChips.push("📚 Community Resource");
+  else if (formatFilter === "EVENT") activeChips.push("📅 Community Event");
+  else if (formatFilter === "GENERAL") activeChips.push("📝 General Post");
+  if (typeFilter === "KUDOS") activeChips.push("🌟 Kudos Only");
+  else if (typeFilter === "POST" && !formatFilter) activeChips.push("📝 Posts Only");
+  if (query && query.trim()) activeChips.push(`“${escapeHtml(query.trim())}”`);
+
+  const btnId = isLanding ? "btn-landing-expand-all-cards" : "btn-expand-all-cards";
+  const clearFn = isLanding ? "clearLandingSearchInput()" : "clearAllFilters()";
+
+  toolbarEl.classList.remove("hidden");
+  toolbarEl.innerHTML = `
+    <div class="bg-amber-50/90 border border-amber-200/90 rounded-2xl px-4 py-2.5 sm:px-5 sm:py-3 flex flex-wrap items-center justify-between gap-3 shadow-xs">
+      <div class="flex flex-wrap items-center gap-2 text-xs sm:text-sm font-bold text-slate-800">
+        <span class="inline-flex items-center gap-1.5 font-extrabold text-amber-950">
+          <span>🔍</span>
+          <span>${count} Matching ${count === 1 ? "Result" : "Results"}</span>
+        </span>
+        ${activeChips.map(c => `<span class="px-2.5 py-0.5 rounded-full bg-white border border-amber-300 text-amber-900 font-extrabold text-xs shadow-2xs">${c}</span>`).join("")}
+        <span class="text-xs text-slate-500 font-semibold hidden sm:inline">• Compact summary view so you can scan all matches at a glance</span>
+      </div>
+      <div class="flex items-center gap-2 shrink-0">
+        <button type="button" id="${btnId}" onclick="toggleExpandAllSearchCards()" class="px-3.5 py-1.5 rounded-xl text-xs font-extrabold bg-indigo-600 hover:bg-indigo-700 text-white shadow-xs transition touch-target inline-flex items-center gap-1.5">
+          <span>${expandAllSearchCards ? "▲ Collapse All Cards" : "▼ Expand All Cards"}</span>
+        </button>
+        <button type="button" onclick="${clearFn}" class="px-3 py-1.5 rounded-xl text-xs font-bold bg-white hover:bg-slate-100 text-slate-600 border border-slate-200 transition touch-target">
+          Reset
+        </button>
+      </div>
+    </div>
+  `;
+}
+
+function renderFeedCard(item, isProfileView = false, searchContext = null) {
   if (!item) return "";
   const authorName = escapeHtml(item.author_name || "Anonymous");
   const recipientName = escapeHtml(item.recipient_name || "Community Member");
   const isKudos = item.item_type === "KUDOS";
   const cardClass = isKudos ? "kudos-card border-l-8 border-amber-500" : "post-card border-l-8 border-teal-600";
   const itemLink = isKudos ? `/#/kudos/${item.id}` : `/#/post/${item.id}`;
+  const isCompactSearch = Boolean(searchContext && searchContext.isCompactSearch);
+  const isCardExpanded = !isCompactSearch || expandAllSearchCards || expandedSearchCards.has(Number(item.id));
   
   // Groups badges
   const groupBadges = (item.groups || []).map(g => `
@@ -721,22 +998,106 @@ function renderFeedCard(item, isProfileView = false) {
 
   const postSubtypeBadge = (!isKudos)
     ? ((item.post_subtype === "EVENT" || item.event_date)
-        ? `<span class="inline-flex items-center gap-1.5 px-3.5 py-1 rounded-full text-xs font-extrabold uppercase tracking-wider bg-rose-50 text-rose-800 border border-rose-200 shadow-xs">📅 Event Post</span>`
+        ? `<span class="inline-flex items-center gap-1.5 px-3.5 py-1 rounded-full text-xs font-extrabold uppercase tracking-wider bg-rose-50 text-rose-800 border border-rose-200 shadow-xs">📅 Community Event</span>`
         : ((item.post_subtype === "RESOURCE" || item.resource_url)
-            ? `<span class="inline-flex items-center gap-1.5 px-3.5 py-1 rounded-full text-xs font-extrabold uppercase tracking-wider bg-teal-50 text-teal-800 border border-teal-200 shadow-xs">📚 Resource Post</span>`
-            : `<span class="inline-flex items-center gap-1.5 px-3.5 py-1 rounded-full text-xs font-extrabold uppercase tracking-wider bg-indigo-50 text-indigo-800 border border-indigo-200 shadow-xs">📝 Community Post</span>`))
+            ? `<span class="inline-flex items-center gap-1.5 px-3.5 py-1 rounded-full text-xs font-extrabold uppercase tracking-wider bg-teal-50 text-teal-800 border border-teal-200 shadow-xs">📚 Community Resource</span>`
+            : `<span class="inline-flex items-center gap-1.5 px-3.5 py-1 rounded-full text-xs font-extrabold uppercase tracking-wider bg-indigo-50 text-indigo-800 border border-indigo-200 shadow-xs">📝 General Post</span>`))
     : `<span class="inline-flex items-center gap-1.5 px-3.5 py-1 rounded-full text-xs font-extrabold uppercase tracking-wider bg-amber-200/80 text-amber-950 border border-amber-400 shadow-xs">🌟 Gratitude Kudos</span>`;
 
+  // Parse attachments once so both compact summary and full view can render clickable resource buttons
+  let urls = [];
+  if (item.resource_url) {
+    try {
+      if (item.resource_url.startsWith("[")) urls = JSON.parse(item.resource_url);
+      else urls = item.resource_url.split("\n").filter(Boolean);
+    } catch (e) {
+      urls = [item.resource_url];
+    }
+  }
+  urls.forEach((u, idx) => {
+    window._attachmentCache[`attachment_${item.id}_${idx}`] = u;
+  });
+
+  const compactSearchHtml = isCompactSearch ? (() => {
+    const matchInfo = buildSearchMatchInfo(item, searchContext);
+    const q = matchInfo.query;
+    const compactAttachments = urls.map((u, idx) => {
+      const cacheKey = `attachment_${item.id}_${idx}`;
+      return `
+        <button type="button" onclick="window.openAttachment(window._attachmentCache['${cacheKey}'], 'attachment_${item.id}_${idx}')" class="inline-flex items-center gap-1 px-2.5 py-1 rounded-lg bg-indigo-50 hover:bg-indigo-100 text-indigo-900 font-bold text-xs border border-indigo-200 transition shadow-2xs">
+          <span>${formatAttachmentLabel(u, idx, urls.length)}</span>
+        </button>
+      `;
+    }).join("");
+
+    return `
+      <div id="feed-card-compact-summary-${item.id}" class="space-y-2">
+        <!-- Specific Resource / Event / Post Name & Author Line -->
+        <div class="flex flex-wrap items-baseline justify-between gap-2">
+          ${!isKudos ? `
+            <h3 class="text-lg sm:text-xl font-extrabold text-slate-900 tracking-tight">
+              <a href="${itemLink}" class="hover:text-indigo-600 transition">${highlightSearchMatches(item.title || "Community Post", q)}</a>
+            </h3>
+          ` : `
+            <div class="text-base sm:text-lg font-extrabold text-slate-900 flex items-center flex-wrap gap-1.5">
+              <span>🌟</span>
+              <a href="/#/user/${item.recipient_id}" class="hover:text-amber-700 transition">${highlightSearchMatches(item.recipient_name || "Community Member", q)}</a>
+              <span class="text-amber-700 font-bold text-xs">received Kudos from</span>
+              <a href="/#/user/${item.author_id}" class="hover:underline text-amber-950 bg-amber-100/80 border border-amber-300 px-2 py-0.5 rounded-full text-xs">${highlightSearchMatches(item.author_name || "Anonymous", q)}</a>
+            </div>
+          `}
+          <span class="text-xs text-slate-500 font-semibold shrink-0">
+            ${!isKudos ? `by <a href="/#/user/${item.author_id}" class="hover:underline text-slate-700 font-bold">${highlightSearchMatches(item.author_name || "Anonymous", q)}</a> • ` : ""}⏱️ ${escapeHtml(item.created_at)}
+          </span>
+        </div>
+
+        <!-- Why it matched badges -->
+        <div id="feed-card-match-reason-${item.id}" class="flex flex-wrap items-center gap-1.5 text-xs">
+          <span class="font-extrabold uppercase tracking-wider text-[10px] text-amber-900 bg-amber-100/90 border border-amber-300 px-2 py-0.5 rounded-md">🎯 Why it matched:</span>
+          ${matchInfo.reasons.map(r => `<span class="px-2 py-0.5 rounded-md bg-slate-100 text-slate-700 font-bold border border-slate-200">${r}</span>`).join("")}
+        </div>
+
+        <!-- Concise match snippet & key metadata (hidden when full card is expanded) -->
+        <div id="feed-card-compact-extra-${item.id}" class="${isCardExpanded ? 'hidden ' : ''}space-y-2 pt-0.5">
+          ${matchInfo.snippetHtml ? `
+            <p class="text-sm text-slate-600 font-medium line-clamp-2 leading-snug bg-slate-50/90 px-3 py-2 rounded-xl border border-slate-200/70">
+              ${matchInfo.matchedInExtractedFile ? `<span class="font-extrabold text-indigo-700 text-xs mr-1">[From Attached File]:</span>` : ""}${matchInfo.snippetHtml}
+            </p>
+          ` : ""}
+          <div class="flex flex-wrap items-center gap-2 text-xs">
+            ${!isKudos && item.event_date ? `<span class="px-2.5 py-1 rounded-lg bg-rose-50 text-rose-900 border border-rose-200 font-bold">📅 Event Date: ${escapeHtml(item.event_date)}</span>` : ""}
+            ${!isKudos && item.target_audience ? `<span class="px-2.5 py-1 rounded-lg bg-slate-100 text-slate-700 font-semibold">👥 ${highlightSearchMatches(item.target_audience, q)}</span>` : ""}
+            ${!isKudos && item.target_geography ? `<span class="px-2.5 py-1 rounded-lg bg-slate-100 text-slate-700 font-semibold">📍 ${highlightSearchMatches(item.target_geography, q)}</span>` : ""}
+            ${!isKudos && item.contact_info ? `<span class="px-2.5 py-1 rounded-lg bg-slate-100 text-slate-700 font-semibold">📇 ${highlightSearchMatches(item.contact_info, q)}</span>` : ""}
+            ${compactAttachments}
+          </div>
+        </div>
+      </div>
+    `;
+  })() : "";
+
   return `
-    <article class="bg-white rounded-3xl border border-slate-200/80 shadow-sm hover:shadow-md hover:-translate-y-0.5 transition-all duration-200 p-6 sm:p-8 space-y-5 ${cardClass}">
+    <article id="feed-card-${item.id}" ${isCompactSearch ? `data-search-card-id="${item.id}"` : ""} class="bg-white rounded-3xl border border-slate-200/80 shadow-sm hover:shadow-md hover:-translate-y-0.5 transition-all duration-200 ${isCompactSearch && !isCardExpanded ? 'p-4 sm:p-5 space-y-2.5' : 'p-6 sm:p-8 space-y-5'} ${cardClass}">
       
       <!-- Card Type Ribbon & Space Badges -->
       <div class="flex flex-wrap items-center justify-between gap-2 pb-2 border-b ${isKudos ? 'border-amber-200/60' : 'border-slate-100'}">
         <div class="flex items-center gap-2 flex-wrap">
           ${postSubtypeBadge}
+          ${groupBadges}
         </div>
-        <div class="flex flex-wrap gap-1.5">${groupBadges}</div>
+        <div class="flex items-center gap-2">
+          ${isCompactSearch ? `
+            <button type="button" id="btn-expand-card-${item.id}" onclick="toggleSearchCardExpand(${item.id})" class="inline-flex items-center gap-1.5 px-3 py-1 rounded-xl text-xs font-extrabold bg-slate-100 hover:bg-indigo-50 text-slate-700 hover:text-indigo-700 border border-slate-200 transition touch-target shrink-0">
+              <span>${isCardExpanded ? "▲ Collapse Card" : "▼ Expand Card"}</span>
+            </button>
+          ` : ""}
+        </div>
       </div>
+
+      ${compactSearchHtml}
+
+      <!-- Collapsible Full Card Details -->
+      <div id="feed-card-details-${item.id}" class="${isCompactSearch && !isCardExpanded ? 'hidden ' : ''}space-y-5">
 
       <!-- Author & Recipient Banner -->
       <div class="flex flex-wrap justify-between items-center gap-4">
@@ -779,7 +1140,7 @@ function renderFeedCard(item, isProfileView = false) {
 
       <!-- Main Body Content -->
       <div class="space-y-3">
-        ${!isKudos && item.title ? `<h2 class="text-2xl sm:text-3xl font-extrabold text-slate-900 tracking-tight"><a href="${itemLink}" class="hover:text-indigo-600 transition">${escapeHtml(item.title)}</a></h2>` : ""}
+        ${!isKudos && item.title && !isCompactSearch ? `<h2 class="text-2xl sm:text-3xl font-extrabold text-slate-900 tracking-tight"><a href="${itemLink}" class="hover:text-indigo-600 transition">${escapeHtml(item.title)}</a></h2>` : ""}
         ${isKudos ? `
           <div class="bg-amber-100/40 border border-amber-300/80 rounded-2xl p-4 sm:p-5 text-slate-900 text-lg whitespace-pre-line font-semibold leading-relaxed shadow-xs">
             <span class="text-amber-500 font-serif text-2xl leading-none select-none mr-1">“</span>${escapeHtml(item.content)}<span class="text-amber-500 font-serif text-2xl leading-none select-none ml-1">”</span>
@@ -812,11 +1173,6 @@ function renderFeedCard(item, isProfileView = false) {
         
         ${(() => {
           if (!item.resource_url) return "";
-          let urls = [];
-          try {
-            if (item.resource_url.startsWith("[")) urls = JSON.parse(item.resource_url);
-            else urls = item.resource_url.split("\n").filter(Boolean);
-          } catch(e) { urls = [item.resource_url]; }
           return `<div class="pt-3 flex flex-wrap gap-2">` + urls.map((u, idx) => {
             const cacheKey = `attachment_${item.id}_${idx}`;
             window._attachmentCache[cacheKey] = u;
@@ -868,6 +1224,7 @@ function renderFeedCard(item, isProfileView = false) {
         </div>
       </div>
 
+      </div>
     </article>
   `;
 }
@@ -908,13 +1265,16 @@ async function loadLandingPreview(isLoadMore = false) {
   const loadMoreContainer = document.getElementById("landing-load-more-container");
   if (!container) return;
 
+  const isCompactSearch = isSearchOrTypeFilterActive(true);
   if (!isLoadMore) {
     landingPreviewOffset = 0;
+    expandedSearchCards.clear();
+    expandAllSearchCards = false;
     container.innerHTML = `<p class="text-stone-500 font-bold text-center col-span-2 py-8">Loading highlights...</p>`;
     if (loadMoreContainer) loadMoreContainer.innerHTML = "";
   }
 
-  let reqLimit = landingPreviewLimit;
+  let reqLimit = isCompactSearch ? 25 : landingPreviewLimit;
   let reqOffset = landingPreviewOffset;
 
   let url = `/feed?sort=smart&limit=${reqLimit}&offset=${reqOffset}&`;
@@ -924,22 +1284,32 @@ async function loadLandingPreview(isLoadMore = false) {
   if (landingFormatFilter) url += `subtype=${encodeURIComponent(landingFormatFilter)}&`;
   if (landingSearchFilter) url += `search=${encodeURIComponent(landingSearchFilter)}&`;
 
+  const searchContext = {
+    isCompactSearch,
+    query: landingSearchFilter,
+    formatFilter: landingFormatFilter,
+    typeFilter: landingTypeFilter
+  };
+
   try {
     const data = await apiFetch(url);
     const feed = data.feed || [];
+    const totalCount = data.total_count !== undefined ? data.total_count : feed.length;
     landingPreviewHasMore = (data.has_more !== undefined) ? data.has_more : (feed.length === reqLimit);
+
+    renderSearchResultsToolbar(totalCount, true);
 
     if (!isLoadMore) {
       if (feed.length === 0) {
         container.innerHTML = `<p class="text-stone-500 font-bold text-center col-span-2 py-8">No community posts or kudos yet.</p>`;
         if (loadMoreContainer) loadMoreContainer.innerHTML = "";
       } else {
-        container.innerHTML = feed.map(item => { try { return renderFeedCard(item, false); } catch(err) { console.error("Failed to render preview card:", err, item); return ""; } }).join("");
+        container.innerHTML = feed.map(item => { try { return renderFeedCard(item, false, searchContext); } catch(err) { console.error("Failed to render preview card:", err, item); return ""; } }).join("");
         renderLandingLoadMoreControls();
       }
     } else {
       if (feed.length > 0) {
-        container.insertAdjacentHTML("beforeend", feed.map(item => { try { return renderFeedCard(item, false); } catch(err) { console.error("Failed to render preview card:", err, item); return ""; } }).join(""));
+        container.insertAdjacentHTML("beforeend", feed.map(item => { try { return renderFeedCard(item, false, searchContext); } catch(err) { console.error("Failed to render preview card:", err, item); return ""; } }).join(""));
       }
       renderLandingLoadMoreControls();
     }
@@ -990,14 +1360,19 @@ async function loadFeed(isLoadMore = false, isReload = false) {
   const loadMoreContainer = document.getElementById("feed-load-more-container");
   if (!container) return;
 
+  const isCompactSearch = isSearchOrTypeFilterActive(false);
+
   if (!isLoadMore && !isReload) {
     feedOffset = 0;
-    displayedFeedLimit = 4;
+    displayedFeedLimit = isCompactSearch ? 25 : 4;
+    expandedSearchCards.clear();
+    expandAllSearchCards = false;
     container.innerHTML = `<p class="text-center font-bold text-xl text-stone-500 py-12">Loading feed...</p>`;
     if (loadMoreContainer) loadMoreContainer.innerHTML = "";
   }
 
-  let reqLimit = isLoadMore ? feedLimit : (isReload ? displayedFeedLimit : feedLimit);
+  let baseLimit = isCompactSearch ? 25 : feedLimit;
+  let reqLimit = isLoadMore ? baseLimit : (isReload ? displayedFeedLimit : baseLimit);
   let reqOffset = isLoadMore ? feedOffset : 0;
 
   let url = `/feed?sort=${currentSortMode}&limit=${reqLimit}&offset=${reqOffset}&`;
@@ -1011,9 +1386,17 @@ async function loadFeed(isLoadMore = false, isReload = false) {
   if (currentMyKudosMode === "given" && userIdToFilter) url += `author_id=${userIdToFilter}&filter_type=KUDOS&`;
   if (currentMyPostsMode === "authored" && userIdToFilter) url += `author_id=${userIdToFilter}&filter_type=POST&`;
 
+  const searchContext = {
+    isCompactSearch,
+    query: currentSearch,
+    formatFilter: currentFormatFilter,
+    typeFilter: currentTypeFilter
+  };
+
   try {
     const data = await apiFetch(url);
     const feed = data.feed || [];
+    const totalCount = data.total_count !== undefined ? data.total_count : feed.length;
     feedHasMore = (data.has_more !== undefined) ? data.has_more : (feed.length === reqLimit);
 
     if (!isLoadMore) {
@@ -1024,6 +1407,7 @@ async function loadFeed(isLoadMore = false, isReload = false) {
           if (gSel) gSel.value = "";
           return loadFeed(isLoadMore, isReload);
         }
+        renderSearchResultsToolbar(0, false);
         let emptyTitle = "No Posts or Kudos Found";
         let emptySubtitle = "No posts or kudos match your active filter selection.";
         if (currentTypeFilter === "KUDOS") {
@@ -1043,12 +1427,14 @@ async function loadFeed(isLoadMore = false, isReload = false) {
         `;
         if (loadMoreContainer) loadMoreContainer.innerHTML = "";
       } else {
-        container.innerHTML = feed.map(item => { try { return renderFeedCard(item, false); } catch(err) { console.error("Failed to render feed card:", err, item); return ""; } }).join("");
+        renderSearchResultsToolbar(totalCount, false);
+        container.className = isCompactSearch ? "space-y-3" : "space-y-6";
+        container.innerHTML = feed.map(item => { try { return renderFeedCard(item, false, searchContext); } catch(err) { console.error("Failed to render feed card:", err, item); return ""; } }).join("");
         renderLoadMoreControls();
       }
     } else {
       if (feed.length > 0) {
-        container.insertAdjacentHTML("beforeend", feed.map(item => { try { return renderFeedCard(item, false); } catch(err) { console.error("Failed to render feed card:", err, item); return ""; } }).join(""));
+        container.insertAdjacentHTML("beforeend", feed.map(item => { try { return renderFeedCard(item, false, searchContext); } catch(err) { console.error("Failed to render feed card:", err, item); return ""; } }).join(""));
         displayedFeedLimit = feedOffset + feed.length;
       }
       renderLoadMoreControls();
@@ -1304,7 +1690,14 @@ function clearLandingSearchInput() {
   if (sInput) sInput.value = "";
   const clearBtn = document.getElementById("landing-search-clear-btn");
   if (clearBtn) clearBtn.classList.add("hidden");
+  const tSel = document.getElementById("landing-type-select");
+  if (tSel) tSel.value = "";
   landingSearchFilter = "";
+  landingFormatFilter = "";
+  landingTypeFilter = "";
+  document.querySelectorAll(".landing-format-pill").forEach(el => {
+    el.className = "landing-format-pill shrink-0 px-3 py-1 rounded-xl font-bold text-xs bg-white hover:bg-amber-100/70 text-slate-700 transition shadow-xs border border-amber-200/60";
+  });
   loadLandingPreview();
 }
 window.clearLandingSearchInput = clearLandingSearchInput;
@@ -1751,7 +2144,7 @@ async function reviewPostStep(e) {
   previewBox.innerHTML = `
     <div class="font-extrabold text-2xl text-slate-900 tracking-tight">${escapeHtml(title)}</div>
     <div class="flex flex-wrap gap-2 pt-1">
-      <span class="px-3 py-1 bg-emerald-50 text-emerald-800 border border-emerald-200 rounded-full text-xs font-bold">${(subtype === "Community Event" || subtype === "EVENT") ? "📅 Event" : (subtype === "Community Resource" || subtype === "RESOURCE") ? "📚 Resource" : "📝 Post"}</span>
+      <span class="px-3 py-1 bg-emerald-50 text-emerald-800 border border-emerald-200 rounded-full text-xs font-bold">${(subtype === "Community Event" || subtype === "EVENT") ? "📅 Community Event" : (subtype === "Community Resource" || subtype === "RESOURCE") ? "📚 Community Resource" : "📝 General Post"}</span>
     </div>
     <p class="text-base text-slate-700 pt-3 whitespace-pre-line font-medium leading-relaxed">${escapeHtml(content)}</p>
     <div class="mt-3 p-3.5 rounded-2xl bg-indigo-50/60 border border-indigo-100 grid grid-cols-1 sm:grid-cols-3 gap-3 text-xs">
