@@ -2613,8 +2613,8 @@ class TestRegressionCoverage(GoodDeedsTestCase):
             b"/T (link_3)",
         ]:
             self.assertIn(field_name, pdf_bytes)
-        self.assertIn('href="/GoodDeeds_Post_Submission_Form.pdf"', html)
-        self.assertIn('download="Community_Resource_Intake_Form.pdf"', html)
+        self.assertNotIn("Download Fillable Community Resource PDF Form", html)
+        self.assertNotIn('id="download-fillable-post-pdf-link"', html)
 
         # Verify compact Type filter bar whitespace, hidden expand/collapse arrow buttons, hidden landing vision section, and consistent landing search box
         self.assertIn('id="landing-vision-section" class="hidden ', html)
