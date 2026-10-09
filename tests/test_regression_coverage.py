@@ -2653,6 +2653,13 @@ class TestRegressionCoverage(GoodDeedsTestCase):
         self.assertIn('id="landing-theme-pills-bar" class="pt-0"', html)
         self.assertIn('id="feed-type-pills-row" class="overflow-x-auto whitespace-nowrap scrollbar-none py-0 flex items-center gap-2"', html)
         self.assertIn('id="landing-type-pills-row" class="overflow-x-auto whitespace-nowrap scrollbar-none py-0 flex items-center gap-2"', html)
+        self.assertLess(html.index('id="feed-search-input"'), html.index('id="feed-category-select"'))
+        self.assertLess(html.index('id="feed-category-select"'), html.index('id="feed-group-select"'))
+        self.assertLess(html.index('id="landing-search-input"'), html.index('id="landing-category-select"'))
+        self.assertLess(html.index('id="landing-category-select"'), html.index('id="landing-group-select"'))
+        self.assertIn('id="feed-group-select" onchange="filterByGroup(this.value)" class="px-3 py-3 lg:w-[228px] shrink-0', html)
+        self.assertIn('id="feed-category-select" onchange="filterByCategory(this.value)" class="px-3 py-3 lg:w-40 shrink-0', html)
+        self.assertIn('id="feed-type-select" onchange="filterByType(this.value)" class="px-3 py-3 shrink-0', html)
 
         # Verify compact search/filter card mode with Why it matched indicators, per-card expand/collapse, and Expand All / Collapse All toggle
         self.assertIn('id="feed-search-results-toolbar"', html)

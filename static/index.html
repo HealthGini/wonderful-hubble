@@ -327,17 +327,14 @@
           <a href="/#/feed" class="font-black text-amber-700 hover:underline text-lg">View All Posts & Kudos →</a>
         </div>
         <div id="landing-filter-bar" class="bg-white px-5 py-3.5 sm:px-6 sm:py-4 rounded-3xl border border-slate-200/80 shadow-sm space-y-2 my-4">
-          <div class="flex flex-col lg:flex-row gap-3">
+          <div class="flex flex-col lg:flex-row gap-2">
             <!-- Keyword Search -->
-            <div class="relative flex-1">
+            <div class="relative flex-1 min-w-0">
               <span class="absolute inset-y-0 left-0 pl-4 flex items-center pointer-events-none text-slate-400 text-lg" aria-hidden="true">🔍</span>
               <input type="search" id="landing-search-input" placeholder="Search Kudos, Posts, Events, Resources, Audience, Geography, Contact, or Username..." class="w-full pl-11 pr-11 py-3 rounded-xl border border-slate-300 font-medium text-sm bg-slate-50 focus:bg-white focus:border-indigo-600 transition">
               <button id="landing-search-clear-btn" type="button" onclick="clearLandingSearchInput()" class="hidden absolute inset-y-0 right-0 pr-3.5 flex items-center text-slate-400 hover:text-slate-700 font-bold text-sm transition" title="Clear search" aria-label="Clear search">✕</button>
             </div>
-            <select id="landing-group-select" onchange="filterLandingByGroup(this.value)" class="px-4 py-3 rounded-xl border border-slate-300 font-bold text-sm bg-white focus:border-indigo-600 cursor-pointer touch-target">
-              <option value="">All Spaces</option>
-            </select>
-            <select id="landing-category-select" onchange="filterLandingByCategory(this.value)" class="px-4 py-3 rounded-xl border border-slate-300 font-bold text-sm bg-white focus:border-indigo-600 cursor-pointer touch-target">
+            <select id="landing-category-select" onchange="filterLandingByCategory(this.value)" class="px-3 py-3 lg:w-40 shrink-0 rounded-xl border border-slate-300 font-bold text-sm bg-white focus:border-indigo-600 cursor-pointer touch-target">
               <option value="">All Categories</option>
               <option value="Education &amp; Tutoring">🏷️ Education &amp; Tutoring</option>
               <option value="Health &amp; Wellness">🏷️ Health &amp; Wellness</option>
@@ -352,7 +349,10 @@
               <option value="Disability &amp; Accessibility">🏷️ Disability &amp; Accessibility</option>
               <option value="General Community">🏷️ General Community</option>
             </select>
-            <select id="landing-type-select" onchange="filterLandingByType(this.value)" class="px-4 py-3 rounded-xl border border-slate-300 font-bold text-sm bg-white focus:border-indigo-600 cursor-pointer touch-target">
+            <select id="landing-group-select" onchange="filterLandingByGroup(this.value)" class="px-3 py-3 lg:w-[228px] shrink-0 rounded-xl border border-slate-300 font-bold text-sm bg-white focus:border-indigo-600 cursor-pointer touch-target">
+              <option value="">All Spaces</option>
+            </select>
+            <select id="landing-type-select" onchange="filterLandingByType(this.value)" class="px-3 py-3 shrink-0 rounded-xl border border-slate-300 font-bold text-sm bg-white focus:border-indigo-600 cursor-pointer touch-target">
               <option value="">All Kudos and Posts</option>
               <option value="KUDOS">Kudos Only</option>
               <option value="POST">Posts Only</option>
@@ -415,21 +415,16 @@
       <!-- Controls Filter Bar Card -->
       <div id="feed-filter-bar-card" class="bg-white px-5 py-3.5 sm:px-6 sm:py-4 rounded-3xl border border-slate-200/80 shadow-sm space-y-2">
         <!-- Filter & Search Bar -->
-        <div class="flex flex-col lg:flex-row gap-3">
+        <div class="flex flex-col lg:flex-row gap-2">
           <!-- Keyword Search -->
-          <div class="relative flex-1">
+          <div class="relative flex-1 min-w-0">
             <span class="absolute inset-y-0 left-0 pl-4 flex items-center pointer-events-none text-slate-400 text-lg" aria-hidden="true">🔍</span>
             <input type="search" id="feed-search-input" placeholder="Search Kudos, Posts, Events, Resources, Audience, Geography, Contact, or Username..." class="w-full pl-11 pr-11 py-3 rounded-xl border border-slate-300 font-medium text-sm bg-slate-50 focus:bg-white focus:border-indigo-600 transition">
             <button id="feed-search-clear-btn" type="button" onclick="clearFeedSearchInput()" class="hidden absolute inset-y-0 right-0 pr-3.5 flex items-center text-slate-400 hover:text-slate-700 font-bold text-sm transition" title="Clear search" aria-label="Clear search">✕</button>
           </div>
 
-          <!-- Group Filter Dropdown -->
-          <select id="feed-group-select" onchange="filterByGroup(this.value)" class="px-4 py-3 rounded-xl border border-slate-300 font-bold text-sm bg-white focus:border-indigo-600 cursor-pointer touch-target">
-            <option value="">All Spaces</option>
-          </select>
-
           <!-- Category Filter Dropdown -->
-          <select id="feed-category-select" onchange="filterByCategory(this.value)" class="px-4 py-3 rounded-xl border border-slate-300 font-bold text-sm bg-white focus:border-indigo-600 cursor-pointer touch-target">
+          <select id="feed-category-select" onchange="filterByCategory(this.value)" class="px-3 py-3 lg:w-40 shrink-0 rounded-xl border border-slate-300 font-bold text-sm bg-white focus:border-indigo-600 cursor-pointer touch-target">
             <option value="">All Categories</option>
             <option value="Education &amp; Tutoring">🏷️ Education &amp; Tutoring</option>
             <option value="Health &amp; Wellness">🏷️ Health &amp; Wellness</option>
@@ -445,8 +440,13 @@
             <option value="General Community">🏷️ General Community</option>
           </select>
 
+          <!-- Group Filter Dropdown -->
+          <select id="feed-group-select" onchange="filterByGroup(this.value)" class="px-3 py-3 lg:w-[228px] shrink-0 rounded-xl border border-slate-300 font-bold text-sm bg-white focus:border-indigo-600 cursor-pointer touch-target">
+            <option value="">All Spaces</option>
+          </select>
+
           <!-- Item Type Filter -->
-          <select id="feed-type-select" onchange="filterByType(this.value)" class="px-4 py-3 rounded-xl border border-slate-300 font-bold text-sm bg-white focus:border-indigo-600 cursor-pointer touch-target">
+          <select id="feed-type-select" onchange="filterByType(this.value)" class="px-3 py-3 shrink-0 rounded-xl border border-slate-300 font-bold text-sm bg-white focus:border-indigo-600 cursor-pointer touch-target">
             <option value="">All Kudos and Posts</option>
             <option value="KUDOS">Kudos Only</option>
             <option value="POST">Posts Only</option>
