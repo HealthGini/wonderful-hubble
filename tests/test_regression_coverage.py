@@ -2518,14 +2518,15 @@ class TestRegressionCoverage(GoodDeedsTestCase):
         })
         self.assertEqual(status_self, 400)
 
-    def test_post_required_audience_geography_and_contact_info(self):
+    def test_post_optional_audience_geography_contact_and_category_field(self):
         """
-        Verifies that creating a Post requires:
-        1. Target Audience (target_audience / #post-target-audience)
-        2. Target Geographical Areas (target_geography / #post-target-geography)
-        3. Key Contact Information (contact_info / #post-contact-info), with special emphasis for Community Events & Resources.
-        4. 'Choose a Theme' field (#post-theme-field-container) is hidden when creating a post, and Topic search rows (#feed-topic-pills-row, #landing-topic-pills-row) are hidden while Type search (#feed-type-pills-row, #landing-type-pills-row) is kept.
-        5. Backend POST /api/posts validates when metadata keys are provided, persists all 3 fields, and makes them searchable in GET /api/feed?search=...
+        Verifies that when creating a Post:
+        1. Target Audience (#post-target-audience), Target Geographical Areas (#post-target-geography),
+           and Key Contact Information (#post-contact-info) are optional (not mandatory).
+        2. A 'Category' field (#post-category with datalist#post-category-options and preset buttons)
+           is available in the Post creation modal, persisted in feed_items, and filterable/searchable
+           on the Feeds and Landing pages (#feed-category-select, #landing-category-select, GET /api/feed?category=..., GET /api/feed?search=...).
+        3. 'Choose a Theme' field (#post-theme-field-container) is hidden when creating a post, and Topic search rows (#feed-topic-pills-row, #landing-topic-pills-row) are hidden while Type search (#feed-type-pills-row, #landing-type-pills-row) is kept.
         """
         base_dir = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
         with open(os.path.join(base_dir, "static", "index.html"), "r", encoding="utf-8") as f:
@@ -2533,17 +2534,26 @@ class TestRegressionCoverage(GoodDeedsTestCase):
         with open(os.path.join(base_dir, "static", "app.js"), "r", encoding="utf-8") as f:
             js = f.read()
 
-        self.assertIn('id="post-target-audience"', html)
-        self.assertIn('id="post-target-geography"', html)
-        self.assertIn('id="post-contact-info"', html)
+        self.assertIn('id="post-category"', html)
+        self.assertIn('id="post-category-options"', html)
+        self.assertIn('id="feed-category-select"', html)
+        self.assertIn('id="landing-category-select"', html)
+        self.assertIn('id="post-target-audience" placeholder=', html)
+        self.assertIn('id="post-target-geography" placeholder=', html)
+        self.assertIn('id="post-contact-info" placeholder=', html)
+        self.assertNotIn('id="post-target-audience" required', html)
+        self.assertNotIn('id="post-target-geography" required', html)
+        self.assertNotIn('id="post-contact-info" required', html)
         self.assertIn('id="post-contact-event-resource-badge"', html)
         self.assertIn('id="post-theme-field-container" class="hidden"', html)
         self.assertIn('id="feed-topic-pills-row" class="hidden', html)
         self.assertIn('id="landing-topic-pills-row" class="hidden', html)
         self.assertIn('id="feed-type-pills-row"', html)
         self.assertIn('id="landing-type-pills-row"', html)
-        self.assertIn("Essential for Community Events &amp; Resources", html)
-        self.assertIn("Please provide Target Audience, Target Geographical Areas, and Key Contact Information.", js)
+        self.assertNotIn("Please provide Target Audience, Target Geographical Areas, and Key Contact Information.", js)
+        self.assertIn("function filterByCategory(", js)
+        self.assertIn("function filterLandingByCategory(", js)
+        self.assertIn("function selectPostCategoryPreset(", js)
         self.assertIn("👥 Target Audience", js)
         self.assertIn("📍 Geographical Areas", js)
         self.assertIn("📇 Key Contact", js)
@@ -2551,35 +2561,49 @@ class TestRegressionCoverage(GoodDeedsTestCase):
         token_maya = self.get_token("maya@gooddeeds.space")
         headers_maya = {"Authorization": f"Bearer {token_maya}"}
 
-        # Missing required fields when metadata keys are included should fail with 400
-        status_missing, _, body_missing = self.make_request("POST", "/api/posts", headers=headers_maya, body={
-            "title": "Neighborhood Tool Library",
-            "content": "Borrow gardening and repair tools for free.",
-            "post_subtype": "RESOURCE",
-            "target_audience": "Homeowners & Renters",
+        # Creating a post with empty/omitted Target Audience, Geography, and Contact Info should SUCCEED (201 Created)
+        status_opt, _, body_opt = self.make_request("POST", "/api/posts", headers=headers_maya, body={
+            "title": "Community Book Swap & Reading Corner",
+            "content": "Drop off a favorite book and pick up a new read at the neighborhood kiosk.",
+            "post_subtype": "GENERAL",
+            "category": "Arts, Culture & Recreation",
+            "target_audience": "",
             "target_geography": "",
             "contact_info": ""
         })
-        self.assertEqual(status_missing, 400)
-        self.assertIn("Target audience, target geographical areas, and key contact information are required", body_missing.get("error", ""))
+        self.assertEqual(status_opt, 201)
+        opt_item = body_opt["post"]
+        self.assertEqual(opt_item["category"], "Arts, Culture & Recreation")
+        self.assertEqual(opt_item["target_audience"], "")
+        self.assertEqual(opt_item["target_geography"], "")
+        self.assertEqual(opt_item["contact_info"], "")
 
-        # Valid post (even without explicit theme) with all 3 required fields succeeds and persists them
+        # Post with all optional metadata fields + custom/preset Category succeeds and persists them
         status_ok, _, body_ok = self.make_request("POST", "/api/posts", headers=headers_maya, body={
             "title": "Neighborhood Tool Library",
             "content": "Borrow gardening and repair tools for free.",
             "post_subtype": "RESOURCE",
+            "category": "Environment & Sustainability",
             "target_audience": "Local Residents & DIY Volunteers",
             "target_geography": "East Bay & Oakland Neighborhoods",
             "contact_info": "Maya Lin — maya@gooddeeds.space / (510) 555-0192"
         })
         self.assertEqual(status_ok, 201)
         post_item = body_ok["post"]
+        self.assertEqual(post_item["category"], "Environment & Sustainability")
         self.assertEqual(post_item["target_audience"], "Local Residents & DIY Volunteers")
         self.assertEqual(post_item["target_geography"], "East Bay & Oakland Neighborhoods")
         self.assertEqual(post_item["contact_info"], "Maya Lin — maya@gooddeeds.space / (510) 555-0192")
 
-        # Search by target_geography, target_audience, contact_info, and multi-token cross-field query in GET /api/feed
-        for query in ["Oakland", "DIY Volunteers", "555-0192", "Oakland DIY"]:
+        # Filter by category in GET /api/feed?category=...
+        status_cat, _, body_cat = self.make_request("GET", "/api/feed?category=Environment%20%26%20Sustainability")
+        self.assertEqual(status_cat, 200)
+        cat_ids = [i["id"] for i in body_cat["feed"]]
+        self.assertIn(post_item["id"], cat_ids)
+        self.assertNotIn(opt_item["id"], cat_ids)
+
+        # Search by category, target_geography, target_audience, contact_info, and multi-token cross-field query in GET /api/feed
+        for query in ["Sustainability", "Oakland", "DIY Volunteers", "555-0192", "Oakland DIY", "Sustainability Oakland"]:
             status_search, _, body_search = self.make_request("GET", f"/api/feed?search={query.replace(' ', '%20')}")
             self.assertEqual(status_search, 200)
             found_ids = [i["id"] for i in body_search["feed"]]

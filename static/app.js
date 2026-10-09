@@ -25,6 +25,7 @@ let sessionPromise = null;
 // Feed filters state
 let currentTheme = "";
 let currentFormatFilter = "";
+let currentCategoryFilter = "";
 let currentGroupFilter = "";
 let currentSortMode = "smart";
 let currentSearch = "";
@@ -50,6 +51,7 @@ let landingGroupFilter = "";
 let landingTypeFilter = "";
 let landingThemeFilter = "";
 let landingFormatFilter = "";
+let landingCategoryFilter = "";
 let landingSearchFilter = "";
 let allGroupsCache = [];
 
@@ -664,9 +666,9 @@ let expandAllSearchCards = false;
 
 function isSearchOrTypeFilterActive(isLanding = false) {
   if (isLanding) {
-    return Boolean((landingSearchFilter && landingSearchFilter.trim()) || landingFormatFilter || landingTypeFilter);
+    return Boolean((landingSearchFilter && landingSearchFilter.trim()) || landingFormatFilter || landingCategoryFilter || landingTypeFilter);
   }
-  return Boolean((currentSearch && currentSearch.trim()) || currentFormatFilter || currentTypeFilter);
+  return Boolean((currentSearch && currentSearch.trim()) || currentFormatFilter || currentCategoryFilter || currentTypeFilter);
 }
 
 function getSearchTokens(rawQuery) {
@@ -732,6 +734,7 @@ function extractMatchingSnippet(text, rawQuery, maxLen = 150) {
 function buildSearchMatchInfo(item, searchContext) {
   const query = (searchContext && searchContext.query) ? searchContext.query.trim() : "";
   const formatFilter = (searchContext && searchContext.formatFilter) ? searchContext.formatFilter.trim().toUpperCase() : "";
+  const categoryFilter = (searchContext && searchContext.categoryFilter) ? searchContext.categoryFilter.trim() : "";
   const typeFilter = (searchContext && searchContext.typeFilter) ? searchContext.typeFilter.trim().toUpperCase() : "";
   const tokens = getSearchTokens(query);
 
@@ -752,6 +755,10 @@ function buildSearchMatchInfo(item, searchContext) {
     reasons.push(isEvent ? "📅 Community Event" : (isResource ? "📚 Community Resource" : "📝 General Post"));
   }
 
+  if (categoryFilter) {
+    reasons.push(`🏷️ Category: ${escapeHtml(item.category || categoryFilter)}`);
+  }
+
   let matchedInExtractedFile = false;
   if (tokens.length > 0) {
     const checkField = (val) => {
@@ -760,6 +767,7 @@ function buildSearchMatchInfo(item, searchContext) {
       return tokens.some(t => lower.includes(t.toLowerCase()));
     };
     if (checkField(item.title)) reasons.push("Matched in Title");
+    if (checkField(item.category) && !categoryFilter) reasons.push(`🏷️ Category: ${escapeHtml(item.category)}`);
     if (checkField(item.target_audience)) reasons.push("👥 Target Audience");
     if (checkField(item.target_geography)) reasons.push("📍 Geography");
     if (checkField(item.contact_info)) reasons.push("📇 Key Contact");
@@ -898,12 +906,14 @@ function renderSearchResultsToolbar(count, isLanding = false) {
 
   const query = isLanding ? landingSearchFilter : currentSearch;
   const formatFilter = isLanding ? landingFormatFilter : currentFormatFilter;
+  const categoryFilter = isLanding ? landingCategoryFilter : currentCategoryFilter;
   const typeFilter = isLanding ? landingTypeFilter : currentTypeFilter;
 
   const activeChips = [];
   if (formatFilter === "RESOURCE") activeChips.push("📚 Community Resource");
   else if (formatFilter === "EVENT") activeChips.push("📅 Community Event");
   else if (formatFilter === "GENERAL") activeChips.push("📝 General Post");
+  if (categoryFilter) activeChips.push(`🏷️ ${escapeHtml(categoryFilter)}`);
   if (typeFilter === "KUDOS") activeChips.push("🌟 Kudos Only");
   else if (typeFilter === "POST" && !formatFilter) activeChips.push("📝 Posts Only");
   if (query && query.trim()) activeChips.push(`“${escapeHtml(query.trim())}”`);
@@ -1004,6 +1014,10 @@ function renderFeedCard(item, isProfileView = false, searchContext = null) {
             : `<span class="inline-flex items-center gap-1.5 px-3.5 py-1 rounded-full text-xs font-extrabold uppercase tracking-wider bg-indigo-50 text-indigo-800 border border-indigo-200 shadow-xs">📝 General Post</span>`))
     : `<span class="inline-flex items-center gap-1.5 px-3.5 py-1 rounded-full text-xs font-extrabold uppercase tracking-wider bg-amber-200/80 text-amber-950 border border-amber-400 shadow-xs">🌟 Gratitude Kudos</span>`;
 
+  const categoryBadge = (!isKudos && item.category)
+    ? `<button type="button" onclick="filterByCategory('${escapeHtml(item.category).replace(/'/g, "\\'")}')" class="inline-flex items-center gap-1 px-3 py-1 rounded-full text-xs font-extrabold bg-violet-50 hover:bg-violet-100 text-violet-800 border border-violet-200 transition shadow-2xs" title="Filter by Category: ${escapeHtml(item.category)}">🏷️ ${escapeHtml(item.category)}</button>`
+    : "";
+
   // Parse attachments once so both compact summary and full view can render clickable resource buttons
   let urls = [];
   if (item.resource_url) {
@@ -1065,6 +1079,7 @@ function renderFeedCard(item, isProfileView = false, searchContext = null) {
             </p>
           ` : ""}
           <div class="flex flex-wrap items-center gap-2 text-xs">
+            ${!isKudos && item.category ? `<span class="px-2.5 py-1 rounded-lg bg-violet-50 text-violet-900 border border-violet-200 font-bold">🏷️ ${highlightSearchMatches(item.category, q)}</span>` : ""}
             ${!isKudos && item.event_date ? `<span class="px-2.5 py-1 rounded-lg bg-rose-50 text-rose-900 border border-rose-200 font-bold">📅 Event Date: ${escapeHtml(item.event_date)}</span>` : ""}
             ${!isKudos && item.target_audience ? `<span class="px-2.5 py-1 rounded-lg bg-slate-100 text-slate-700 font-semibold">👥 ${highlightSearchMatches(item.target_audience, q)}</span>` : ""}
             ${!isKudos && item.target_geography ? `<span class="px-2.5 py-1 rounded-lg bg-slate-100 text-slate-700 font-semibold">📍 ${highlightSearchMatches(item.target_geography, q)}</span>` : ""}
@@ -1083,6 +1098,7 @@ function renderFeedCard(item, isProfileView = false, searchContext = null) {
       <div class="flex flex-wrap items-center justify-between gap-2 pb-2 border-b ${isKudos ? 'border-amber-200/60' : 'border-slate-100'}">
         <div class="flex items-center gap-2 flex-wrap">
           ${postSubtypeBadge}
+          ${categoryBadge}
           ${groupBadges}
         </div>
         <div class="flex items-center gap-2">
@@ -1282,18 +1298,21 @@ async function loadLandingPreview(isLoadMore = false) {
   if (landingTypeFilter) url += `filter_type=${encodeURIComponent(landingTypeFilter)}&`;
   if (landingThemeFilter) url += `theme=${encodeURIComponent(landingThemeFilter)}&`;
   if (landingFormatFilter) url += `subtype=${encodeURIComponent(landingFormatFilter)}&`;
+  if (landingCategoryFilter) url += `category=${encodeURIComponent(landingCategoryFilter)}&`;
   if (landingSearchFilter) url += `search=${encodeURIComponent(landingSearchFilter)}&`;
 
   const searchContext = {
     isCompactSearch,
     query: landingSearchFilter,
     formatFilter: landingFormatFilter,
+    categoryFilter: landingCategoryFilter,
     typeFilter: landingTypeFilter
   };
 
   try {
     const data = await apiFetch(url);
     const feed = data.feed || [];
+    syncDynamicCategoryOptions(feed);
     const totalCount = data.total_count !== undefined ? data.total_count : feed.length;
     landingPreviewHasMore = (data.has_more !== undefined) ? data.has_more : (feed.length === reqLimit);
 
@@ -1378,6 +1397,7 @@ async function loadFeed(isLoadMore = false, isReload = false) {
   let url = `/feed?sort=${currentSortMode}&limit=${reqLimit}&offset=${reqOffset}&`;
   if (currentTheme) url += `theme=${encodeURIComponent(currentTheme)}&`;
   if (currentFormatFilter) url += `subtype=${encodeURIComponent(currentFormatFilter)}&`;
+  if (currentCategoryFilter) url += `category=${encodeURIComponent(currentCategoryFilter)}&`;
   if (currentGroupFilter) url += `group_id=${encodeURIComponent(currentGroupFilter)}&`;
   if (currentSearch) url += `search=${encodeURIComponent(currentSearch)}&`;
   if (currentTypeFilter) url += `filter_type=${encodeURIComponent(currentTypeFilter)}&`;
@@ -1390,12 +1410,14 @@ async function loadFeed(isLoadMore = false, isReload = false) {
     isCompactSearch,
     query: currentSearch,
     formatFilter: currentFormatFilter,
+    categoryFilter: currentCategoryFilter,
     typeFilter: currentTypeFilter
   };
 
   try {
     const data = await apiFetch(url);
     const feed = data.feed || [];
+    syncDynamicCategoryOptions(feed);
     const totalCount = data.total_count !== undefined ? data.total_count : feed.length;
     feedHasMore = (data.has_more !== undefined) ? data.has_more : (feed.length === reqLimit);
 
@@ -1580,10 +1602,64 @@ function updateThemePillsCollapseUI() {
   }
 }
 
+function syncDynamicCategoryOptions(items = []) {
+  if (!Array.isArray(items) || items.length === 0) return;
+  const selects = [
+    document.getElementById("feed-category-select"),
+    document.getElementById("landing-category-select")
+  ].filter(Boolean);
+  const datalist = document.getElementById("post-category-options");
+
+  items.forEach(item => {
+    const cat = (item && item.category) ? String(item.category).trim() : "";
+    if (!cat) return;
+    selects.forEach(sel => {
+      const exists = Array.from(sel.options).some(opt => opt.value.toLowerCase() === cat.toLowerCase());
+      if (!exists) {
+        const opt = document.createElement("option");
+        opt.value = cat;
+        opt.textContent = `🏷️ ${cat}`;
+        sel.appendChild(opt);
+      }
+    });
+    if (datalist) {
+      const existsInList = Array.from(datalist.options).some(opt => opt.value.toLowerCase() === cat.toLowerCase());
+      if (!existsInList) {
+        const opt = document.createElement("option");
+        opt.value = cat;
+        datalist.appendChild(opt);
+      }
+    }
+  });
+}
+window.syncDynamicCategoryOptions = syncDynamicCategoryOptions;
+
 function filterByGroup(gid) {
   currentGroupFilter = gid;
   loadFeed();
 }
+
+function filterByCategory(cat) {
+  currentCategoryFilter = cat || "";
+  const cSel = document.getElementById("feed-category-select");
+  if (cSel) {
+    if (currentCategoryFilter) syncDynamicCategoryOptions([{ category: currentCategoryFilter }]);
+    cSel.value = currentCategoryFilter;
+  }
+  loadFeed();
+}
+window.filterByCategory = filterByCategory;
+
+function filterLandingByCategory(cat) {
+  landingCategoryFilter = cat || "";
+  const cSel = document.getElementById("landing-category-select");
+  if (cSel) {
+    if (landingCategoryFilter) syncDynamicCategoryOptions([{ category: landingCategoryFilter }]);
+    cSel.value = landingCategoryFilter;
+  }
+  loadLandingPreview();
+}
+window.filterLandingByCategory = filterLandingByCategory;
 
 function filterByType(type) {
   currentTypeFilter = type;
@@ -1692,8 +1768,11 @@ function clearLandingSearchInput() {
   if (clearBtn) clearBtn.classList.add("hidden");
   const tSel = document.getElementById("landing-type-select");
   if (tSel) tSel.value = "";
+  const cSel = document.getElementById("landing-category-select");
+  if (cSel) cSel.value = "";
   landingSearchFilter = "";
   landingFormatFilter = "";
+  landingCategoryFilter = "";
   landingTypeFilter = "";
   document.querySelectorAll(".landing-format-pill").forEach(el => {
     el.className = "landing-format-pill shrink-0 px-3 py-1 rounded-xl font-bold text-xs bg-white hover:bg-amber-100/70 text-slate-700 transition shadow-xs border border-amber-200/60";
@@ -1711,6 +1790,7 @@ window.changeSortMode = changeSortMode;
 function clearAllFilters() {
   currentTheme = "";
   currentFormatFilter = "";
+  currentCategoryFilter = "";
   currentGroupFilter = "";
   currentSortMode = "smart";
   currentSearch = "";
@@ -1722,6 +1802,8 @@ function clearAllFilters() {
   if (sInput) sInput.value = "";
   const gSel = document.getElementById("feed-group-select");
   if (gSel) gSel.value = "";
+  const cSel = document.getElementById("feed-category-select");
+  if (cSel) cSel.value = "";
   const tSel = document.getElementById("feed-type-select");
   if (tSel) tSel.value = "";
   document.querySelectorAll(".format-pill").forEach(el => {
@@ -2006,6 +2088,15 @@ function togglePostSubtype(subtype) {
   }
 }
 
+function selectPostCategoryPreset(cat) {
+  const catInput = document.getElementById("post-category");
+  if (catInput) {
+    catInput.value = cat || "";
+    catInput.focus();
+  }
+}
+window.selectPostCategoryPreset = selectPostCategoryPreset;
+
 async function populatePostModal() {
   await populateGroupCheckboxes("post-groups-list", "post-group");
   const defaultSubtypeRadio = document.querySelector("input[name='post_subtype'][value='GENERAL'], input[name='post-subtype'][value='General Post'], input[name='post_subtype'][value='GENERAL']");
@@ -2052,6 +2143,7 @@ async function reviewPostStep(e) {
   const themeEl = document.getElementById("post-input-theme");
   const theme = (themeEl && themeEl.value) ? themeEl.value : "General";
   let content = document.getElementById("post-input-content").value.trim();
+  const category = document.getElementById("post-category") ? document.getElementById("post-category").value.trim() : "";
   const target_audience = document.getElementById("post-target-audience") ? document.getElementById("post-target-audience").value.trim() : "";
   const target_geography = document.getElementById("post-target-geography") ? document.getElementById("post-target-geography").value.trim() : "";
   const contact_info = document.getElementById("post-contact-info") ? document.getElementById("post-contact-info").value.trim() : "";
@@ -2062,11 +2154,6 @@ async function reviewPostStep(e) {
 
   if (!title || !content) {
     showToast("Please provide both a title and description/story content.");
-    return;
-  }
-
-  if (!target_audience || !target_geography || !contact_info) {
-    showToast("Please provide Target Audience, Target Geographical Areas, and Key Contact Information.");
     return;
   }
 
@@ -2105,6 +2192,7 @@ async function reviewPostStep(e) {
   draftPost = {
     title,
     theme,
+    category,
     content,
     resource_url,
     group_ids,
@@ -2141,26 +2229,38 @@ async function reviewPostStep(e) {
     </div>
   ` : "";
 
+  const hasOptionalMeta = Boolean(target_audience || target_geography || contact_info);
+  const optionalMetaPreviewHtml = hasOptionalMeta ? `
+    <div class="mt-3 p-3.5 rounded-2xl bg-indigo-50/60 border border-indigo-100 grid grid-cols-1 sm:grid-cols-3 gap-3 text-xs">
+      ${target_audience ? `
+        <div>
+          <div class="font-extrabold uppercase tracking-wider text-[10px] text-indigo-600">👥 Target Audience</div>
+          <div class="font-bold text-slate-800 text-sm">${escapeHtml(target_audience)}</div>
+        </div>
+      ` : ""}
+      ${target_geography ? `
+        <div>
+          <div class="font-extrabold uppercase tracking-wider text-[10px] text-indigo-600">📍 Geographical Areas</div>
+          <div class="font-bold text-slate-800 text-sm">${escapeHtml(target_geography)}</div>
+        </div>
+      ` : ""}
+      ${contact_info ? `
+        <div>
+          <div class="font-extrabold uppercase tracking-wider text-[10px] text-indigo-700">📇 Key Contact</div>
+          <div class="font-bold text-slate-900 text-sm break-words">${escapeHtml(contact_info)}</div>
+        </div>
+      ` : ""}
+    </div>
+  ` : "";
+
   previewBox.innerHTML = `
     <div class="font-extrabold text-2xl text-slate-900 tracking-tight">${escapeHtml(title)}</div>
     <div class="flex flex-wrap gap-2 pt-1">
       <span class="px-3 py-1 bg-emerald-50 text-emerald-800 border border-emerald-200 rounded-full text-xs font-bold">${(subtype === "Community Event" || subtype === "EVENT") ? "📅 Community Event" : (subtype === "Community Resource" || subtype === "RESOURCE") ? "📚 Community Resource" : "📝 General Post"}</span>
+      ${category ? `<span class="px-3 py-1 bg-violet-50 text-violet-800 border border-violet-200 rounded-full text-xs font-bold">🏷️ ${escapeHtml(category)}</span>` : ""}
     </div>
     <p class="text-base text-slate-700 pt-3 whitespace-pre-line font-medium leading-relaxed">${escapeHtml(content)}</p>
-    <div class="mt-3 p-3.5 rounded-2xl bg-indigo-50/60 border border-indigo-100 grid grid-cols-1 sm:grid-cols-3 gap-3 text-xs">
-      <div>
-        <div class="font-extrabold uppercase tracking-wider text-[10px] text-indigo-600">👥 Target Audience</div>
-        <div class="font-bold text-slate-800 text-sm">${escapeHtml(target_audience)}</div>
-      </div>
-      <div>
-        <div class="font-extrabold uppercase tracking-wider text-[10px] text-indigo-600">📍 Geographical Areas</div>
-        <div class="font-bold text-slate-800 text-sm">${escapeHtml(target_geography)}</div>
-      </div>
-      <div>
-        <div class="font-extrabold uppercase tracking-wider text-[10px] text-indigo-700">📇 Key Contact</div>
-        <div class="font-bold text-slate-900 text-sm break-words">${escapeHtml(contact_info)}</div>
-      </div>
-    </div>
+    ${optionalMetaPreviewHtml}
     ${attachmentsPreviewHtml}
   `;
 }
@@ -2205,11 +2305,13 @@ async function confirmPublishPost() {
       method: "POST",
       body: JSON.stringify(draftPost)
     });
+    syncDynamicCategoryOptions([draftPost]);
     closeModal("modal-post");
     draftPost = null;
     document.getElementById("post-input-title").value = "";
     document.getElementById("post-input-content").value = "";
     document.getElementById("post-input-url").value = "";
+    if (document.getElementById("post-category")) document.getElementById("post-category").value = "";
     if (document.getElementById("post-target-audience")) document.getElementById("post-target-audience").value = "";
     if (document.getElementById("post-target-geography")) document.getElementById("post-target-geography").value = "";
     if (document.getElementById("post-contact-info")) document.getElementById("post-contact-info").value = "";

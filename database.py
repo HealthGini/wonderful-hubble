@@ -294,6 +294,7 @@ def init_db():
         target_audience TEXT,
         target_geography TEXT,
         contact_info TEXT,
+        category TEXT,
         created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
         FOREIGN KEY (author_id) REFERENCES users(id) ON DELETE CASCADE,
         FOREIGN KEY (recipient_id) REFERENCES users(id) ON DELETE CASCADE
@@ -321,6 +322,16 @@ def init_db():
         pass
     try:
         cursor.execute("ALTER TABLE feed_items ADD COLUMN contact_info TEXT")
+    except Exception:
+        pass
+    try:
+        cursor.execute("ALTER TABLE feed_items ADD COLUMN category TEXT")
+    except Exception:
+        pass
+    try:
+        cursor.execute("UPDATE feed_items SET category = 'Health & Wellness' WHERE id = 2 AND (category IS NULL OR category = '')")
+        cursor.execute("UPDATE feed_items SET category = 'Education & Tutoring' WHERE id = 4 AND (category IS NULL OR category = '')")
+        cursor.execute("UPDATE feed_items SET category = 'Food & Mutual Aid' WHERE id = 5 AND (category IS NULL OR category = '')")
     except Exception:
         pass
     try:
@@ -634,13 +645,13 @@ def seed_data(cursor):
     cursor.executemany("INSERT INTO group_messages (group_id, user_id, message) VALUES (?, ?, ?)", chat_msgs)
 
     items = [
-        ("KUDOS", 1, 2, None, "Massive thank you to Marcus for organizing our neighborhood food pantry restock! Your dedication brings connection, positivity, and goodness to our block every single day.", None, None, "GENERAL", None, None, None, None),
-        ("POST", 3, None, "Promoting Goodness: Breaking the Cycle of Negativity", "Far too often we are inundated with news of division, stress, and hardship. It makes it easy to forget the intrinsic kindness inside every human being. By choosing to do one good deed today—whether listening to a friend, tutoring a student, or helping a neighbor—we ripple positivity outward. Let's promote goodness and help everyone become the best possible version of themselves.", "Mental Health", "https://example.com/kindness_guide.pdf", "GENERAL", None, "All Community Members, Youth & Adults", "Citywide & Online (Global)", "Elena Wellness — elena@gooddeeds.space | (555) 010-3000"),
-        ("KUDOS", 4, 3, None, "Heartfelt kudos to Elena for hosting free weekly mental health listening circles. Your empathy and practical grounding tips have helped people of all ages find peace and resilience!", None, None, "GENERAL", None, None, None, None),
-        ("POST", 1, None, "Test Post: Free Online Tutoring & Mentorship Fair This Saturday", "Join us this Saturday at 2 PM for our intergenerational skill share! Whether you need academic tutoring, career advice, or want to volunteer your expertise across education and tech, there is a welcoming place for you.", "Educational", "https://example.com/mentorship_fair.pdf", "EVENT", "2026-07-15", "High School & College Students, Volunteer Mentors", "Bay Area, CA & Virtual (Zoom)", "Maya Lin (Event Coordinator) — maya@gooddeeds.space | (555) 010-1000"),
-        ("POST", 2, None, "How Small Acts of Mutual Aid Transformed Our Neighborhood", "Last month, a few neighbors set up a shared tool library and community pantry. What started as a simple shelf has turned into daily collaboration between college students, busy parents, and retired neighbors. Promote goodness—one good deed at a time!", "Inspiring Story", "", "GENERAL", None, "Local Neighbors, Families & Seniors", "Oakwood District & Greater Metro Area", "Marcus Vance — marcus@gooddeeds.space | (555) 010-2000")
+        ("KUDOS", 1, 2, None, "Massive thank you to Marcus for organizing our neighborhood food pantry restock! Your dedication brings connection, positivity, and goodness to our block every single day.", None, None, "GENERAL", None, None, None, None, None),
+        ("POST", 3, None, "Promoting Goodness: Breaking the Cycle of Negativity", "Far too often we are inundated with news of division, stress, and hardship. It makes it easy to forget the intrinsic kindness inside every human being. By choosing to do one good deed today—whether listening to a friend, tutoring a student, or helping a neighbor—we ripple positivity outward. Let's promote goodness and help everyone become the best possible version of themselves.", "Mental Health", "https://example.com/kindness_guide.pdf", "GENERAL", None, "All Community Members, Youth & Adults", "Citywide & Online (Global)", "Elena Wellness — elena@gooddeeds.space | (555) 010-3000", "Health & Wellness"),
+        ("KUDOS", 4, 3, None, "Heartfelt kudos to Elena for hosting free weekly mental health listening circles. Your empathy and practical grounding tips have helped people of all ages find peace and resilience!", None, None, "GENERAL", None, None, None, None, None),
+        ("POST", 1, None, "Test Post: Free Online Tutoring & Mentorship Fair This Saturday", "Join us this Saturday at 2 PM for our intergenerational skill share! Whether you need academic tutoring, career advice, or want to volunteer your expertise across education and tech, there is a welcoming place for you.", "Educational", "https://example.com/mentorship_fair.pdf", "EVENT", "2026-07-15", "High School & College Students, Volunteer Mentors", "Bay Area, CA & Virtual (Zoom)", "Maya Lin (Event Coordinator) — maya@gooddeeds.space | (555) 010-1000", "Education & Tutoring"),
+        ("POST", 2, None, "How Small Acts of Mutual Aid Transformed Our Neighborhood", "Last month, a few neighbors set up a shared tool library and community pantry. What started as a simple shelf has turned into daily collaboration between college students, busy parents, and retired neighbors. Promote goodness—one good deed at a time!", "Inspiring Story", "", "GENERAL", None, "Local Neighbors, Families & Seniors", "Oakwood District & Greater Metro Area", "Marcus Vance — marcus@gooddeeds.space | (555) 010-2000", "Food & Mutual Aid")
     ]
-    cursor.executemany("INSERT INTO feed_items (item_type, author_id, recipient_id, title, content, theme, resource_url, post_subtype, event_date, target_audience, target_geography, contact_info) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)", items)
+    cursor.executemany("INSERT INTO feed_items (item_type, author_id, recipient_id, title, content, theme, resource_url, post_subtype, event_date, target_audience, target_geography, contact_info, category) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)", items)
 
     item_groups = [
         (1, 3),
