@@ -254,6 +254,58 @@ def send_real_or_simulated_email(recipient_email, subject, text_body, html_body=
     conn.close()
     return delivery_status == "SENT_LIVE_SMTP"
 
+
+def parse_bulk_email_addresses(raw_emails):
+    """
+    Parses a bulk email input (string with commas, semicolons, newlines, whitespace,
+    or 'Display Name <email@domain.com>' entries, or a list of strings) into
+    deduplicated valid email addresses and any invalid tokens.
+    """
+    if not raw_emails:
+        return [], []
+    if isinstance(raw_emails, (list, tuple)):
+        chunks = []
+        for item in raw_emails:
+            if item is not None:
+                chunks.extend(re.split(r"[,;\n\r]+", str(item)))
+    else:
+        chunks = re.split(r"[,;\n\r]+", str(raw_emails))
+
+    email_regex = re.compile(r"^[^@\s<>]+@[^@\s<>]+\.[^@\s<>]+$")
+    angle_regex = re.compile(r"<([^<>]+)>")
+    valid_emails = []
+    invalid_tokens = []
+    seen_lower = set()
+
+    for chunk in chunks:
+        c = chunk.strip()
+        if not c:
+            continue
+        angle_match = angle_regex.search(c)
+        if angle_match:
+            candidate = angle_match.group(1).strip()
+            candidates = [candidate] if candidate else []
+        else:
+            # If whitespace-separated plain emails were pasted on one line without angle brackets
+            sub_parts = [p.strip().strip("'\"()") for p in c.split() if p.strip()]
+            if len(sub_parts) > 1 and all("@" in p for p in sub_parts):
+                candidates = sub_parts
+            else:
+                candidates = [c.strip("'\"()")]
+
+        for cand in candidates:
+            if not cand:
+                continue
+            if email_regex.match(cand):
+                low = cand.lower()
+                if low not in seen_lower:
+                    seen_lower.add(low)
+                    valid_emails.append(cand)
+            else:
+                invalid_tokens.append(cand)
+
+    return valid_emails, invalid_tokens
+
 # ================== MODULE-LEVEL FEED HELPER FUNCTIONS ==================
 def enrich_items_list(raw_items, user_id=None):
     """
@@ -830,6 +882,30 @@ def handle_api_request(method, path, headers, body_bytes):
             user_id = cursor.lastrowid
             token = str(uuid.uuid4())
             cursor.execute("INSERT INTO sessions (token, user_id) VALUES (?, ?)", (token, user_id))
+            try:
+                cursor.execute("""
+                    SELECT id, sender_id FROM site_invitations
+                    WHERE LOWER(recipient_email) = LOWER(?) AND status = 'PENDING'
+                """, (email,))
+                pending_site_invites = cursor.fetchall()
+                if pending_site_invites:
+                    cursor.execute("""
+                        UPDATE site_invitations SET status = 'ACCEPTED'
+                        WHERE LOWER(recipient_email) = LOWER(?) AND status = 'PENDING'
+                    """, (email,))
+                    for sinv in pending_site_invites:
+                        if sinv["sender_id"]:
+                            create_in_app_notification(
+                                conn,
+                                sinv["sender_id"],
+                                user_id,
+                                "SITE_INVITE_ACCEPTED",
+                                user_id,
+                                f"🎉 @{username} ({email}) accepted your invitation and joined GoodDeeds.space!",
+                                f"/#/user/{user_id}"
+                            )
+            except Exception:
+                pass
             conn.commit()
             cursor.execute("SELECT id, email, username, phone, avatar_url, bio, is_site_admin, oauth_provider, oauth_id FROM users WHERE id = ?", (user_id,))
             new_user = dict(cursor.fetchone())
@@ -2073,8 +2149,12 @@ def handle_api_request(method, path, headers, body_bytes):
         except ValueError:
             return error_response("Invalid group ID")
 
-        emails_raw = body.get("emails", "").strip()
-        message = body.get("message", "").strip()
+        emails_input = body.get("emails") if body.get("emails") is not None else body.get("email", "")
+        if isinstance(emails_input, (list, tuple)):
+            emails_raw = ", ".join([str(e).strip() for e in emails_input if str(e).strip()])
+        else:
+            emails_raw = str(emails_input or "").strip()
+        message = str(body.get("message", "") or "").strip()
         if not emails_raw:
             return error_response("At least one recipient email address is required")
 
@@ -2087,7 +2167,7 @@ def handle_api_request(method, path, headers, body_bytes):
             return error_response("Group not found", 404)
         group_name = grow["name"]
 
-        raw_recipients = [e.strip() for e in emails_raw.split(",") if e.strip()]
+        raw_recipients = [e.strip() for e in re.split(r"[,;\n\r]+", emails_raw) if e.strip()]
         valid_recipients = []
         email_list = []
         already_members = []
@@ -2142,6 +2222,117 @@ def handle_api_request(method, path, headers, body_bytes):
             send_real_or_simulated_email(rec, subject, body_text)
 
         return json_response({"success": True, "message": f"Invitation sent to {len(email_list)} recipient(s)!"})
+
+    # INVITE OTHERS TO JOIN THE WEBSITE (SINGLE OR BULK EMAILS)
+    if path_only in ("/api/invitations/site", "/api/invite") and method == "POST":
+        if not user:
+            return error_response("Login required to send invitations", 401)
+
+        raw_emails_input = body.get("emails") if body.get("emails") is not None else body.get("email", "")
+        message = str(body.get("message", "") or "").strip()
+
+        ok_mod, mod_err = check_content_moderation(user, [message])
+        if not ok_mod:
+            return error_response(mod_err, 400)
+
+        valid_emails, invalid_tokens = parse_bulk_email_addresses(raw_emails_input)
+        if not valid_emails:
+            if invalid_tokens:
+                return error_response(f"Invalid email format: {', '.join(invalid_tokens[:5])}. Please enter valid email addresses.", 400)
+            return error_response("At least one valid recipient email address is required.", 400)
+
+        conn = get_db()
+        cursor = conn.cursor()
+
+        invited_emails = []
+        already_registered = []
+
+        for email_addr in valid_emails:
+            cursor.execute("SELECT id, username, email FROM users WHERE LOWER(email) = LOWER(?)", (email_addr,))
+            urow = cursor.fetchone()
+            if urow:
+                already_registered.append(urow["email"])
+                continue
+            invited_emails.append(email_addr)
+
+        if not invited_emails:
+            conn.close()
+            return error_response(
+                f"{', '.join(already_registered)} {'are' if len(already_registered) > 1 else 'is'} already registered on GoodDeeds.space.",
+                400
+            )
+
+        note_text = message or "Join me on GoodDeeds.space to recognize everyday kindness with public Kudos and share local community resources & events!"
+        subject = f"☀️ {user['username']} invited you to join GoodDeeds.space!"
+        body_text = (
+            f"Hello!\n\n"
+            f"{user['username']} ({user['email']}) has invited you to join GoodDeeds.space — "
+            f"a community platform built to celebrate everyday kindness with public Kudos and share helpful community events and resources.\n\n"
+            f"Personal Note from {user['username']}:\n"
+            f"\"{note_text}\"\n\n"
+            f"Join free today:\n"
+            f"http://localhost:8080/#/\n\n"
+            f"Become the best version of yourself — one good deed at a time."
+        )
+
+        for rec_email in invited_emails:
+            cursor.execute("""
+                DELETE FROM site_invitations
+                WHERE sender_id = ? AND LOWER(recipient_email) = LOWER(?) AND status = 'PENDING'
+            """, (user["id"], rec_email))
+            cursor.execute("""
+                INSERT INTO site_invitations (sender_id, sender_name, recipient_email, message, status)
+                VALUES (?, ?, ?, ?, 'PENDING')
+            """, (user["id"], user["username"], rec_email, note_text))
+
+        conn.commit()
+        conn.close()
+
+        for rec_email in invited_emails:
+            send_real_or_simulated_email(rec_email, subject, body_text)
+
+        msg_parts = [f"Sent {len(invited_emails)} invitation email(s) to join GoodDeeds.space!"]
+        if already_registered:
+            msg_parts.append(f"Skipped {len(already_registered)} already-registered address(es).")
+        if invalid_tokens:
+            msg_parts.append(f"Ignored {len(invalid_tokens)} invalid entry(ies).")
+
+        return json_response({
+            "success": True,
+            "count": len(invited_emails),
+            "sent_count": len(invited_emails),
+            "invited_emails": invited_emails,
+            "already_registered": already_registered,
+            "invalid_emails": invalid_tokens,
+            "invalid_entries": invalid_tokens,
+            "message": " ".join(msg_parts)
+        })
+
+    # GET SENT WEBSITE INVITATIONS FOR CURRENT USER
+    if path_only in ("/api/invitations/site", "/api/invite") and method == "GET":
+        if not user:
+            return json_response({"invitations": [], "success": True})
+        conn = get_db()
+        cursor = conn.cursor()
+        # Sync any pending invitations whose recipient email is now a registered user
+        cursor.execute("""
+            UPDATE site_invitations
+            SET status = 'ACCEPTED'
+            WHERE status = 'PENDING'
+              AND EXISTS (SELECT 1 FROM users u WHERE LOWER(u.email) = LOWER(site_invitations.recipient_email))
+        """)
+        conn.commit()
+        cursor.execute("""
+            SELECT si.id, si.sender_id, si.sender_name, si.recipient_email, si.message, si.status, si.created_at,
+                   u.id as registered_user_id, u.username as registered_username, u.avatar_url as registered_avatar
+            FROM site_invitations si
+            LEFT JOIN users u ON LOWER(u.email) = LOWER(si.recipient_email)
+            WHERE si.sender_id = ?
+            ORDER BY si.created_at DESC, si.id DESC
+        """, (user["id"],))
+        rows = [dict(r) for r in cursor.fetchall()]
+        conn.close()
+        return json_response({"invitations": rows, "success": True})
 
     # GET PENDING GROUP INVITATIONS FOR CURRENT USER
     if path_only in ("/api/invitations/pending", "/api/groups/invitations/pending") and method == "GET":

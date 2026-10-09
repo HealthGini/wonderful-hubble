@@ -3667,6 +3667,229 @@ async function handleGroupInviteSubmit(e) {
   }
 }
 
+/* ================= WEBSITE BULK EMAIL INVITATIONS ================= */
+
+function parseBulkEmailsClient(rawText) {
+  if (!rawText || !String(rawText).trim()) return { valid: [], invalid: [] };
+  const chunks = String(rawText).split(/[,;\n\r]+/);
+  const emailRegex = /^[^@\s<>]+@[^@\s<>]+\.[^@\s<>]+$/;
+  const angleRegex = /<([^<>]+)>/;
+  const valid = [];
+  const invalid = [];
+  const seen = new Set();
+
+  chunks.forEach(chunk => {
+    const c = chunk.trim();
+    if (!c) return;
+    const angleMatch = c.match(angleRegex);
+    let candidates = [];
+    if (angleMatch && angleMatch[1]) {
+      candidates = [angleMatch[1].trim()];
+    } else {
+      const subParts = c.split(/\s+/).map(p => p.trim().replace(/^['"()]+|['"()]+$/g, "")).filter(Boolean);
+      if (subParts.length > 1 && subParts.every(p => p.includes("@"))) {
+        candidates = subParts;
+      } else {
+        candidates = [c.replace(/^['"()]+|['"()]+$/g, "")];
+      }
+    }
+    candidates.forEach(cand => {
+      if (!cand) return;
+      if (emailRegex.test(cand)) {
+        const low = cand.toLowerCase();
+        if (!seen.has(low)) {
+          seen.add(low);
+          valid.push(cand);
+        }
+      } else {
+        invalid.push(cand);
+      }
+    });
+  });
+
+  return { valid, invalid };
+}
+
+function openInviteWebsiteModal() {
+  if (!currentUser) {
+    showToast("Please log in to invite friends to GoodDeeds.space.");
+    openModal("modal-login");
+    return;
+  }
+  openModal("modal-invite-website");
+  updateSiteInviteEmailPreview();
+  loadSiteInvitationsHistory();
+}
+
+function updateSiteInviteEmailPreview() {
+  const input = document.getElementById("site-invite-emails");
+  const preview = document.getElementById("site-invite-emails-preview");
+  const submitBtn = document.getElementById("site-invite-submit-btn");
+  if (!input || !preview) return;
+
+  const { valid, invalid } = parseBulkEmailsClient(input.value);
+  if (submitBtn) {
+    submitBtn.innerHTML = valid.length > 0
+      ? `<span>📨 Send ${valid.length} Invitation${valid.length === 1 ? "" : "s"} ↗</span>`
+      : `<span>📨 Send Bulk Invitations ↗</span>`;
+  }
+
+  if (valid.length === 0 && invalid.length === 0) {
+    preview.classList.add("hidden");
+    preview.innerHTML = "";
+    return;
+  }
+
+  preview.classList.remove("hidden");
+  preview.innerHTML = `
+    <div class="p-3 rounded-2xl bg-slate-50 border border-slate-200 space-y-2">
+      <div class="flex flex-wrap items-center justify-between gap-2 text-xs font-extrabold">
+        <span class="text-emerald-800">✅ ${valid.length} valid email${valid.length === 1 ? "" : "s"} ready to invite</span>
+        ${invalid.length > 0 ? `<span class="text-amber-700">⚠️ ${invalid.length} unrecognized entry</span>` : ""}
+      </div>
+      ${valid.length > 0 ? `
+        <div class="flex flex-wrap gap-1.5 max-h-28 overflow-y-auto pt-0.5">
+          ${valid.map(em => `
+            <span class="inline-flex items-center space-x-1.5 px-2.5 py-1 rounded-full text-xs font-bold bg-emerald-100/80 text-emerald-950 border border-emerald-300">
+              <span>✉️ ${escapeHtml(em)}</span>
+              <button type="button" onclick="removeSiteInviteEmailChip('${escapeHtml(em).replace(/'/g, "\\'")}')" class="text-emerald-700 hover:text-red-600 font-black ml-1" title="Remove">×</button>
+            </span>
+          `).join("")}
+        </div>
+      ` : ""}
+    </div>
+  `;
+}
+
+function removeSiteInviteEmailChip(emailToRemove) {
+  const input = document.getElementById("site-invite-emails");
+  if (!input) return;
+  const { valid } = parseBulkEmailsClient(input.value);
+  const filtered = valid.filter(e => e.toLowerCase() !== String(emailToRemove).toLowerCase());
+  input.value = filtered.join(", ");
+  updateSiteInviteEmailPreview();
+}
+
+function clearSiteInviteEmails() {
+  const input = document.getElementById("site-invite-emails");
+  const fileInp = document.getElementById("site-invite-file-input");
+  if (input) input.value = "";
+  if (fileInp) fileInp.value = "";
+  updateSiteInviteEmailPreview();
+}
+
+function handleSiteInviteFileSelect(e) {
+  const file = e.target && e.target.files ? e.target.files[0] : null;
+  if (!file) return;
+  const reader = new FileReader();
+  reader.onload = () => {
+    const content = String(reader.result || "");
+    const input = document.getElementById("site-invite-emails");
+    if (input) {
+      const existing = input.value.trim();
+      input.value = existing ? `${existing}\n${content}` : content;
+      updateSiteInviteEmailPreview();
+      const { valid } = parseBulkEmailsClient(input.value);
+      showToast(`📄 Imported file — ${valid.length} valid email address(es) ready!`);
+    }
+  };
+  reader.readAsText(file);
+}
+
+async function loadSiteInvitationsHistory() {
+  const listEl = document.getElementById("site-invite-history-list");
+  const countEl = document.getElementById("site-invite-history-count");
+  if (!listEl || !currentUser) return;
+
+  try {
+    const data = await apiFetch("/invitations/site");
+    const invites = data.invitations || [];
+    if (countEl) countEl.textContent = `${invites.length} Sent`;
+    if (invites.length === 0) {
+      listEl.innerHTML = `<p class="text-xs text-slate-400 font-medium py-2">No website invitations sent yet.</p>`;
+      return;
+    }
+    listEl.innerHTML = invites.map(inv => {
+      const isAccepted = inv.status === "ACCEPTED";
+      const badgeClass = isAccepted
+        ? "bg-emerald-100 text-emerald-900 border-emerald-300"
+        : "bg-amber-100 text-amber-900 border-amber-300";
+      const badgeIcon = isAccepted ? "✅" : "⏱️";
+      return `
+        <div class="p-2.5 rounded-xl bg-slate-50 border border-slate-200 flex items-center justify-between gap-2 text-xs">
+          <div class="min-w-0 truncate">
+            <span class="font-extrabold text-slate-900">${escapeHtml(inv.recipient_email)}</span>
+            ${inv.registered_username ? `<span class="ml-1.5 text-emerald-700 font-bold">(@${escapeHtml(inv.registered_username)})</span>` : ""}
+            <span class="block text-[11px] text-slate-400 font-medium">${escapeHtml(inv.created_at || "Just now")}</span>
+          </div>
+          <span class="px-2.5 py-0.5 rounded-lg border font-black text-[11px] shrink-0 ${badgeClass}">
+            ${badgeIcon} ${escapeHtml(inv.status)}
+          </span>
+        </div>
+      `;
+    }).join("");
+  } catch (err) {
+    listEl.innerHTML = `<p class="text-xs text-slate-400 font-medium py-2">Could not load invitation history.</p>`;
+  }
+}
+
+async function handleSiteInviteSubmit(e) {
+  e.preventDefault();
+  if (!currentUser) {
+    showToast("Please log in to send invitations.");
+    openModal("modal-login");
+    return;
+  }
+  const emailsInput = document.getElementById("site-invite-emails");
+  const messageInput = document.getElementById("site-invite-message");
+  const rawEmails = emailsInput ? emailsInput.value.trim() : "";
+  const message = messageInput ? messageInput.value.trim() : "";
+
+  const { valid } = parseBulkEmailsClient(rawEmails);
+  if (valid.length === 0) {
+    showToast("⚠️ Please enter at least one valid email address.");
+    return;
+  }
+
+  const submitBtn = document.getElementById("site-invite-submit-btn");
+  const origHtml = submitBtn ? submitBtn.innerHTML : "";
+  if (submitBtn) {
+    submitBtn.disabled = true;
+    submitBtn.innerHTML = `<span>Sending ${valid.length} Invitation(s)...</span>`;
+  }
+
+  try {
+    const data = await apiFetch("/invitations/site", {
+      method: "POST",
+      body: JSON.stringify({ emails: valid, message })
+    });
+    if (submitBtn) {
+      submitBtn.disabled = false;
+      submitBtn.innerHTML = origHtml;
+    }
+    if (emailsInput) emailsInput.value = "";
+    if (messageInput) messageInput.value = "";
+    updateSiteInviteEmailPreview();
+    await loadSiteInvitationsHistory();
+    showToast("✅ " + (data.message || `Sent ${data.count} invitation(s)!`));
+  } catch (err) {
+    if (submitBtn) {
+      submitBtn.disabled = false;
+      submitBtn.innerHTML = origHtml;
+    }
+    showToast("❌ " + err.message);
+  }
+}
+
+window.openInviteWebsiteModal = openInviteWebsiteModal;
+window.parseBulkEmailsClient = parseBulkEmailsClient;
+window.updateSiteInviteEmailPreview = updateSiteInviteEmailPreview;
+window.removeSiteInviteEmailChip = removeSiteInviteEmailChip;
+window.clearSiteInviteEmails = clearSiteInviteEmails;
+window.handleSiteInviteFileSelect = handleSiteInviteFileSelect;
+window.loadSiteInvitationsHistory = loadSiteInvitationsHistory;
+window.handleSiteInviteSubmit = handleSiteInviteSubmit;
+
 /* ================= PENDING GROUP INVITATIONS ON-SITE ALERTS ================= */
 
 async function checkPendingInvitations() {

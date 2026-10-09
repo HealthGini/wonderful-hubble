@@ -2668,3 +2668,100 @@ class TestRegressionCoverage(GoodDeedsTestCase):
         self.assertIn("▼ Expand All Cards", js)
         self.assertIn("▲ Collapse All Cards", js)
 
+    def test_website_bulk_email_invitations(self):
+        """
+        Verifies the Invite People to GoodDeeds.space feature (single and bulk email invitations):
+        1. UI elements and handlers exist in static/index.html and static/app.js (#modal-invite-website,
+           #site-invite-emails, #site-invite-file-input, #site-invite-emails-preview, #nav-invite-friends-btn,
+           #feed-invite-friends-btn, openInviteWebsiteModal, handleSiteInviteSubmit, parseBulkEmailsClient).
+        2. POST /api/invitations/site parses bulk email lists across commas, semicolons, newlines, whitespace,
+           and 'Display Name <email@domain.com>' formats, deduplicates addresses, skips already-registered
+           users, logs invitation emails to email_outbox, and stores records in site_invitations.
+        3. GET /api/invitations/site returns the sender's sent invitations with status tracking.
+        4. Signing up with an invited email transitions the invitation status from PENDING to ACCEPTED
+           and sends a SITE_INVITE_ACCEPTED notification to the inviter.
+        """
+        base_dir = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+        with open(os.path.join(base_dir, "static", "index.html"), "r", encoding="utf-8") as f:
+            html = f.read()
+        with open(os.path.join(base_dir, "static", "app.js"), "r", encoding="utf-8") as f:
+            js = f.read()
+
+        self.assertIn('id="modal-invite-website"', html)
+        self.assertIn('id="site-invite-emails"', html)
+        self.assertIn('id="site-invite-file-input"', html)
+        self.assertIn('id="site-invite-emails-preview"', html)
+        self.assertIn('id="site-invite-message"', html)
+        self.assertIn('id="site-invite-history-list"', html)
+        self.assertIn('id="nav-invite-friends-btn"', html)
+        self.assertNotIn('id="feed-invite-friends-btn"', html)
+        self.assertIn("function openInviteWebsiteModal()", js)
+        self.assertIn("window.openInviteWebsiteModal = openInviteWebsiteModal", js)
+        self.assertIn("function parseBulkEmailsClient(rawText)", js)
+        self.assertIn("async function handleSiteInviteSubmit(e)", js)
+        self.assertIn("window.handleSiteInviteSubmit = handleSiteInviteSubmit", js)
+        self.assertIn("function handleSiteInviteFileSelect(e)", js)
+
+        token_maya = self.get_token("maya@gooddeeds.space")
+        headers_maya = {"Authorization": f"Bearer {token_maya}"}
+
+        bulk_input = (
+            "alex.neighbor@example.org, "
+            "Samira Khan <samira.khan@example.org>;\n"
+            "jordan.lee@example.org\n"
+            "ALEX.NEIGHBOR@example.org, "
+            "elena@gooddeeds.space, "
+            "not-an-email"
+        )
+        status_inv, _, body_inv = self.make_request("POST", "/api/invitations/site", headers=headers_maya, body={
+            "emails": bulk_input,
+            "message": "Come join our neighborhood community on GoodDeeds.space!"
+        })
+        self.assertEqual(status_inv, 200)
+        self.assertEqual(body_inv["count"], 3)
+        self.assertEqual(body_inv["sent_count"], 3)
+        self.assertEqual(
+            body_inv["invited_emails"],
+            ["alex.neighbor@example.org", "samira.khan@example.org", "jordan.lee@example.org"]
+        )
+        self.assertIn("elena@gooddeeds.space", body_inv["already_registered"])
+        self.assertIn("not-an-email", body_inv["invalid_emails"])
+
+        # Verify GET /api/invitations/site lists the 3 sent invitations as PENDING
+        status_list, _, body_list = self.make_request("GET", "/api/invitations/site", headers=headers_maya)
+        self.assertEqual(status_list, 200)
+        inv_by_email = {row["recipient_email"]: row for row in body_list["invitations"]}
+        for addr in ["alex.neighbor@example.org", "samira.khan@example.org", "jordan.lee@example.org"]:
+            self.assertIn(addr, inv_by_email)
+            self.assertEqual(inv_by_email[addr]["status"], "PENDING")
+
+        # Verify email outbox contains the invitation emails
+        status_outbox, _, body_outbox = self.make_request("GET", "/api/outbox", headers=headers_maya)
+        self.assertEqual(status_outbox, 200)
+        outbox_recipients = [e["recipient_email"] for e in body_outbox.get("emails", [])]
+        for addr in ["alex.neighbor@example.org", "samira.khan@example.org", "jordan.lee@example.org"]:
+            self.assertIn(addr, outbox_recipients)
+
+        # When an invited user signs up, the invitation status transitions to ACCEPTED and notifies the inviter
+        status_signup, _, body_signup = self.make_request("POST", "/api/auth/signup", body={
+            "username": "alex_neighbor",
+            "display_name": "Alex Neighbor",
+            "email": "alex.neighbor@example.org",
+            "password": "password123"
+        })
+        self.assertIn(status_signup, (200, 201))
+
+        status_list2, _, body_list2 = self.make_request("GET", "/api/invitations/site", headers=headers_maya)
+        self.assertEqual(status_list2, 200)
+        inv_by_email2 = {row["recipient_email"]: row for row in body_list2["invitations"]}
+        self.assertEqual(inv_by_email2["alex.neighbor@example.org"]["status"], "ACCEPTED")
+        self.assertEqual(inv_by_email2["samira.khan@example.org"]["status"], "PENDING")
+
+        status_notif, _, body_notif = self.make_request("GET", "/api/notifications", headers=headers_maya)
+        self.assertEqual(status_notif, 200)
+        accepted_notifs = [
+            n for n in body_notif.get("notifications", [])
+            if n.get("notif_type") == "SITE_INVITE_ACCEPTED" and "alex_neighbor" in n.get("message", "")
+        ]
+        self.assertTrue(len(accepted_notifs) >= 1)
+

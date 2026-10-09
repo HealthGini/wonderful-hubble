@@ -141,6 +141,11 @@
                 </button>
               </div>
             </div>
+
+            <!-- Invite Friends Button -->
+            <button id="nav-invite-friends-btn" type="button" onclick="openInviteWebsiteModal()" class="px-4 py-2 rounded-full font-bold text-sm bg-emerald-50 text-emerald-900 border border-emerald-200 hover:bg-emerald-100 transition flex items-center space-x-1.5 shadow-sm touch-target" title="Invite Friends by Email">
+              <span>💌 Invite</span>
+            </button>
             
             <!-- Real-Time In-App Notifications Bell & Dropdown -->
             <div class="relative group" id="nav-notifications-container">
@@ -176,6 +181,9 @@
                   <a href="/#/profile" onclick="closeProfileDropdown()" class="block px-4 py-2.5 text-sm font-bold text-stone-700 hover:bg-stone-50 transition flex items-center space-x-2">
                     <span>👤</span><span>View My Profile →</span>
                   </a>
+                  <button type="button" onclick="closeProfileDropdown(); openInviteWebsiteModal();" class="w-full text-left px-4 py-2.5 text-sm font-bold text-emerald-700 hover:bg-emerald-50 transition flex items-center space-x-2">
+                    <span>💌</span><span>Invite Friends →</span>
+                  </button>
                   <a id="nav-moderation-link" href="/#/moderation" onclick="closeProfileDropdown()" class="hidden px-4 py-2.5 text-sm font-bold text-amber-800 bg-amber-50/80 hover:bg-amber-100 transition flex items-center space-x-2">
                     <span>🛡️</span><span>Moderation Queue →</span>
                   </a>
@@ -201,6 +209,9 @@
           </button>
           <button onclick="closeMobileMenu(); openModal('modal-post')" class="w-full py-2.5 px-4 rounded-full font-black text-sm bg-gradient-to-r from-indigo-600 to-violet-600 text-white shadow-md flex items-center justify-center space-x-2 touch-target">
             <span>✍️ Create New Post</span>
+          </button>
+          <button onclick="closeMobileMenu(); openInviteWebsiteModal()" class="w-full py-2.5 px-4 rounded-full font-black text-sm bg-gradient-to-r from-emerald-600 to-teal-600 text-white shadow-md flex items-center justify-center space-x-2 touch-target">
+            <span>💌 Invite Friends</span>
           </button>
         </div>
       </div>
@@ -1288,6 +1299,68 @@
           <button type="submit" class="px-8 py-3 bg-indigo-600 hover:bg-indigo-700 text-white font-bold rounded-xl transition shadow-sm touch-target">Send Invitation ↗</button>
         </div>
       </form>
+    </div>
+  </dialog>
+
+  <!-- MODAL: INVITE OTHERS TO JOIN WEBSITE (SINGLE OR BULK EMAILS) -->
+  <dialog id="modal-invite-website" class="p-0 rounded-3xl max-w-xl w-full shadow-2xl border-2 border-slate-200 m-auto max-h-[90vh] overflow-y-auto">
+    <div class="p-6 sm:p-9 space-y-6 bg-white text-left font-sans">
+      <div class="flex justify-between items-start border-b border-slate-100 pb-4">
+        <div class="space-y-1">
+          <h3 class="text-2xl sm:text-3xl font-black text-slate-900 flex items-center space-x-2">
+            <span>💌</span><span>Invite Others to GoodDeeds.space</span>
+          </h3>
+          <p class="text-xs sm:text-sm font-semibold text-slate-500">
+            Invite friends, neighbors, or colleagues by email — enter a single address or paste multiple emails in bulk.
+          </p>
+        </div>
+        <button type="button" onclick="closeModal('modal-invite-website')" class="w-10 h-10 rounded-full flex items-center justify-center text-stone-400 hover:text-stone-700 hover:bg-stone-100 text-2xl font-black transition touch-target shrink-0" aria-label="Close modal" title="Close">✕</button>
+      </div>
+
+      <form onsubmit="handleSiteInviteSubmit(event)" class="space-y-5">
+        <div class="space-y-2">
+          <div class="flex flex-wrap items-center justify-between gap-2">
+            <label for="site-invite-emails" class="block text-sm font-extrabold text-slate-800">
+              Recipient Email Address(es) <span class="text-red-500">*</span>
+            </label>
+            <label class="inline-flex items-center space-x-1.5 px-3 py-1 rounded-lg bg-emerald-50 hover:bg-emerald-100 text-emerald-800 border border-emerald-200 font-bold text-xs cursor-pointer transition">
+              <span>📄 Import CSV / Text List</span>
+              <input type="file" id="site-invite-file-input" accept=".csv,.txt" onchange="handleSiteInviteFileSelect(event)" class="hidden">
+            </label>
+          </div>
+          <textarea id="site-invite-emails" rows="4" required oninput="updateSiteInviteEmailPreview()" placeholder="Enter one or more email addresses separated by commas, semicolons, or new lines:&#10;alex@example.com, priya@community.org&#10;Jordan Taylor <jordan@neighborhood.net>" class="w-full px-4 py-3 rounded-2xl border-2 border-slate-300 font-medium text-sm text-slate-900 bg-slate-50 focus:bg-white focus:border-emerald-600 focus:outline-none transition"></textarea>
+          <div class="flex flex-wrap items-center justify-between gap-2 text-xs text-slate-500 font-medium">
+            <span>Supports bulk paste from spreadsheets, contact lists, or comma/line-separated emails.</span>
+            <button type="button" onclick="clearSiteInviteEmails()" class="text-slate-400 hover:text-red-600 font-bold transition">Clear list</button>
+          </div>
+          <div id="site-invite-emails-preview" class="hidden pt-1"></div>
+        </div>
+
+        <div>
+          <label for="site-invite-message" class="block text-sm font-extrabold text-slate-800 mb-1.5">
+            Personal Invitation Note <span class="text-slate-400 font-normal text-xs">(Optional)</span>
+          </label>
+          <textarea id="site-invite-message" rows="3" placeholder="Join me on GoodDeeds.space to recognize everyday kindness with public Kudos and share local community resources & events!" class="w-full px-4 py-3 rounded-2xl border-2 border-slate-300 font-medium text-sm text-slate-900 bg-slate-50 focus:bg-white focus:border-emerald-600 focus:outline-none transition"></textarea>
+        </div>
+
+        <div class="flex flex-wrap items-center justify-end gap-3 pt-2 border-t border-slate-100">
+          <button type="button" onclick="closeModal('modal-invite-website')" class="px-5 py-3 bg-slate-100 hover:bg-slate-200 text-slate-700 font-bold text-sm rounded-xl transition">Cancel</button>
+          <button type="submit" id="site-invite-submit-btn" class="px-7 py-3 bg-gradient-to-r from-emerald-600 to-teal-600 hover:from-emerald-700 hover:to-teal-700 text-white font-extrabold text-sm rounded-xl shadow-md shadow-emerald-600/20 transition touch-target flex items-center space-x-2">
+            <span>📨 Send Bulk Invitations ↗</span>
+          </button>
+        </div>
+      </form>
+
+      <!-- Sent Invitations History -->
+      <div id="site-invite-history-section" class="pt-4 border-t border-slate-200 space-y-3">
+        <div class="flex items-center justify-between">
+          <h4 class="text-xs font-extrabold uppercase tracking-wider text-slate-500">Your Sent Website Invitations</h4>
+          <span id="site-invite-history-count" class="text-[11px] font-black bg-emerald-50 text-emerald-800 px-2.5 py-0.5 rounded-full border border-emerald-200">0 Sent</span>
+        </div>
+        <div id="site-invite-history-list" class="max-h-44 overflow-y-auto space-y-2 pr-1">
+          <p class="text-xs text-slate-400 font-medium py-2">No website invitations sent yet.</p>
+        </div>
+      </div>
     </div>
   </dialog>
 

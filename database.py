@@ -410,6 +410,19 @@ def init_db():
     """)
 
     cursor.execute("""
+    CREATE TABLE IF NOT EXISTS site_invitations (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        sender_id INTEGER,
+        sender_name TEXT,
+        recipient_email TEXT NOT NULL,
+        message TEXT,
+        status TEXT DEFAULT 'PENDING',
+        created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+        FOREIGN KEY (sender_id) REFERENCES users(id) ON DELETE SET NULL
+    )
+    """)
+
+    cursor.execute("""
     CREATE TABLE IF NOT EXISTS group_bans (
         group_id INTEGER NOT NULL,
         user_id INTEGER NOT NULL,
