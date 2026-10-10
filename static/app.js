@@ -733,32 +733,9 @@ function extractMatchingSnippet(text, rawQuery, maxLen = 150) {
 
 function buildSearchMatchInfo(item, searchContext) {
   const query = (searchContext && searchContext.query) ? searchContext.query.trim() : "";
-  const formatFilter = (searchContext && searchContext.formatFilter) ? searchContext.formatFilter.trim().toUpperCase() : "";
-  const categoryFilter = (searchContext && searchContext.categoryFilter) ? searchContext.categoryFilter.trim() : "";
-  const typeFilter = (searchContext && searchContext.typeFilter) ? searchContext.typeFilter.trim().toUpperCase() : "";
   const tokens = getSearchTokens(query);
 
   const reasons = [];
-  const isKudos = item.item_type === "KUDOS";
-  const isEvent = !isKudos && (item.post_subtype === "EVENT" || Boolean(item.event_date));
-  const isResource = !isKudos && !isEvent && (item.post_subtype === "RESOURCE" || Boolean(item.resource_url));
-
-  if (formatFilter === "RESOURCE") {
-    reasons.push("📚 Community Resource");
-  } else if (formatFilter === "EVENT") {
-    reasons.push(item.event_date ? `📅 Community Event (${escapeHtml(item.event_date)})` : "📅 Community Event");
-  } else if (formatFilter === "GENERAL") {
-    reasons.push("📝 General Post");
-  } else if (typeFilter === "KUDOS") {
-    reasons.push("🌟 Gratitude Kudos");
-  } else if (typeFilter === "POST") {
-    reasons.push(isEvent ? "📅 Community Event" : (isResource ? "📚 Community Resource" : "📝 General Post"));
-  }
-
-  if (categoryFilter) {
-    reasons.push(`🏷️ Category: ${escapeHtml(item.category || categoryFilter)}`);
-  }
-
   let matchedInExtractedFile = false;
   if (tokens.length > 0) {
     const checkField = (val) => {
@@ -767,7 +744,7 @@ function buildSearchMatchInfo(item, searchContext) {
       return tokens.some(t => lower.includes(t.toLowerCase()));
     };
     if (checkField(item.title)) reasons.push("Matched in Title");
-    if (checkField(item.category) && !categoryFilter) reasons.push(`🏷️ Category: ${escapeHtml(item.category)}`);
+    if (checkField(item.category)) reasons.push(`🏷️ Category: ${escapeHtml(item.category)}`);
     if (checkField(item.target_audience)) reasons.push("👥 Target Audience");
     if (checkField(item.target_geography)) reasons.push("📍 Geography");
     if (checkField(item.contact_info)) reasons.push("📇 Key Contact");
@@ -781,17 +758,17 @@ function buildSearchMatchInfo(item, searchContext) {
     if (checkField(item.author_name) || checkField(item.recipient_name) || /^author:/i.test(query)) {
       reasons.push("👤 Member / Author");
     }
-    if (checkField(item.event_date)) reasons.push("📅 Event Date");
+    if (checkField(item.event_date) || checkField(item.event_time)) reasons.push("📅 Event Date");
+    if (Array.isArray(item.groups) && item.groups.some(g => checkField(g && g.name))) {
+      reasons.push("👥 Space");
+    }
+    if (reasons.length === 0) {
+      reasons.push("🔍 Keyword Match");
+    }
   }
 
-  if (reasons.length === 0) {
-    if (isKudos) reasons.push("🌟 Gratitude Kudos");
-    else if (isEvent) reasons.push("📅 Community Event");
-    else if (isResource) reasons.push("📚 Community Resource");
-    else reasons.push("📝 General Post");
-  }
-
-  const snippetSource = matchedInExtractedFile ? item.extracted_text : item.content;
+  const cleanContent = String(item.content || "").replace(/^📅\s*Event Date:[^\n]*\n+/i, "");
+  const snippetSource = matchedInExtractedFile ? item.extracted_text : cleanContent;
   const snippetHtml = extractMatchingSnippet(snippetSource, query, 145);
 
   return {
@@ -1032,6 +1009,8 @@ function renderFeedCard(item, isProfileView = false, searchContext = null) {
     window._attachmentCache[`attachment_${item.id}_${idx}`] = u;
   });
 
+  const rawEventTime = String(item.event_time || item.time || ((item.content || "").match(/\[Time:\s*([^\]]+)\]/i) || [])[1] || "").trim();
+
   const compactSearchHtml = isCompactSearch ? (() => {
     const matchInfo = buildSearchMatchInfo(item, searchContext);
     const q = matchInfo.query;
@@ -1065,11 +1044,13 @@ function renderFeedCard(item, isProfileView = false, searchContext = null) {
           </span>
         </div>
 
-        <!-- Why it matched badges -->
+        <!-- Why it matched badges (shown only when searching via search bar) -->
+        ${q && matchInfo.reasons.length > 0 ? `
         <div id="feed-card-match-reason-${item.id}" class="flex flex-wrap items-center gap-1.5 text-xs">
           <span class="font-extrabold uppercase tracking-wider text-[10px] text-amber-900 bg-amber-100/90 border border-amber-300 px-2 py-0.5 rounded-md">🎯 Why it matched:</span>
           ${matchInfo.reasons.map(r => `<span class="px-2 py-0.5 rounded-md bg-slate-100 text-slate-700 font-bold border border-slate-200">${r}</span>`).join("")}
         </div>
+        ` : ""}
 
         <!-- Concise match snippet & key metadata (hidden when full card is expanded) -->
         <div id="feed-card-compact-extra-${item.id}" class="${isCardExpanded ? 'hidden ' : ''}space-y-2 pt-0.5">
@@ -1079,8 +1060,7 @@ function renderFeedCard(item, isProfileView = false, searchContext = null) {
             </p>
           ` : ""}
           <div class="flex flex-wrap items-center gap-2 text-xs">
-            ${!isKudos && item.category ? `<span class="px-2.5 py-1 rounded-lg bg-violet-50 text-violet-900 border border-violet-200 font-bold">🏷️ ${highlightSearchMatches(item.category, q)}</span>` : ""}
-            ${!isKudos && item.event_date ? `<span class="px-2.5 py-1 rounded-lg bg-rose-50 text-rose-900 border border-rose-200 font-bold">📅 Event Date: ${escapeHtml(item.event_date)}</span>` : ""}
+            ${!isKudos && (item.event_date || rawEventTime) ? `<span class="px-2.5 py-1 rounded-lg bg-rose-50 text-rose-900 border border-rose-200 font-bold">${item.event_date ? `📅 Event Date: ${escapeHtml(item.event_date)}` : ""}${rawEventTime ? `${item.event_date ? " • " : ""}🕒 ${escapeHtml(rawEventTime)}` : ""}</span>` : ""}
             ${!isKudos && item.target_audience ? `<span class="px-2.5 py-1 rounded-lg bg-slate-100 text-slate-700 font-semibold">👥 ${highlightSearchMatches(item.target_audience, q)}</span>` : ""}
             ${!isKudos && item.target_geography ? `<span class="px-2.5 py-1 rounded-lg bg-slate-100 text-slate-700 font-semibold">📍 ${highlightSearchMatches(item.target_geography, q)}</span>` : ""}
             ${!isKudos && item.contact_info ? `<span class="px-2.5 py-1 rounded-lg bg-slate-100 text-slate-700 font-semibold">📇 ${highlightSearchMatches(item.contact_info, q)}</span>` : ""}
@@ -1116,7 +1096,7 @@ function renderFeedCard(item, isProfileView = false, searchContext = null) {
       <div id="feed-card-details-${item.id}" class="${isCompactSearch && !isCardExpanded ? 'hidden ' : ''}space-y-5">
 
       <!-- Author & Recipient Banner -->
-      <div class="flex flex-wrap justify-between items-center gap-4">
+      <div class="${isCompactSearch ? 'hidden ' : ''}flex flex-wrap justify-between items-center gap-4">
         <div class="flex items-center space-x-3.5">
           ${isKudos ? `
             <a href="/#/user/${item.recipient_id}" class="relative shrink-0">
@@ -1162,7 +1142,13 @@ function renderFeedCard(item, isProfileView = false, searchContext = null) {
             <span class="text-amber-500 font-serif text-2xl leading-none select-none mr-1">“</span>${escapeHtml(item.content)}<span class="text-amber-500 font-serif text-2xl leading-none select-none ml-1">”</span>
           </div>
         ` : `
-          <p class="text-slate-700 text-lg whitespace-pre-line font-medium leading-relaxed">${escapeHtml(item.content)}</p>
+          ${(item.event_date || rawEventTime) ? `
+            <div class="inline-flex flex-wrap items-center gap-2 px-3.5 py-1.5 rounded-xl bg-rose-50 text-rose-900 border border-rose-200 text-xs font-extrabold">
+              ${item.event_date ? `<span>📅 Event Date: ${escapeHtml(item.event_date)}</span>` : ""}
+              ${rawEventTime ? `<span>${item.event_date ? "• " : ""}🕒 ${escapeHtml(rawEventTime)}</span>` : ""}
+            </div>
+          ` : ""}
+          <p class="text-slate-700 text-lg whitespace-pre-line font-medium leading-relaxed">${escapeHtml(item.content).replace(/^📅\s*Event Date:[^\n]*\n+/i, "")}</p>
           ${(item.target_audience || item.target_geography || item.contact_info) ? `
             <div class="mt-3 p-3.5 sm:p-4 rounded-2xl bg-indigo-50/50 border border-indigo-100/90 grid grid-cols-1 sm:grid-cols-3 gap-3 text-xs">
               ${item.target_audience ? `
@@ -2150,15 +2136,13 @@ async function reviewPostStep(e) {
   const subtypeRadio = document.querySelector("input[name='post_subtype']:checked, input[name='post-subtype']:checked");
   const rawSubtype = subtypeRadio ? subtypeRadio.value : "GENERAL";
   const subtype = rawSubtype === "Community Event" ? "EVENT" : (rawSubtype === "Community Resource" ? "RESOURCE" : (rawSubtype === "General Post" ? "GENERAL" : rawSubtype));
-  const eventDate = document.getElementById("post-event-date") ? document.getElementById("post-event-date").value : "";
+  const isEventSubtype = (subtype === "Community Event" || subtype === "EVENT");
+  const eventDate = (isEventSubtype && document.getElementById("post-event-date")) ? document.getElementById("post-event-date").value.trim() : "";
+  const eventTime = (isEventSubtype && document.getElementById("post-event-time")) ? document.getElementById("post-event-time").value.trim() : "";
 
   if (!title || !content) {
     showToast("Please provide both a title and description/story content.");
     return;
-  }
-
-  if ((subtype === "Community Event" || subtype === "EVENT") && eventDate) {
-    content = `📅 Event Date: ${eventDate}\n\n${content}`;
   }
 
   const linkInputs = document.querySelectorAll(".post-link-input");
@@ -2198,6 +2182,7 @@ async function reviewPostStep(e) {
     group_ids,
     post_subtype: subtype,
     event_date: eventDate,
+    event_time: eventTime,
     target_audience,
     target_geography,
     contact_info
@@ -2256,8 +2241,9 @@ async function reviewPostStep(e) {
   previewBox.innerHTML = `
     <div class="font-extrabold text-2xl text-slate-900 tracking-tight">${escapeHtml(title)}</div>
     <div class="flex flex-wrap gap-2 pt-1">
-      <span class="px-3 py-1 bg-emerald-50 text-emerald-800 border border-emerald-200 rounded-full text-xs font-bold">${(subtype === "Community Event" || subtype === "EVENT") ? "📅 Community Event" : (subtype === "Community Resource" || subtype === "RESOURCE") ? "📚 Community Resource" : "📝 General Post"}</span>
+      <span class="px-3 py-1 bg-emerald-50 text-emerald-800 border border-emerald-200 rounded-full text-xs font-bold">${isEventSubtype ? "📅 Community Event" : (subtype === "Community Resource" || subtype === "RESOURCE") ? "📚 Community Resource" : "📝 General Post"}</span>
       ${category ? `<span class="px-3 py-1 bg-violet-50 text-violet-800 border border-violet-200 rounded-full text-xs font-bold">🏷️ ${escapeHtml(category)}</span>` : ""}
+      ${isEventSubtype && (eventDate || eventTime) ? `<span class="px-3 py-1 bg-rose-50 text-rose-900 border border-rose-200 rounded-full text-xs font-bold">${eventDate ? `📅 Event Date: ${escapeHtml(eventDate)}` : ""}${eventTime ? `${eventDate ? " • " : ""}🕒 ${escapeHtml(eventTime)}` : ""}</span>` : ""}
     </div>
     <p class="text-base text-slate-700 pt-3 whitespace-pre-line font-medium leading-relaxed">${escapeHtml(content)}</p>
     ${optionalMetaPreviewHtml}
@@ -2312,6 +2298,8 @@ async function confirmPublishPost() {
     document.getElementById("post-input-content").value = "";
     document.getElementById("post-input-url").value = "";
     if (document.getElementById("post-category")) document.getElementById("post-category").value = "";
+    if (document.getElementById("post-event-date")) document.getElementById("post-event-date").value = "";
+    if (document.getElementById("post-event-time")) document.getElementById("post-event-time").value = "";
     if (document.getElementById("post-target-audience")) document.getElementById("post-target-audience").value = "";
     if (document.getElementById("post-target-geography")) document.getElementById("post-target-geography").value = "";
     if (document.getElementById("post-contact-info")) document.getElementById("post-contact-info").value = "";
@@ -2353,15 +2341,12 @@ async function reviewCurateStep(e) {
   const theme = document.getElementById("res-theme").value;
   const subtypeRadio = document.querySelector("input[name='curate-subtype']:checked");
   const subtype = subtypeRadio ? subtypeRadio.value : "General Post";
-  const eventDate = document.getElementById("curate-event-date") ? document.getElementById("curate-event-date").value : "";
+  const eventDate = (subtype === "Community Event" && document.getElementById("curate-event-date")) ? document.getElementById("curate-event-date").value.trim() : "";
+  const eventTime = (subtype === "Community Event" && document.getElementById("curate-event-time")) ? document.getElementById("curate-event-time").value.trim() : "";
 
   if (!title || !desc) {
     showToast("Please provide both a title and description.");
     return;
-  }
-
-  if (subtype === "Community Event" && eventDate) {
-    desc = `📅 Event Date: ${eventDate}\n\n${desc}`;
   }
 
   const linkInputs = document.querySelectorAll(".curate-link-input");
@@ -2376,7 +2361,9 @@ async function reviewCurateStep(e) {
         description: desc,
         url: u,
         resource_type: "URL",
-        theme: theme
+        theme: theme,
+        event_date: eventDate,
+        event_time: eventTime
       });
     }
   });
@@ -2397,7 +2384,9 @@ async function reviewCurateStep(e) {
           description: desc ? `${file.name} - ${desc}` : file.name,
           url: enrichedUrl,
           resource_type: file.name.toLowerCase().endsWith(".pdf") ? "PDF" : "FILE",
-          theme: theme
+          theme: theme,
+          event_date: eventDate,
+          event_time: eventTime
         });
       }
     } catch(err) {}
@@ -2419,6 +2408,7 @@ async function reviewCurateStep(e) {
     <div class="flex flex-wrap gap-2 pt-1">
       <span class="px-3 py-1 bg-indigo-50 text-indigo-700 border border-indigo-200 rounded-full text-xs font-bold">🏷️ ${theme}</span>
       <span class="px-3 py-1 bg-emerald-50 text-emerald-800 border border-emerald-200 rounded-full text-xs font-bold">${subtype === "Community Event" ? "📅 Event" : subtype === "Community Resource" ? "📚 Resource" : "📝 Post"}</span>
+      ${subtype === "Community Event" && (eventDate || eventTime) ? `<span class="px-3 py-1 bg-rose-50 text-rose-900 border border-rose-200 rounded-full text-xs font-bold">${eventDate ? `📅 Event Date: ${escapeHtml(eventDate)}` : ""}${eventTime ? `${eventDate ? " • " : ""}🕒 ${escapeHtml(eventTime)}` : ""}</span>` : ""}
     </div>
     <p class="text-base text-slate-700 pt-3 whitespace-pre-line font-medium leading-relaxed">${desc}</p>
     <div class="pt-3 font-bold text-indigo-600 text-sm">📎 ${resources.length} Resource Item(s) Ready to Add</div>
@@ -2442,6 +2432,8 @@ async function confirmSubmitCurateResources() {
     draftCurateResources = null;
     document.getElementById("curate-title").value = "";
     document.getElementById("curate-desc").value = "";
+    if (document.getElementById("curate-event-date")) document.getElementById("curate-event-date").value = "";
+    if (document.getElementById("curate-event-time")) document.getElementById("curate-event-time").value = "";
     document.querySelectorAll(".curate-link-input").forEach((inp, idx) => {
       if (idx === 0) inp.value = "";
       else inp.closest(".flex").remove();
@@ -4500,7 +4492,7 @@ async function renderGroupCalendar() {
         id: p.id,
         title: p.title || "Community Event",
         event_date: dateStr,
-        time: p.time || "",
+        time: p.event_time || p.time || "",
         description: p.content || p.description || "",
         resource_url: p.resource_url || "",
         author_id: p.author_id,
@@ -4518,7 +4510,7 @@ async function renderGroupCalendar() {
         id: r.id || `res_${idx}`,
         title: r.title || r.description || "Resource Event",
         event_date: dateStr,
-        time: r.time || "",
+        time: r.event_time || r.time || "",
         description: r.description || r.title || "",
         resource_url: r.url || "",
         author_id: r.added_by,
@@ -5000,6 +4992,7 @@ async function submitAddEventModal(event) {
     attachments: attachments,
     post_subtype: "EVENT",
     event_date: event_date,
+    event_time: time,
     group_ids: [activeGroupData.id]
   };
 
@@ -5140,6 +5133,7 @@ async function confirmImportScrapedEvents() {
           content: content,
           post_subtype: "EVENT",
           event_date: date,
+          event_time: time,
           group_ids: [activeGroupData.id]
         }
       });

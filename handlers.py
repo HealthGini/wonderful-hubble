@@ -1277,6 +1277,7 @@ def handle_api_request(method, path, headers, body_bytes):
         else:
             resource_url = str(raw_res_url or "").strip()
         event_date = body.get("event_date", "").strip() or None
+        event_time = str(body.get("event_time") if body.get("event_time") is not None else (body.get("time") or "")).strip() or None
         post_subtype = body.get("post_subtype", "").strip().upper() or None
         target_audience = str(body.get("target_audience") or "").strip() or None
         target_geography = str(body.get("target_geography") or body.get("target_geographical_areas") or "").strip() or None
@@ -1291,6 +1292,7 @@ def handle_api_request(method, path, headers, body_bytes):
                 content = COALESCE(NULLIF(?, ''), content),
                 resource_url = ?,
                 event_date = COALESCE(?, event_date),
+                event_time = COALESCE(?, event_time),
                 post_subtype = COALESCE(?, post_subtype),
                 target_audience = COALESCE(?, target_audience),
                 target_geography = COALESCE(?, target_geography),
@@ -1298,7 +1300,7 @@ def handle_api_request(method, path, headers, body_bytes):
                 category = COALESCE(?, category),
                 extracted_text = ?
             WHERE id = ?
-        """, (title, theme, content, resource_url, event_date, post_subtype, target_audience, target_geography, contact_info, category, extracted_text, item_id))
+        """, (title, theme, content, resource_url, event_date, event_time, post_subtype, target_audience, target_geography, contact_info, category, extracted_text, item_id))
         conn.commit()
         conn.close()
 
@@ -1454,7 +1456,8 @@ def handle_api_request(method, path, headers, body_bytes):
                 "COALESCE(f.extracted_text, '') || ' ' || COALESCE(f.resource_url, '') || ' ' || "
                 "COALESCE(f.target_audience, '') || ' ' || COALESCE(f.target_geography, '') || ' ' || "
                 "COALESCE(f.contact_info, '') || ' ' || COALESCE(f.post_subtype, '') || ' ' || "
-                "COALESCE(f.event_date, '') || ' ' || COALESCE(u.username, '') || ' ' || COALESCE(ru.username, ''))"
+                "COALESCE(f.event_date, '') || ' ' || COALESCE(f.event_time, '') || ' ' || "
+                "COALESCE(u.username, '') || ' ' || COALESCE(ru.username, ''))"
             )
             if "author:" in search.lower():
                 parts = search.split("author:", 1)
@@ -1488,9 +1491,9 @@ def handle_api_request(method, path, headers, body_bytes):
                     where_parts.append(
                         "(f.title LIKE ? OR f.content LIKE ? OR f.theme LIKE ? OR f.category LIKE ? OR f.extracted_text LIKE ? "
                         "OR f.resource_url LIKE ? OR f.target_audience LIKE ? OR f.target_geography LIKE ? "
-                        "OR f.contact_info LIKE ? OR u.username LIKE ? OR ru.username LIKE ?)"
+                        "OR f.contact_info LIKE ? OR f.event_date LIKE ? OR f.event_time LIKE ? OR u.username LIKE ? OR ru.username LIKE ?)"
                     )
-                    params.extend([like_q, like_q, like_q, like_q, like_q, like_q, like_q, like_q, like_q, like_clean, like_clean])
+                    params.extend([like_q, like_q, like_q, like_q, like_q, like_q, like_q, like_q, like_q, like_q, like_q, like_clean, like_clean])
 
         where_clause = ""
         if where_parts:
@@ -1608,6 +1611,7 @@ def handle_api_request(method, path, headers, body_bytes):
         group_ids = body.get("group_ids", [])
         post_subtype = body.get("post_subtype", "").strip().upper()
         event_date = body.get("event_date", "").strip()
+        event_time = str(body.get("event_time") if body.get("event_time") is not None else (body.get("time") or "")).strip()
 
         target_audience = str(body.get("target_audience") or "").strip()
         target_geography = str(body.get("target_geography") or body.get("target_geographical_areas") or "").strip()
@@ -1619,7 +1623,7 @@ def handle_api_request(method, path, headers, body_bytes):
         if not title or not content:
             return error_response("Title and content are required.")
 
-        ok, mod_err = check_content_moderation(user, [title, content, resource_url, target_audience, target_geography, contact_info, category])
+        ok, mod_err = check_content_moderation(user, [title, content, resource_url, target_audience, target_geography, contact_info, category, event_time])
         if not ok:
             return error_response(mod_err, 400)
 
@@ -1637,9 +1641,9 @@ def handle_api_request(method, path, headers, body_bytes):
         cursor = conn.cursor()
         extracted_text = extract_resource_text(resource_url)
         cursor.execute("""
-            INSERT INTO feed_items (item_type, author_id, title, theme, content, resource_url, post_subtype, event_date, extracted_text, target_audience, target_geography, contact_info, category)
-            VALUES ('POST', ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-        """, (user["id"], title, theme, content, resource_url, post_subtype, event_date, extracted_text, target_audience, target_geography, contact_info, category))
+            INSERT INTO feed_items (item_type, author_id, title, theme, content, resource_url, post_subtype, event_date, event_time, extracted_text, target_audience, target_geography, contact_info, category)
+            VALUES ('POST', ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        """, (user["id"], title, theme, content, resource_url, post_subtype, event_date, event_time, extracted_text, target_audience, target_geography, contact_info, category))
         post_id = cursor.lastrowid
 
         for gid in group_ids:
@@ -2445,8 +2449,9 @@ def handle_api_request(method, path, headers, body_bytes):
             rtype = body.get("resource_type", "URL").strip()
             rtheme = body.get("theme", "Community Resources").strip()
             edate = (body.get("event_date") or "").strip() or None
+            etime = (body.get("event_time") or "").strip() or None
             if desc and url:
-                resources_list = [{"description": desc, "url": url, "resource_type": rtype, "theme": rtheme, "event_date": edate}]
+                resources_list = [{"description": desc, "url": url, "resource_type": rtype, "theme": rtheme, "event_date": edate, "event_time": etime}]
 
         if not resources_list:
             conn.close()
@@ -2459,10 +2464,11 @@ def handle_api_request(method, path, headers, body_bytes):
             rtype = item.get("resource_type", "URL").strip()
             rtheme = item.get("theme", "Community Resources").strip()
             edate = (item.get("event_date") or "").strip() or None
+            etime = (item.get("event_time") or "").strip() or None
             if desc and url:
                 extracted_text = extract_resource_text(url)
-                cursor.execute("INSERT INTO group_resources (group_id, title, url, resource_type, theme, event_date, added_by, extracted_text) VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
-                               (gid, desc, url, rtype, rtheme, edate, user["id"], extracted_text))
+                cursor.execute("INSERT INTO group_resources (group_id, title, url, resource_type, theme, event_date, event_time, added_by, extracted_text) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)",
+                               (gid, desc, url, rtype, rtheme, edate, etime, user["id"], extracted_text))
                 inserted_count += 1
 
         conn.commit()

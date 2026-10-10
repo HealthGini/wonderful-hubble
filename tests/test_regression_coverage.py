@@ -2670,6 +2670,7 @@ class TestRegressionCoverage(GoodDeedsTestCase):
         self.assertIn("function toggleExpandAllSearchCards()", js)
         self.assertIn("window.toggleExpandAllSearchCards = toggleExpandAllSearchCards", js)
         self.assertIn("🎯 Why it matched:", js)
+        self.assertIn("${q && matchInfo.reasons.length > 0 ? `", js)
         self.assertIn("▼ Expand Card", js)
         self.assertIn("▲ Collapse Card", js)
         self.assertIn("▼ Expand All Cards", js)
@@ -2771,4 +2772,84 @@ class TestRegressionCoverage(GoodDeedsTestCase):
             if n.get("notif_type") == "SITE_INVITE_ACCEPTED" and "alex_neighbor" in n.get("message", "")
         ]
         self.assertTrue(len(accepted_notifs) >= 1)
+
+    def test_feed_card_declutter_and_optional_event_time(self):
+        """
+        Verifies:
+        1. Feed card decluttering:
+           - Category is displayed once in the top card ribbon (`categoryBadge`) and not repeated inside `#feed-card-compact-extra-`.
+           - Author & Recipient Banner inside `#feed-card-details-` is hidden when `isCompactSearch` is true so expanding a compact card does not repeat the author/timestamp.
+           - `reviewPostStep` and `reviewCurateStep` do not prepend `📅 Event Date:` into `content`/`desc`, and `renderFeedCard` strips any legacy `📅 Event Date:` prefix from `item.content`.
+        2. Optional Event Time support for Community Events:
+           - `#post-event-time`, `#post-event-time-options`, and `#curate-event-time` exist in `static/index.html`.
+           - `POST /api/posts` and `PUT /api/posts/<id>` accept and persist optional `event_time` alongside `event_date`.
+           - `GET /api/feed` returns `event_time` and supports searching by `event_time`.
+        """
+        base_dir = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+        with open(os.path.join(base_dir, "static", "index.html"), "r", encoding="utf-8") as f:
+            html = f.read()
+        with open(os.path.join(base_dir, "static", "app.js"), "r", encoding="utf-8") as f:
+            js = f.read()
+
+        # UI inputs for optional event time
+        self.assertIn('id="post-event-time"', html)
+        self.assertIn('id="post-event-time-options"', html)
+        self.assertIn('id="curate-event-time"', html)
+
+        # No duplicate category badge inside compact extra metadata row
+        self.assertNotIn("🏷️ ${highlightSearchMatches(item.category, q)}", js)
+        # Author banner hidden in compact search mode
+        self.assertIn('<div class="${isCompactSearch ? \'hidden \' : \'\'}flex flex-wrap justify-between items-center gap-4">', js)
+        # No prepending Event Date into post content
+        self.assertNotIn("content = `📅 Event Date: ${eventDate}\\n\\n${content}`", js)
+        self.assertNotIn("desc = `📅 Event Date: ${eventDate}\\n\\n${desc}`", js)
+        self.assertIn("event_time: eventTime", js)
+
+        token_maya = self.get_token("maya@gooddeeds.space")
+        headers_maya = {"Authorization": f"Bearer {token_maya}"}
+
+        # 1. Create a Community Event WITH optional event_time
+        status_ev1, _, body_ev1 = self.make_request("POST", "/api/posts", headers=headers_maya, body={
+            "title": "Saturday Coding & Math Tutoring Session",
+            "content": "Free drop-in tutoring for middle and high school students.",
+            "post_subtype": "EVENT",
+            "category": "Education & Tutoring",
+            "event_date": "2026-11-14",
+            "event_time": "10:30 AM - 12:30 PM"
+        })
+        self.assertEqual(status_ev1, 201)
+        ev1 = body_ev1["post"]
+        self.assertEqual(ev1["event_date"], "2026-11-14")
+        self.assertEqual(ev1["event_time"], "10:30 AM - 12:30 PM")
+
+        # 2. Create a Community Event WITHOUT event_time (verifies event_time is optional)
+        status_ev2, _, body_ev2 = self.make_request("POST", "/api/posts", headers=headers_maya, body={
+            "title": "Annual Neighborhood Harvest Festival",
+            "content": "All-day outdoor celebration at the community park.",
+            "post_subtype": "EVENT",
+            "category": "Community & Action",
+            "event_date": "2026-11-21"
+        })
+        self.assertEqual(status_ev2, 201)
+        ev2 = body_ev2["post"]
+        self.assertEqual(ev2["event_date"], "2026-11-21")
+        self.assertEqual(ev2.get("event_time") or "", "")
+
+        # 3. Update ev2 via PUT /api/posts/<id> to add event_time
+        status_put, _, body_put = self.make_request("PUT", f"/api/posts/{ev2['id']}", headers=headers_maya, body={
+            "title": "Annual Neighborhood Harvest Festival",
+            "content": "All-day outdoor celebration at the community park.",
+            "post_subtype": "EVENT",
+            "event_date": "2026-11-21",
+            "event_time": "3:00 PM"
+        })
+        self.assertEqual(status_put, 200)
+        self.assertEqual(body_put["item"]["event_time"], "3:00 PM")
+
+        # 4. Search GET /api/feed by event_time
+        status_search, _, body_search = self.make_request("GET", "/api/feed?search=10%3A30%20AM")
+        self.assertEqual(status_search, 200)
+        found_ids = [i["id"] for i in body_search["feed"]]
+        self.assertIn(ev1["id"], found_ids)
+
 
