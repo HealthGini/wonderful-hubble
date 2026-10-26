@@ -708,13 +708,14 @@ class TestRegressionCoverage(GoodDeedsTestCase):
         """
         token = self.get_token("maya@gooddeeds.space")
         headers = self.get_auth_headers(token)
+        future_date = (datetime.date.today() + datetime.timedelta(days=5)).isoformat()
 
         payload = {
             "title": "Group Calendar Test Event",
             "theme": "Events",
             "content": "Special community gathering for group 1",
             "post_subtype": "EVENT",
-            "event_date": "2026-10-15",
+            "event_date": future_date,
             "group_ids": [1]
         }
         status, _, body = self.make_request("POST", "/api/posts", headers=headers, body=payload)
@@ -727,7 +728,7 @@ class TestRegressionCoverage(GoodDeedsTestCase):
         feed = feed_body.get("feed", [])
         event_item = next((item for item in feed if item.get("id") == post_id), None)
         self.assertIsNotNone(event_item)
-        self.assertEqual(event_item.get("event_date"), "2026-10-15")
+        self.assertEqual(event_item.get("event_date"), future_date)
         self.assertEqual(event_item.get("post_subtype"), "EVENT")
 
     def test_cta_prominence_and_accessibility_enhancements(self):
@@ -2809,17 +2810,19 @@ class TestRegressionCoverage(GoodDeedsTestCase):
         headers_maya = {"Authorization": f"Bearer {token_maya}"}
 
         # 1. Create a Community Event WITH optional event_time
+        ev_date_1 = (datetime.date.today() + datetime.timedelta(days=14)).isoformat()
+        ev_date_2 = (datetime.date.today() + datetime.timedelta(days=21)).isoformat()
         status_ev1, _, body_ev1 = self.make_request("POST", "/api/posts", headers=headers_maya, body={
             "title": "Saturday Coding & Math Tutoring Session",
             "content": "Free drop-in tutoring for middle and high school students.",
             "post_subtype": "EVENT",
             "category": "Education & Tutoring",
-            "event_date": "2026-11-14",
+            "event_date": ev_date_1,
             "event_time": "10:30 AM - 12:30 PM"
         })
         self.assertEqual(status_ev1, 201)
         ev1 = body_ev1["post"]
-        self.assertEqual(ev1["event_date"], "2026-11-14")
+        self.assertEqual(ev1["event_date"], ev_date_1)
         self.assertEqual(ev1["event_time"], "10:30 AM - 12:30 PM")
 
         # 2. Create a Community Event WITHOUT event_time (verifies event_time is optional)
@@ -2828,11 +2831,11 @@ class TestRegressionCoverage(GoodDeedsTestCase):
             "content": "All-day outdoor celebration at the community park.",
             "post_subtype": "EVENT",
             "category": "Community & Action",
-            "event_date": "2026-11-21"
+            "event_date": ev_date_2
         })
         self.assertEqual(status_ev2, 201)
         ev2 = body_ev2["post"]
-        self.assertEqual(ev2["event_date"], "2026-11-21")
+        self.assertEqual(ev2["event_date"], ev_date_2)
         self.assertEqual(ev2.get("event_time") or "", "")
 
         # 3. Update ev2 via PUT /api/posts/<id> to add event_time
@@ -2840,7 +2843,7 @@ class TestRegressionCoverage(GoodDeedsTestCase):
             "title": "Annual Neighborhood Harvest Festival",
             "content": "All-day outdoor celebration at the community park.",
             "post_subtype": "EVENT",
-            "event_date": "2026-11-21",
+            "event_date": ev_date_2,
             "event_time": "3:00 PM"
         })
         self.assertEqual(status_put, 200)
@@ -2851,5 +2854,72 @@ class TestRegressionCoverage(GoodDeedsTestCase):
         self.assertEqual(status_search, 200)
         found_ids = [i["id"] for i in body_search["feed"]]
         self.assertIn(ev1["id"], found_ids)
+
+    def test_admin_edit_space_details(self):
+        """
+        Verifies that Space Admins and Site Admins can edit a Space's name, description,
+        themes, and icon URL via #modal-edit-group and PUT /api/groups/<id>, while non-admins
+        and unauthenticated users are denied.
+        """
+        base_dir = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+        with open(os.path.join(base_dir, "static", "index.html"), "r", encoding="utf-8") as f:
+            html = f.read()
+        with open(os.path.join(base_dir, "static", "app.js"), "r", encoding="utf-8") as f:
+            js = f.read()
+
+        self.assertIn('id="modal-edit-group"', html)
+        self.assertIn('id="egrp-id"', html)
+        self.assertIn('id="egrp-name"', html)
+        self.assertIn('id="egrp-desc"', html)
+        self.assertIn('id="egrp-theme"', html)
+        self.assertIn('id="egrp-icon"', html)
+        self.assertIn('id="btn-edit-space"', js)
+        self.assertIn("async function openEditGroupModal(", js)
+        self.assertIn("window.openEditGroupModal = openEditGroupModal", js)
+        self.assertIn("async function handleEditGroupSubmit(", js)
+        self.assertIn("window.handleEditGroupSubmit = handleEditGroupSubmit", js)
+
+        # 1. Unauthenticated request -> 401
+        status_unauth, _, _ = self.make_request("PUT", "/api/groups/1", body={
+            "name": "Unauthorized Rename",
+            "description": "Should fail"
+        })
+        self.assertEqual(status_unauth, 401)
+
+        # 2. Non-admin user (Elena is NOT admin of Group 2) -> 403
+        token_elena = self.get_token("elena@gooddeeds.space")
+        headers_elena = {"Authorization": f"Bearer {token_elena}"}
+        status_forbidden, _, _ = self.make_request("PUT", "/api/groups/2", headers=headers_elena, body={
+            "name": "Forbidden Rename",
+            "description": "Elena is not admin of Group 2"
+        })
+        self.assertEqual(status_forbidden, 403)
+
+        # 3. Space Admin (Elena IS admin of Group 1) -> 200 OK
+        status_ok, _, body_ok = self.make_request("PUT", "/api/groups/1", headers=headers_elena, body={
+            "name": "🌱 Mindful Wellbeing & Peer Listening",
+            "description": "Updated mission for compassionate peer listening and mindfulness.",
+            "themes": ["Wellbeing & Care"],
+            "icon_url": "https://images.unsplash.com/photo-1506126613408-eca07ce68773?auto=format&fit=crop&w=200&q=80"
+        })
+        self.assertEqual(status_ok, 200)
+        self.assertTrue(body_ok["success"])
+        self.assertEqual(body_ok["group"]["name"], "🌱 Mindful Wellbeing & Peer Listening")
+        self.assertEqual(body_ok["group"]["description"], "Updated mission for compassionate peer listening and mindfulness.")
+        self.assertEqual(body_ok["group"]["themes"], ["Wellbeing & Care"])
+
+        # Verify GET /api/groups/1 returns the updated details
+        status_get, _, body_get = self.make_request("GET", "/api/groups/1", headers=headers_elena)
+        self.assertEqual(status_get, 200)
+        self.assertEqual(body_get["group"]["name"], "🌱 Mindful Wellbeing & Peer Listening")
+        self.assertEqual(body_get["group"]["description"], "Updated mission for compassionate peer listening and mindfulness.")
+
+        # 4. Duplicate space name collision -> 400
+        status_dup, _, body_dup = self.make_request("PUT", "/api/groups/1", headers=headers_elena, body={
+            "name": "🎓 Education, Tutoring & Skill Share",
+            "description": "Attempting to collide with Group 2 name"
+        })
+        self.assertEqual(status_dup, 400)
+
 
 

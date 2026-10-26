@@ -2010,6 +2010,99 @@ def handle_api_request(method, path, headers, body_bytes):
         conn.close()
         return json_response({"group": g_data})
 
+    # UPDATE GROUP / SPACE DETAILS (Space Admin or Site Admin)
+    if path_only.startswith("/api/groups/") and len(path_only.split("/")) == 4 and method in ("PUT", "PATCH"):
+        if not user:
+            return error_response("Login required to edit space", 401)
+        parts = path_only.split("/")
+        gid_str = parts[3]
+        try:
+            gid = int(gid_str)
+        except ValueError:
+            return error_response("Invalid group ID", 400)
+
+        conn = get_db()
+        cursor = conn.cursor()
+        cursor.execute("SELECT * FROM groups WHERE id = ?", (gid,))
+        g_row = cursor.fetchone()
+        if not g_row:
+            conn.close()
+            return error_response("Space not found", 404)
+
+        is_super_admin = (user.get("is_site_admin") == 1)
+        is_group_admin = False
+        if not is_super_admin:
+            cursor.execute("SELECT is_admin FROM group_members WHERE group_id = ? AND user_id = ?", (gid, user["id"]))
+            admin_row = cursor.fetchone()
+            if admin_row and admin_row["is_admin"] == 1:
+                is_group_admin = True
+
+        if not (is_super_admin or is_group_admin):
+            conn.close()
+            return error_response("Only Space Admins or Site Admins can edit space details.", 403)
+
+        existing = dict(g_row)
+        raw_name = body.get("name")
+        new_name = str(raw_name).strip() if raw_name is not None else existing["name"]
+        if not new_name:
+            conn.close()
+            return error_response("Space name is required.", 400)
+
+        raw_desc = body.get("description")
+        new_desc = str(raw_desc).strip() if raw_desc is not None else (existing.get("description") or "")
+
+        raw_icon = body.get("icon_url")
+        if raw_icon is not None:
+            new_icon = str(raw_icon).strip() or existing.get("icon_url") or "https://images.unsplash.com/photo-1529156069898-49953e39b3ac?auto=format&fit=crop&w=200&q=80"
+        else:
+            new_icon = existing.get("icon_url") or "https://images.unsplash.com/photo-1529156069898-49953e39b3ac?auto=format&fit=crop&w=200&q=80"
+
+        raw_themes = body.get("themes")
+        raw_single_theme = body.get("theme")
+        if raw_themes is not None:
+            if isinstance(raw_themes, list):
+                themes_list = [str(t).strip() for t in raw_themes if str(t).strip()]
+            elif isinstance(raw_themes, str):
+                try:
+                    parsed = json.loads(raw_themes)
+                    themes_list = [str(t).strip() for t in parsed if str(t).strip()] if isinstance(parsed, list) else [raw_themes.strip()]
+                except Exception:
+                    themes_list = [t.strip() for t in raw_themes.split(",") if t.strip()]
+            else:
+                themes_list = []
+            new_themes_str = json.dumps(themes_list)
+        elif raw_single_theme is not None and str(raw_single_theme).strip():
+            new_themes_str = json.dumps([str(raw_single_theme).strip()])
+        else:
+            new_themes_str = existing.get("themes") or "[]"
+
+        ok_mod, mod_err = check_content_moderation(user, [new_name, new_desc])
+        if not ok_mod:
+            conn.close()
+            return error_response(mod_err, 400)
+
+        try:
+            cursor.execute(
+                "UPDATE groups SET name = ?, description = ?, themes = ?, icon_url = ? WHERE id = ?",
+                (new_name, new_desc, new_themes_str, new_icon, gid)
+            )
+            conn.commit()
+        except sqlite3.IntegrityError:
+            conn.close()
+            return error_response("A space with this name already exists.", 400)
+        except Exception as e:
+            conn.close()
+            return error_response(f"Could not update space: {str(e)}", 400)
+
+        cursor.execute("SELECT * FROM groups WHERE id = ?", (gid,))
+        updated_row = dict(cursor.fetchone())
+        try:
+            updated_row["themes"] = json.loads(updated_row["themes"]) if updated_row.get("themes") else []
+        except Exception:
+            updated_row["themes"] = []
+        conn.close()
+        return json_response({"success": True, "group": updated_row})
+
     # UPDATE GROUP MEMBER ROLE
     if (path_only == "/api/admin/moderation/group-member-role" or (path_only.startswith("/api/groups/") and path_only.endswith("/members/role"))) and method == "POST":
         if not user:

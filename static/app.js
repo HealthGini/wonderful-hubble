@@ -2622,6 +2622,12 @@ async function loadGroupDetail(gid) {
       </div>
 
       <div class="pt-4 md:pt-0 shrink-0 flex flex-wrap sm:flex-row gap-3 items-center justify-end">
+        ${(isGroupAdmin || isSiteAdmin) ? `
+          <button type="button" id="btn-edit-space" onclick="openEditGroupModal(${gid})" class="px-5 py-3.5 bg-amber-50 hover:bg-amber-100 text-amber-900 border border-amber-300 font-black text-sm rounded-2xl shadow-xs transition touch-target flex items-center space-x-1.5">
+            <span>✏️</span>
+            <span>Edit Space</span>
+          </button>
+        ` : ""}
         <button type="button" id="btn-space-members-link" onclick="switchGroupTab('roster')" class="px-6 py-3.5 bg-stone-100 hover:bg-amber-100/80 text-stone-800 hover:text-amber-950 border border-stone-300 font-black text-sm rounded-2xl shadow-xs transition touch-target flex items-center space-x-2">
           <span>👥</span>
           <span>${memberBtnText}</span>
@@ -3266,6 +3272,102 @@ async function handleCreateGroup(e) {
     showToast("❌ " + err.message);
   }
 }
+
+async function openEditGroupModal(gid = null) {
+  const targetId = gid || (activeGroupData && activeGroupData.id) || activeGroupId;
+  if (!targetId) return;
+
+  let group = (activeGroupData && Number(activeGroupData.id) === Number(targetId)) ? activeGroupData : null;
+  if (!group) {
+    try {
+      const res = await apiFetch(`/groups/${targetId}`);
+      group = res.group;
+    } catch (err) {
+      showToast("❌ Could not load space details.");
+      return;
+    }
+  }
+
+  const idInput = document.getElementById("egrp-id");
+  const nameInput = document.getElementById("egrp-name");
+  const descInput = document.getElementById("egrp-desc");
+  const iconInput = document.getElementById("egrp-icon");
+  const themeSelect = document.getElementById("egrp-theme");
+
+  if (idInput) idInput.value = group.id;
+  if (nameInput) nameInput.value = group.name || "";
+  if (descInput) descInput.value = group.description || "";
+  if (iconInput) iconInput.value = group.icon_url || "";
+
+  if (themeSelect) {
+    const rawTheme = (Array.isArray(group.themes) && group.themes.length > 0) ? group.themes[0] : "";
+    const themeMap = {
+      "Mental Health": "Wellbeing & Care",
+      "Wellness": "Wellbeing & Care",
+      "Mindfulness": "Wellbeing & Care",
+      "Educational": "Skills & Learning",
+      "Education": "Skills & Learning",
+      "General": "Community & Action",
+      "Inspiring Story": "Inspiring Stories"
+    };
+    const mappedTheme = themeMap[rawTheme] || rawTheme || "Community & Action";
+    let matched = false;
+    for (const opt of themeSelect.options) {
+      if (opt.value === mappedTheme || opt.value === rawTheme) {
+        themeSelect.value = opt.value;
+        matched = true;
+        break;
+      }
+    }
+    if (!matched && rawTheme) {
+      themeSelect.value = "Community & Action";
+    }
+  }
+
+  openModal("modal-edit-group");
+}
+window.openEditGroupModal = openEditGroupModal;
+
+async function handleEditGroupSubmit(e) {
+  if (e && e.preventDefault) e.preventDefault();
+  const idInput = document.getElementById("egrp-id");
+  const gid = (idInput && idInput.value) ? idInput.value : ((activeGroupData && activeGroupData.id) || activeGroupId);
+  if (!gid) return;
+
+  const name = document.getElementById("egrp-name") ? document.getElementById("egrp-name").value.trim() : "";
+  const description = document.getElementById("egrp-desc") ? document.getElementById("egrp-desc").value.trim() : "";
+  const icon_url = document.getElementById("egrp-icon") ? document.getElementById("egrp-icon").value.trim() : "";
+  const themeVal = document.getElementById("egrp-theme") ? document.getElementById("egrp-theme").value : "Community & Action";
+
+  if (!name || !description) {
+    showToast("Please provide both a Space Name and Description.");
+    return;
+  }
+
+  try {
+    await apiFetch(`/groups/${gid}`, {
+      method: "PUT",
+      body: JSON.stringify({
+        name,
+        description,
+        icon_url,
+        themes: [themeVal]
+      })
+    });
+    closeModal("modal-edit-group");
+    showToast("✅ Space details updated successfully!");
+    await loadQuickNavGroups();
+    await populateGroupFilterDropdown();
+    if (window.location.hash.startsWith("#/group/")) {
+      await loadGroupDetail(gid);
+    } else if (window.location.hash.startsWith("#/groups")) {
+      await loadGroups();
+    }
+  } catch (err) {
+    showToast("❌ " + err.message);
+  }
+}
+window.handleEditGroupSubmit = handleEditGroupSubmit;
 
 /* ================= USER PROFILE ================= */
 
