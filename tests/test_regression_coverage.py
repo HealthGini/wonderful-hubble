@@ -3280,6 +3280,10 @@ class TestRegressionCoverage(GoodDeedsTestCase):
         self.assertIn("px-6 py-5 sm:px-8 sm:py-6", html)
         self.assertIn('id="landing-platform-stats-grid" class="grid grid-cols-2 sm:grid-cols-4 gap-2"', html)
         self.assertNotIn("p-8 sm:p-14 text-stone-900", html)
+        self.assertIn('id="stat-free-open"', html)
+        self.assertIn("Free &amp; Open Spaces", html)
+        self.assertNotIn(">100%<", html)
+        self.assertNotIn("Free & Open Space<", html)
 
     def test_guest_landing_refresh_no_tdz_deadlock(self):
         """
