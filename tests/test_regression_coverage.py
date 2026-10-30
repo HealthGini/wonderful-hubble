@@ -109,9 +109,9 @@ class TestRegressionCoverage(GoodDeedsTestCase):
             self.assertNotEqual(pos, -1, f"Pill '{pill}' not found in expected order in theme-pills-bar")
             last_pos = pos
 
-        self.assertIn('📝 General Post', pills_segment)
-        self.assertIn('📅 Community Event', pills_segment)
-        self.assertIn('📚 Community Resource', pills_segment)
+        self.assertIn('📝 General Posts', pills_segment)
+        self.assertIn('📅 Community Events', pills_segment)
+        self.assertIn('📚 Community Resources', pills_segment)
 
     def test_theme_order_and_space_categories(self):
         """
@@ -1389,9 +1389,9 @@ class TestRegressionCoverage(GoodDeedsTestCase):
         self.assertIn("filterLandingByFormat('GENERAL')", html)
         self.assertIn("filterLandingByFormat('EVENT')", html)
         self.assertIn("filterLandingByFormat('RESOURCE')", html)
-        self.assertIn("📝 General Post", html)
-        self.assertIn("📅 Community Event", html)
-        self.assertIn("📚 Community Resource", html)
+        self.assertIn("📝 General Posts", html)
+        self.assertIn("📅 Community Events", html)
+        self.assertIn("📚 Community Resources", html)
         self.assertIn("window.filterByFormat = filterByFormat", js)
         self.assertIn("window.filterLandingByFormat = filterLandingByFormat", js)
 
@@ -2920,6 +2920,600 @@ class TestRegressionCoverage(GoodDeedsTestCase):
             "description": "Attempting to collide with Group 2 name"
         })
         self.assertEqual(status_dup, 400)
+
+    def test_plural_type_phrases_and_space_events_tab(self):
+        """
+        Verifies:
+        1. Type filter pills on both landing and home feed use plural phrases:
+           '📝 General Posts', '📅 Community Events', '📚 Community Resources',
+           and active search/filter toolbar chips use matching plural labels.
+        2. Space Detail page (#view-group-detail) separates Events from Posts into
+           a dedicated '📅 Events' tab (#gtab-events / #gcontent-events / #group-events-list)
+           alongside #gtab-posts and #gtab-resources.
+        3. Backend /api/feed supports exclude_subtype=EVENT for Space Posts and subtype=EVENT
+           for Space Events so Events and Posts are cleanly separated inside a Space.
+        """
+        import datetime
+
+        base_dir = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+        index_path = os.path.join(base_dir, "static", "index.html")
+        app_js_path = os.path.join(base_dir, "static", "app.js")
+
+        with open(index_path, "r", encoding="utf-8") as f:
+            html = f.read()
+        with open(app_js_path, "r", encoding="utf-8") as f:
+            js = f.read()
+
+        # 1. Plural Type filter buttons in both landing and feed filter bars
+        for row_id in ('id="landing-type-pills-row"', 'id="feed-type-pills-row"'):
+            start_idx = html.find(row_id)
+            self.assertNotEqual(start_idx, -1, f"Missing {row_id}")
+            end_idx = html.find("</div>", start_idx)
+            row_segment = html[start_idx:end_idx]
+            self.assertIn(">📝 General Posts</button>", row_segment)
+            self.assertIn(">📅 Community Events</button>", row_segment)
+            self.assertIn(">📚 Community Resources</button>", row_segment)
+            self.assertNotIn(">📝 General Post</button>", row_segment)
+            self.assertNotIn(">📅 Community Event</button>", row_segment)
+            self.assertNotIn(">📚 Community Resource</button>", row_segment)
+
+        # Active toolbar filter chips also pluralized
+        self.assertIn('activeChips.push("📚 Community Resources")', js)
+        self.assertIn('activeChips.push("📅 Community Events")', js)
+        self.assertIn('activeChips.push("📝 General Posts")', js)
+
+        # 2. Space Detail Events tab UI & JS handlers
+        self.assertIn('id="gtab-events"', html)
+        self.assertIn("switchGroupTab('events')", html)
+        self.assertIn("📅 Events", html)
+        self.assertIn('id="gcontent-events"', html)
+        self.assertIn('id="group-events-list"', html)
+
+        # Verify tab order inside Space Detail: Posts -> Events -> Resources
+        pos_posts = html.find('id="gtab-posts"')
+        pos_events = html.find('id="gtab-events"')
+        pos_resources = html.find('id="gtab-resources"')
+        self.assertTrue(0 < pos_posts < pos_events < pos_resources)
+
+        self.assertIn('"events"', js)
+        self.assertIn('if (tabName === "events") renderGroupEvents();', js)
+        self.assertIn("async function renderGroupEvents()", js)
+        self.assertIn("window.renderGroupEvents = renderGroupEvents", js)
+        self.assertIn("group-events-creation-banner", js)
+        self.assertIn("📅 + Share Space Event", js)
+        self.assertIn("openSpaceEventPostModal", js)
+        self.assertIn("exclude_subtype=EVENT", js)
+        self.assertIn("subtype=EVENT", js)
+
+        # 3. API integration check: Space Posts exclude Events, Space Events include only Events
+        token = self.get_token("elena@gooddeeds.space")
+        headers = {"Authorization": f"Bearer {token}"}
+        future_date = (datetime.date.today() + datetime.timedelta(days=10)).isoformat()
+
+        st_post, _, body_post = self.make_request("POST", "/api/posts", headers=headers, body={
+            "title": "Space Discussion Post Only",
+            "theme": "Wellbeing & Care",
+            "content": "General discussion for space members.",
+            "post_subtype": "GENERAL",
+            "group_ids": [1]
+        })
+        self.assertEqual(st_post, 201)
+        general_post_id = body_post["item"]["id"]
+
+        st_ev, _, body_ev = self.make_request("POST", "/api/posts", headers=headers, body={
+            "title": "Space Gathering Event Only",
+            "theme": "Wellbeing & Care",
+            "content": "Upcoming community circle.",
+            "post_subtype": "EVENT",
+            "event_date": future_date,
+            "event_time": "5:30 PM",
+            "group_ids": [1]
+        })
+        self.assertEqual(st_ev, 201)
+        event_post_id = body_ev["item"]["id"]
+
+        # Query Space Posts (exclude_subtype=EVENT)
+        st_posts_tab, _, res_posts_tab = self.make_request(
+            "GET", "/api/feed?group_id=1&filter_type=POST&exclude_subtype=EVENT", headers=headers
+        )
+        self.assertEqual(st_posts_tab, 200)
+        posts_ids = [it["id"] for it in res_posts_tab["feed"]]
+        self.assertIn(general_post_id, posts_ids)
+        self.assertNotIn(event_post_id, posts_ids)
+        for it in res_posts_tab["feed"]:
+            self.assertNotEqual(it.get("post_subtype"), "EVENT")
+            self.assertFalse(bool(it.get("event_date")))
+
+        # Query Space Events (subtype=EVENT)
+        st_events_tab, _, res_events_tab = self.make_request(
+            "GET", "/api/feed?group_id=1&filter_type=POST&subtype=EVENT", headers=headers
+        )
+        self.assertEqual(st_events_tab, 200)
+        events_ids = [it["id"] for it in res_events_tab["feed"]]
+        self.assertIn(event_post_id, events_ids)
+        self.assertNotIn(general_post_id, events_ids)
+        for it in res_events_tab["feed"]:
+            self.assertTrue(it.get("post_subtype") == "EVENT" or bool(it.get("event_date")))
+
+    def test_post_text_formatting_and_clickable_hyperlinks(self):
+        """
+        Verifies:
+        1. Post creation modal (#modal-post) includes a rich formatting toolbar
+           (#post-format-toolbar) supporting Bold, Italic, Underline, Heading,
+           Bullet List, Numbered List, Quote, an inline Insert Hyperlink popover
+           (#post-insert-link-popover), and Write / Preview mode switching.
+        2. static/app.js defines and exports sanitizeLinkHref, linkifyEscapedHtml,
+           renderFormattedPostContent, applyPostFormat, openPostLinkPopover,
+           confirmInsertPostLink, and switchPostEditorMode while strictly escaping
+           user HTML via escapeHtml first (preventing XSS / javascript: URLs).
+        3. Posts created with formatted text, Markdown hyperlinks [label](url),
+           and raw URLs persist cleanly via POST /api/posts and remain searchable
+           by both link label and destination URL.
+        """
+        base_dir = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+        index_path = os.path.join(base_dir, "static", "index.html")
+        app_js_path = os.path.join(base_dir, "static", "app.js")
+        style_path = os.path.join(base_dir, "static", "style.css")
+
+        with open(index_path, "r", encoding="utf-8") as f:
+            html = f.read()
+        with open(app_js_path, "r", encoding="utf-8") as f:
+            js = f.read()
+        with open(style_path, "r", encoding="utf-8") as f:
+            css = f.read()
+
+        # 1. Toolbar & Hyperlink UI elements in static/index.html
+        self.assertIn('id="post-format-toolbar"', html)
+        self.assertIn("applyPostFormat('bold')", html)
+        self.assertIn("applyPostFormat('italic')", html)
+        self.assertIn("applyPostFormat('underline')", html)
+        self.assertIn("applyPostFormat('heading')", html)
+        self.assertIn("applyPostFormat('bullet')", html)
+        self.assertIn("applyPostFormat('numbered')", html)
+        self.assertIn("applyPostFormat('quote')", html)
+        self.assertIn('id="btn-post-insert-link"', html)
+        self.assertIn("openPostLinkPopover()", html)
+        self.assertIn('id="post-insert-link-popover"', html)
+        self.assertIn('id="post-link-text-input"', html)
+        self.assertIn('id="post-link-url-input"', html)
+        self.assertIn("confirmInsertPostLink()", html)
+        self.assertIn('id="post-editor-live-preview"', html)
+        self.assertIn("switchPostEditorMode('write')", html)
+        self.assertIn("switchPostEditorMode('preview')", html)
+
+        # 2. Styling & JS formatting/linkifying functions + XSS safety
+        self.assertIn("button.rte-toolbar-btn", css)
+        self.assertIn(".post-rich-content", css)
+        self.assertIn("function sanitizeLinkHref(", js)
+        self.assertIn("window.sanitizeLinkHref = sanitizeLinkHref", js)
+        self.assertIn("function linkifyEscapedHtml(", js)
+        self.assertIn("window.linkifyEscapedHtml = linkifyEscapedHtml", js)
+        self.assertIn("function renderFormattedPostContent(", js)
+        self.assertIn("window.renderFormattedPostContent = renderFormattedPostContent", js)
+        self.assertIn("function applyPostFormat(", js)
+        self.assertIn("window.applyPostFormat = applyPostFormat", js)
+        self.assertIn("function openPostLinkPopover(", js)
+        self.assertIn("function confirmInsertPostLink(", js)
+        self.assertIn("renderFormattedPostContent(escapeHtml(item.content))", js)
+        self.assertIn("renderFormattedPostContent(escapeHtml(content))", js)
+        self.assertIn("linkifyEscapedHtml(escapeHtml(c.content))", js)
+        self.assertIn("linkifyEscapedHtml(escapeHtml(m.message))", js)
+        self.assertIn('target="_blank" rel="noopener noreferrer"', js)
+
+        # 3. End-to-end persistence & searchability of formatted post with hyperlinks + raw URLs
+        token = self.get_token("maya@gooddeeds.space")
+        headers = {"Authorization": f"Bearer {token}"}
+        rich_body = (
+            "### Weekend Mutual Aid Pantry\n"
+            "Join our **Saturday Pantry Team** for *fresh produce* and __warm meals__!\n"
+            "- Sign up on our [Volunteer Sheet](https://gooddeeds.space/volunteer-signup)\n"
+            "- Full schedule at https://pantry.example.org/schedule\n"
+            "> Every helping hand makes a difference!"
+        )
+        st_create, _, res_create = self.make_request("POST", "/api/posts", headers=headers, body={
+            "title": "Formatted Post With Hyperlinks",
+            "theme": "Community & Action",
+            "content": rich_body,
+            "post_subtype": "GENERAL",
+            "contact_info": "coordinator@gooddeeds.space"
+        })
+        self.assertEqual(st_create, 201)
+        created_id = res_create["item"]["id"]
+        self.assertEqual(res_create["item"]["content"], rich_body)
+
+        # Searchable by link label and by raw URL domain
+        st_s1, _, res_s1 = self.make_request("GET", "/api/feed?search=Volunteer%20Sheet", headers=headers)
+        self.assertEqual(st_s1, 200)
+        self.assertIn(created_id, [it["id"] for it in res_s1["feed"]])
+
+        st_s2, _, res_s2 = self.make_request("GET", "/api/feed?search=pantry.example.org", headers=headers)
+        self.assertEqual(st_s2, 200)
+        self.assertIn(created_id, [it["id"] for it in res_s2["feed"]])
+
+    def test_multi_tag_post_subtypes_and_smart_resource_nudge(self):
+        """
+        Regression test for author-controlled multi-select Post Subtypes (General Post,
+        Community Event, Community Resource) and the gentle smart Resource nudge:
+        1. Create Post modal uses multi-select checkboxes and renders #post-resource-nudge.
+        2. Adding a link to a GENERAL post does NOT auto-force it into RESOURCE.
+        3. Posts can be dual-tagged (e.g., GENERAL,RESOURCE or EVENT,RESOURCE) and appear
+           under every selected Type filter pill while rendering all chosen badges.
+        4. PUT /api/posts/<id> supports updating a post to multi-tag subtypes.
+        """
+        base_dir = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+        with open(os.path.join(base_dir, "static", "index.html"), "r", encoding="utf-8") as f:
+            html = f.read()
+        with open(os.path.join(base_dir, "static", "app.js"), "r", encoding="utf-8") as f:
+            js = f.read()
+
+        # 1. Verify multi-select checkboxes & smart nudge in HTML and JS
+        self.assertIn('id="post-subtype-chk-general"', html)
+        self.assertIn('id="post-subtype-chk-event"', html)
+        self.assertIn('id="post-subtype-chk-resource"', html)
+        self.assertIn('type="checkbox" id="post-subtype-chk-general" name="post_subtype"', html)
+        self.assertIn('type="checkbox" id="post-subtype-chk-event" name="post_subtype"', html)
+        self.assertIn('type="checkbox" id="post-subtype-chk-resource" name="post_subtype"', html)
+        self.assertIn("Select all that apply", html)
+        self.assertIn('id="post-resource-nudge"', html)
+        self.assertIn('id="btn-enable-resource-tag-nudge"', html)
+        self.assertIn("enablePostResourceTagFromNudge()", html)
+        self.assertIn('oninput="updatePostResourceNudge()"', html)
+
+        self.assertIn("function getItemSubtypes(", js)
+        self.assertIn("window.getItemSubtypes = getItemSubtypes", js)
+        self.assertIn("function renderSubtypeBadgesHtml(", js)
+        self.assertIn("function getSelectedPostSubtypes(", js)
+        self.assertIn("function updatePostResourceNudge(", js)
+        self.assertIn("window.updatePostResourceNudge = updatePostResourceNudge", js)
+        self.assertIn("function enablePostResourceTagFromNudge(", js)
+        self.assertIn("window.enablePostResourceTagFromNudge = enablePostResourceTagFromNudge", js)
+        self.assertNotIn('(item.post_subtype === "RESOURCE" || item.resource_url)', js)
+
+        token = self.get_token("maya@gooddeeds.space")
+        headers = {"Authorization": f"Bearer {token}"}
+
+        # 2. A GENERAL post with a link stays GENERAL (not auto-forced into RESOURCE)
+        st_gen, _, res_gen = self.make_request("POST", "/api/posts", headers=headers, body={
+            "title": "Personal Reflection With Article Link",
+            "content": "Sharing my personal reflection and a link for context.",
+            "post_subtype": "GENERAL",
+            "resource_url": '["https://example.org/personal-story"]'
+        })
+        self.assertEqual(st_gen, 201)
+        gen_id = res_gen["item"]["id"]
+        self.assertEqual(res_gen["item"]["post_subtype"], "GENERAL")
+        self.assertEqual(res_gen["item"]["post_subtypes"], ["GENERAL"])
+
+        _, _, feed_gen = self.make_request("GET", "/api/feed?subtype=GENERAL", headers=headers)
+        _, _, feed_res = self.make_request("GET", "/api/feed?subtype=RESOURCE", headers=headers)
+        self.assertIn(gen_id, [i["id"] for i in feed_gen["feed"]])
+        self.assertNotIn(gen_id, [i["id"] for i in feed_res["feed"]])
+
+        # 3. Dual-tagged GENERAL,RESOURCE post appears in BOTH General Posts and Community Resources
+        st_dual_gr, _, res_dual_gr = self.make_request("POST", "/api/posts", headers=headers, body={
+            "title": "Navigating Mental Health Story & Guide",
+            "content": "Both a personal story and a helpful wellness guide.",
+            "post_subtypes": ["RESOURCE", "GENERAL"],
+            "resource_url": '["https://www.healthywomen.org/wellness/mental-health"]'
+        })
+        self.assertEqual(st_dual_gr, 201)
+        dual_gr_id = res_dual_gr["item"]["id"]
+        self.assertEqual(res_dual_gr["item"]["post_subtype"], "GENERAL,RESOURCE")
+        self.assertEqual(res_dual_gr["item"]["post_subtypes"], ["GENERAL", "RESOURCE"])
+
+        _, _, feed_gen2 = self.make_request("GET", "/api/feed?subtype=GENERAL", headers=headers)
+        _, _, feed_res2 = self.make_request("GET", "/api/feed?subtype=RESOURCE", headers=headers)
+        _, _, feed_ev2 = self.make_request("GET", "/api/feed?subtype=EVENT", headers=headers)
+        self.assertIn(dual_gr_id, [i["id"] for i in feed_gen2["feed"]])
+        self.assertIn(dual_gr_id, [i["id"] for i in feed_res2["feed"]])
+        self.assertNotIn(dual_gr_id, [i["id"] for i in feed_ev2["feed"]])
+
+        # 4. Dual-tagged EVENT,RESOURCE enforces event_date and appears in BOTH Events and Resources
+        st_ev_missing_date, _, _ = self.make_request("POST", "/api/posts", headers=headers, body={
+            "title": "Workshop + Printable Workbook",
+            "content": "Live workshop plus downloadable workbook.",
+            "post_subtype": "EVENT,RESOURCE",
+            "resource_url": '["https://example.org/workbook.pdf"]'
+        })
+        self.assertEqual(st_ev_missing_date, 400)
+
+        st_dual_er, _, res_dual_er = self.make_request("POST", "/api/posts", headers=headers, body={
+            "title": "Workshop + Printable Workbook",
+            "content": "Live workshop plus downloadable workbook.",
+            "post_subtype": "EVENT,RESOURCE",
+            "event_date": "2028-05-20",
+            "event_time": "6:00 PM",
+            "group_ids": [1],
+            "resource_url": '["https://example.org/workbook.pdf"]'
+        })
+        self.assertEqual(st_dual_er, 201)
+        dual_er_id = res_dual_er["item"]["id"]
+        self.assertEqual(res_dual_er["item"]["post_subtype"], "EVENT,RESOURCE")
+        self.assertEqual(res_dual_er["item"]["post_subtypes"], ["EVENT", "RESOURCE"])
+
+        _, _, feed_ev3 = self.make_request("GET", "/api/feed?subtype=EVENT", headers=headers)
+        _, _, feed_res3 = self.make_request("GET", "/api/feed?subtype=RESOURCE", headers=headers)
+        _, _, space_posts = self.make_request("GET", "/api/feed?group_id=1&filter_type=POST&exclude_subtype=EVENT", headers=headers)
+        self.assertIn(dual_er_id, [i["id"] for i in feed_ev3["feed"]])
+        self.assertIn(dual_er_id, [i["id"] for i in feed_res3["feed"]])
+        self.assertNotIn(dual_er_id, [i["id"] for i in space_posts["feed"]])
+
+        # 5. PUT /api/posts/<id> can update a single-tagged post to GENERAL,RESOURCE
+        st_put, _, res_put = self.make_request("PUT", f"/api/posts/{gen_id}", headers=headers, body={
+            "post_subtypes": ["GENERAL", "RESOURCE"]
+        })
+        self.assertEqual(st_put, 200)
+        self.assertEqual(res_put["item"]["post_subtype"], "GENERAL,RESOURCE")
+        self.assertEqual(res_put["item"]["post_subtypes"], ["GENERAL", "RESOURCE"])
+
+    def test_space_calendar_hidden_by_default_and_compact_landing_hero(self):
+        """
+        Regression test verifying:
+        1. Upon entering a Space page (#/group/<id>), the calendar sidebar (#group-calendar-sidebar)
+           defaults to hidden (collapsed), #group-main-content-col spans full width, and
+           #calendar-toggle-text shows 'Show Calendar'.
+        2. On the Home / Landing page (#view-landing), #landing-hero-card uses compact (~50% height)
+           padding, typography, and 4-column stats grid so users see the Live Community Highlights
+           feed immediately above the fold.
+        """
+        base_dir = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+        with open(os.path.join(base_dir, "static", "index.html"), "r", encoding="utf-8") as f:
+            html = f.read()
+        with open(os.path.join(base_dir, "static", "app.js"), "r", encoding="utf-8") as f:
+            js = f.read()
+
+        # 1. Space calendar defaults to hidden in both static HTML and route navigation JS
+        self.assertIn('id="group-calendar-sidebar" class="hidden lg:col-span-1 space-y-6"', html)
+        self.assertIn('id="group-main-content-col" class="lg:col-span-3 col-span-full space-y-6"', html)
+        self.assertIn('<span id="calendar-toggle-text">Show Calendar</span>', html)
+        self.assertIn("window.isCalendarCollapsed = true;", js)
+
+        route_start = js.find("async function handleRoute()")
+        self.assertNotEqual(route_start, -1)
+        route_end = js.find("function navigateTo(", route_start)
+        route_block = js[route_start:route_end]
+        self.assertIn("window.isCalendarCollapsed = true;", route_block)
+
+        # 2. Compact landing hero (~50% height reduction) so feed is visible above the fold
+        self.assertIn('<section id="view-landing" class="space-y-5">', html)
+        self.assertIn('id="landing-hero-card"', html)
+        self.assertIn("px-6 py-5 sm:px-8 sm:py-6", html)
+        self.assertIn('id="landing-platform-stats-grid" class="grid grid-cols-2 sm:grid-cols-4 gap-2"', html)
+        self.assertNotIn("p-8 sm:p-14 text-stone-900", html)
+
+    def test_guest_landing_refresh_no_tdz_deadlock(self):
+        """
+        Regression test verifying that refreshing the landing page while logged out
+        never triggers a Temporal Dead Zone (TDZ) ReferenceError during checkSession() /
+        initApp() that leaves #landing-public-feed-preview stuck on 'Loading highlights...':
+        1. notificationsPollTimer and lastSeenNotifId are declared before initApp().
+        2. checkSession() is not invoked eagerly at top-level before app.js finishes
+           evaluating top-level state declarations; initApp() defers execution via
+           DOMContentLoaded or Promise.resolve().then(initApp).
+        3. handleRoute() and loadFeed() safely guard awaiting sessionPromise.
+        """
+        base_dir = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+        with open(os.path.join(base_dir, "static", "app.js"), "r", encoding="utf-8") as f:
+            js = f.read()
+
+        init_idx = js.find("async function initApp()")
+        notif_timer_idx = js.find("let notificationsPollTimer = null;")
+        self.assertNotEqual(init_idx, -1)
+        self.assertNotEqual(notif_timer_idx, -1)
+        self.assertLess(
+            notif_timer_idx, init_idx,
+            "notificationsPollTimer must be declared before initApp() to avoid TDZ errors in checkSession() -> updateAuthUI() -> stopNotificationsPolling()"
+        )
+        self.assertNotIn("\nsessionPromise = checkSession();\n", js)
+        self.assertIn("Promise.resolve().then(initApp);", js)
+        self.assertIn("sessionPromise = checkSession().catch(", js)
+
+    def test_long_post_collapsible_full_text_toggle(self):
+        """
+        Regression test verifying that long posts collapse cleanly in feed views with a
+        'Click here to see the full text ↓' toggle button ('Show less ↑' when expanded),
+        while direct single-post views (/post/<id>) render expanded automatically:
+        1. expandedLongPosts and thresholds are declared at top-level before initApp().
+        2. isLongPostContent and togglePostFullText exist and are bound on window.
+        3. style.css defines .post-content-collapsed and button.post-expand-btn.
+        4. loadSingleItemView passes { forceExpandContent: true } to renderFeedCard.
+        """
+        base_dir = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+        with open(os.path.join(base_dir, "static", "app.js"), "r", encoding="utf-8") as f:
+            js = f.read()
+        with open(os.path.join(base_dir, "static", "style.css"), "r", encoding="utf-8") as f:
+            css = f.read()
+
+        init_idx = js.find("async function initApp()")
+        expanded_set_idx = js.find("const expandedLongPosts = new Set();")
+        self.assertNotEqual(expanded_set_idx, -1)
+        self.assertLess(expanded_set_idx, init_idx)
+
+        self.assertIn("function isLongPostContent(", js)
+        self.assertIn("window.isLongPostContent = isLongPostContent", js)
+        self.assertIn("function togglePostFullText(", js)
+        self.assertIn("window.togglePostFullText = togglePostFullText", js)
+        self.assertIn("Click here to see the full text ↓", js)
+        self.assertIn("Show less ↑", js)
+        self.assertIn("renderFeedCard(data.item, false, { forceExpandContent: true })", js)
+        self.assertIn(".post-content-collapsed", css)
+        self.assertIn("button.post-expand-btn", css)
+
+    def test_conversational_chat_search_interface_and_api(self):
+        """
+        Regression test verifying the conversational chat search interface (Landing & Feed)
+        and the POST /api/chat_search hybrid NLU/RAG endpoint:
+        1. Both #landing-filter-bar and #feed-filter-bar-card expose Filter Controls <-> Ask in Chat
+           mode toggles, classic controls panes, and chat search panes.
+        2. Chat state variables are declared before initApp() (no TDZ), and window exports
+           switchSearchMode, submitChatSearch, askChatPromptChip, clearChatSearch,
+           clearChatFeedFilter, applyChatMatchesToFeed, and scrollToFeedCard.
+        3. Attachment buttons inside renderChatMatchMiniCard preserve window.openAttachment
+           with window._attachmentCache.
+        4. POST /api/chat_search handles validation, topical resource search, multi-turn
+           pronoun follow-ups (carrying context + surfacing contact info), upcoming events,
+           Kudos queries, and Community Spaces discovery.
+        """
+        base_dir = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+        with open(os.path.join(base_dir, "static", "index.html"), "r", encoding="utf-8") as f:
+            html = f.read()
+        with open(os.path.join(base_dir, "static", "app.js"), "r", encoding="utf-8") as f:
+            js = f.read()
+        with open(os.path.join(base_dir, "static", "style.css"), "r", encoding="utf-8") as f:
+            css = f.read()
+
+        # 1. HTML elements check
+        for elem_id in [
+            'id="btn-landing-mode-filters"',
+            'id="btn-landing-mode-chat"',
+            'id="landing-classic-controls-pane"',
+            'id="landing-chat-search-pane"',
+            'id="landing-chat-messages"',
+            'id="landing-chat-input"',
+            'id="btn-landing-chat-submit"',
+            'id="btn-feed-mode-filters"',
+            'id="btn-feed-mode-chat"',
+            'id="feed-classic-controls-pane"',
+            'id="feed-chat-search-pane"',
+            'id="feed-chat-messages"',
+            'id="feed-chat-input"',
+            'id="btn-feed-chat-submit"',
+            'id="feed-chat-scope-select"',
+        ]:
+            self.assertIn(elem_id, html)
+
+        # 2. JS state & window bindings check (TDZ-safe)
+        init_idx = js.find("async function initApp()")
+        chat_state_idx = js.find('let feedSearchMode = "filters";')
+        self.assertNotEqual(chat_state_idx, -1)
+        self.assertLess(chat_state_idx, init_idx)
+
+        for binding in [
+            "window.switchSearchMode = switchSearchMode",
+            "window.submitChatSearch = submitChatSearch",
+            "window.askChatPromptChip = askChatPromptChip",
+            "window.clearChatSearch = clearChatSearch",
+            "window.clearChatFeedFilter = clearChatFeedFilter",
+            "window.applyChatMatchesToFeed = applyChatMatchesToFeed",
+            "window.scrollToFeedCard = scrollToFeedCard",
+            "window.openAttachment(window._attachmentCache[",
+        ]:
+            self.assertIn(binding, js)
+
+        # 3. CSS compact rules
+        self.assertIn("button.chat-mode-btn", css)
+        self.assertIn("button.chat-chip-btn", css)
+        self.assertIn("button.chat-submit-btn", css)
+
+        # 4. Backend POST /api/chat_search end-to-end checks
+        with patch.dict(os.environ, {"DISABLE_EXTERNAL_LLM": "1"}):
+            # Empty query -> 400
+            status, _, err_data = self.make_request("POST", "/api/chat_search", body={"message": "   "})
+            self.assertEqual(status, 400)
+            self.assertIn("error", err_data)
+
+            # Seed an explicit mental health resource post & an upcoming event post
+            token = self.get_token("maya@gooddeeds.space")
+            self.assertIsNotNone(token)
+            auth_headers = self.get_auth_headers(token)
+
+            st_res, _, res_post = self.make_request(
+                "POST",
+                "/api/posts",
+                headers=auth_headers,
+                body={
+                    "title": "Anxiety & Mental Wellness Support Guide",
+                    "content": "Confidential peer support resources and sleep recovery tips for community members.",
+                    "theme": "Wellbeing & Care",
+                    "category": "Health & Wellness",
+                    "post_subtype": "GENERAL,RESOURCE",
+                    "contact_info": "Maya Lin - maya@gooddeeds.space",
+                    "resource_url": json.dumps(["https://example.org/mental-wellness-guide"]),
+                },
+            )
+            self.assertIn(st_res, (200, 201))
+            resource_post_id = res_post["item"]["id"]
+
+            st_ev, _, ev_post = self.make_request(
+                "POST",
+                "/api/posts",
+                headers=auth_headers,
+                body={
+                    "title": "Neighborhood Garden Workshop",
+                    "content": "Hands-on Saturday planting session open to families.",
+                    "theme": "Community & Action",
+                    "category": "Environment & Sustainability",
+                    "post_subtype": "EVENT",
+                    "event_date": "2099-11-20",
+                    "event_time": "10:00 AM",
+                    "contact_info": "garden@gooddeeds.space",
+                },
+            )
+            self.assertIn(st_ev, (200, 201))
+            event_post_id = ev_post["item"]["id"]
+
+            # (a) Resource topical query (guest access works too!)
+            status, _, q1 = self.make_request(
+                "POST",
+                "/api/chat_search",
+                body={"message": "Are there any mental health or anxiety resources?"},
+            )
+            self.assertEqual(status, 200)
+            self.assertTrue(q1.get("success"))
+            self.assertEqual(q1.get("engine"), "local_nlu")
+            self.assertIn(resource_post_id, q1.get("matched_item_ids", []))
+            self.assertIn("Anxiety & Mental Wellness Support Guide", q1.get("answer", ""))
+
+            # (b) Multi-turn pronoun follow-up asking for contact info
+            history = [
+                {"role": "user", "content": "Are there any mental health or anxiety resources?"},
+                {"role": "assistant", "content": q1.get("answer", "")},
+            ]
+            status, _, q2 = self.make_request(
+                "POST",
+                "/api/chat_search",
+                body={"message": "Who is the contact for that?", "history": history},
+            )
+            self.assertEqual(status, 200)
+            self.assertIn(resource_post_id, q2.get("matched_item_ids", []))
+            self.assertIn("maya@gooddeeds.space", q2.get("answer", ""))
+
+            # (c) Upcoming events query
+            status, _, q3 = self.make_request(
+                "POST",
+                "/api/chat_search",
+                body={"message": "What upcoming events are scheduled?"},
+            )
+            self.assertEqual(status, 200)
+            self.assertEqual(q3["detected_intent"]["subtype"], "EVENT")
+            self.assertTrue(q3["detected_intent"]["upcoming_only"])
+            self.assertIn(event_post_id, q3.get("matched_item_ids", []))
+
+            # (d) Kudos query
+            status, _, q4 = self.make_request(
+                "POST",
+                "/api/chat_search",
+                body={"message": "Show recent community Kudos"},
+            )
+            self.assertEqual(status, 200)
+            self.assertEqual(q4["detected_intent"]["item_type"], "KUDOS")
+            self.assertTrue(len(q4.get("matched_items", [])) >= 1)
+            self.assertTrue(all(it["item_type"] == "KUDOS" for it in q4["matched_items"]))
+
+            # (e) Spaces discovery query
+            status, _, q5 = self.make_request(
+                "POST",
+                "/api/chat_search",
+                body={"message": "Which Community Spaces can I join?"},
+            )
+            self.assertEqual(status, 200)
+            self.assertTrue(len(q5.get("matched_spaces", [])) >= 1)
+
+
+
+
+
+
 
 
 

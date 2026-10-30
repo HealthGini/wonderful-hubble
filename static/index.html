@@ -223,62 +223,62 @@
   </header>
 
   <!-- Main Content Area -->
-  <main id="main-content" class="flex-1 max-w-7xl w-full mx-auto px-4 sm:px-6 lg:px-8 py-8">
+  <main id="main-content" class="flex-1 max-w-7xl w-full mx-auto px-4 sm:px-6 lg:px-8 py-5">
 
     <!-- ================== VIEW 1: WELCOMING LANDING PAGE ================== -->
-    <section id="view-landing" class="space-y-12">
-      <div class="bg-gradient-to-br from-amber-500/10 via-rose-500/5 to-indigo-600/10 bg-white rounded-3xl p-8 sm:p-14 text-stone-900 shadow-sm border border-stone-200/80 relative overflow-hidden flex flex-col lg:flex-row items-center justify-between gap-10">
-        <div class="space-y-6 max-w-2xl relative z-10">
-          <span class="px-4 py-1.5 rounded-full bg-amber-100 font-extrabold tracking-wider text-xs border border-amber-300/60 inline-block uppercase text-amber-900 shadow-sm">✨ Promoting Goodness in Our Communities</span>
-          <h1 class="text-4xl sm:text-6xl font-black tracking-tight leading-[1.15] font-heading text-stone-900">Become the Best Version of Yourself — One Good Deed at a Time.</h1>
-          <p class="text-lg sm:text-xl text-stone-600 font-medium leading-relaxed">
+    <section id="view-landing" class="space-y-5">
+      <div id="landing-hero-card" class="bg-gradient-to-br from-amber-500/10 via-rose-500/5 to-indigo-600/10 bg-white rounded-3xl px-6 py-5 sm:px-8 sm:py-6 text-stone-900 shadow-sm border border-stone-200/80 relative overflow-hidden flex flex-col lg:flex-row items-center justify-between gap-6">
+        <div class="space-y-2.5 max-w-2xl relative z-10">
+          <span class="px-3 py-0.5 rounded-full bg-amber-100 font-extrabold tracking-wider text-[11px] border border-amber-300/60 inline-block uppercase text-amber-900 shadow-2xs">✨ Promoting Goodness in Our Communities</span>
+          <h1 class="text-2xl sm:text-3xl lg:text-4xl font-black tracking-tight leading-tight font-heading text-stone-900">Become the Best Version of Yourself — One Good Deed at a Time.</h1>
+          <p class="text-sm sm:text-base text-stone-600 font-medium leading-snug">
             gooddeeds.space is a universal social platform built to enable collaboration, recognize intrinsic kindness with public Kudos, and lend or seek support across mental health, education, and community services.
           </p>
-          <div class="flex flex-wrap gap-4 pt-2">
-            <a href="/#/feed" class="px-8 py-4 rounded-full font-black text-lg bg-gradient-to-r from-amber-500 to-orange-500 hover:from-amber-600 hover:to-orange-600 text-white shadow-md shadow-amber-500/20 transition inline-flex items-center touch-target">
+          <div class="flex flex-wrap gap-3 pt-1">
+            <a href="/#/feed" class="landing-hero-cta px-5 py-2 rounded-full font-extrabold text-sm bg-gradient-to-r from-amber-500 to-orange-500 hover:from-amber-600 hover:to-orange-600 text-white shadow-sm shadow-amber-500/20 transition inline-flex items-center justify-center">
               Explore GoodDeeds.space ↗
             </a>
-            <button onclick="openModal('modal-signup')" class="px-8 py-4 rounded-full font-black text-lg bg-stone-100 hover:bg-stone-200 text-stone-800 border border-stone-300 transition touch-target">
+            <button onclick="openModal('modal-signup')" class="landing-hero-cta px-5 py-2 rounded-full font-extrabold text-sm bg-stone-100 hover:bg-stone-200 text-stone-800 border border-stone-300 transition inline-flex items-center justify-center">
               Join Free Today
             </button>
           </div>
         </div>
 
-        <div class="bg-white/90 p-8 rounded-3xl border border-stone-200/80 backdrop-blur-xl max-w-md w-full shadow-lg relative z-10 space-y-6">
-          <div class="flex items-center justify-between border-b border-stone-100 pb-4">
-            <div class="flex items-center space-x-2.5">
-              <span class="relative flex h-3 w-3">
+        <div class="bg-white/90 p-4 sm:p-5 rounded-2xl border border-stone-200/80 backdrop-blur-xl max-w-md lg:max-w-lg w-full shadow-md relative z-10 space-y-2.5">
+          <div class="flex items-center justify-between border-b border-stone-100 pb-2">
+            <div class="flex items-center space-x-2">
+              <span class="relative flex h-2.5 w-2.5">
                 <span class="animate-ping absolute inline-flex h-full w-full rounded-full bg-emerald-400 opacity-75"></span>
-                <span class="relative inline-flex rounded-full h-3 w-3 bg-emerald-500"></span>
+                <span class="relative inline-flex rounded-full h-2.5 w-2.5 bg-emerald-500"></span>
               </span>
-              <span class="font-black text-xs uppercase tracking-widest text-emerald-800">Community Ripple</span>
+              <span class="font-black text-[11px] uppercase tracking-widest text-emerald-800">Community Ripple</span>
             </div>
-            <span class="text-xs font-bold bg-emerald-50 border border-emerald-200 px-3 py-1 rounded-full text-emerald-800">Active Now</span>
+            <span class="text-[11px] font-bold bg-emerald-50 border border-emerald-200 px-2.5 py-0.5 rounded-full text-emerald-800">Active Now</span>
           </div>
-          <div class="space-y-4">
-            <div class="bg-amber-50/70 p-4 rounded-2xl border border-amber-200/70 flex items-start space-x-3.5">
-              <span class="text-2xl pt-0.5" aria-hidden="true">🌟</span>
+          <div class="space-y-2.5">
+            <div class="bg-amber-50/70 px-3.5 py-2.5 rounded-xl border border-amber-200/70 flex items-start space-x-2.5">
+              <span class="text-lg pt-0.5" aria-hidden="true">🌟</span>
               <div>
-                <p class="text-sm font-bold text-stone-900 leading-snug">"Massive thank you to Marcus for organizing our weekend food pantry restock!"</p>
-                <p class="text-xs text-amber-800 mt-1.5 font-bold">— Kudos given by Maya Lin</p>
+                <p class="text-xs font-bold text-stone-900 leading-snug">"Massive thank you to Marcus for organizing our weekend food pantry restock!"</p>
+                <p class="text-[11px] text-amber-800 mt-0.5 font-bold">— Kudos given by Maya Lin</p>
               </div>
             </div>
-            <div id="landing-platform-stats-grid" class="grid grid-cols-2 gap-3 pt-1">
-              <div class="bg-stone-50 p-4 rounded-2xl border border-stone-200 text-center">
-                <div id="stat-acts-of-kindness" class="text-3xl font-black tracking-tight text-stone-900">...</div>
-                <div class="text-[11px] font-extrabold text-stone-500 uppercase tracking-wider mt-1">Acts of Kindness</div>
+            <div id="landing-platform-stats-grid" class="grid grid-cols-2 sm:grid-cols-4 gap-2">
+              <div class="bg-stone-50 px-2.5 py-2 rounded-xl border border-stone-200 text-center">
+                <div id="stat-acts-of-kindness" class="text-xl font-black tracking-tight text-stone-900">...</div>
+                <div class="text-[10px] font-extrabold text-stone-500 uppercase tracking-tight leading-tight mt-0.5">Acts of Kindness</div>
               </div>
-              <div class="bg-stone-50 p-4 rounded-2xl border border-stone-200 text-center">
-                <div id="stat-community-members" class="text-3xl font-black tracking-tight text-amber-600">...</div>
-                <div class="text-[11px] font-extrabold text-stone-500 uppercase tracking-wider mt-1">Community Members</div>
+              <div class="bg-stone-50 px-2.5 py-2 rounded-xl border border-stone-200 text-center">
+                <div id="stat-community-members" class="text-xl font-black tracking-tight text-amber-600">...</div>
+                <div class="text-[10px] font-extrabold text-stone-500 uppercase tracking-tight leading-tight mt-0.5">Community Members</div>
               </div>
-              <div class="bg-stone-50 p-4 rounded-2xl border border-stone-200 text-center">
-                <div id="stat-active-spaces" class="text-3xl font-black tracking-tight text-indigo-600">...</div>
-                <div class="text-[11px] font-extrabold text-stone-500 uppercase tracking-wider mt-1">Active Spaces</div>
+              <div class="bg-stone-50 px-2.5 py-2 rounded-xl border border-stone-200 text-center">
+                <div id="stat-active-spaces" class="text-xl font-black tracking-tight text-indigo-600">...</div>
+                <div class="text-[10px] font-extrabold text-stone-500 uppercase tracking-tight leading-tight mt-0.5">Active Spaces</div>
               </div>
-              <div class="bg-stone-50 p-4 rounded-2xl border border-stone-200 text-center">
-                <div id="stat-free-open" class="text-3xl font-black tracking-tight text-emerald-600">100%</div>
-                <div class="text-[11px] font-extrabold text-stone-500 uppercase tracking-wider mt-1">Free & Open Space</div>
+              <div class="bg-stone-50 px-2.5 py-2 rounded-xl border border-stone-200 text-center">
+                <div id="stat-free-open" class="text-xl font-black tracking-tight text-emerald-600">100%</div>
+                <div class="text-[10px] font-extrabold text-stone-500 uppercase tracking-tight leading-tight mt-0.5">Free & Open Space</div>
               </div>
             </div>
           </div>
@@ -321,12 +321,29 @@
 
 
 
-      <div class="space-y-6">
-        <div class="flex justify-between items-baseline border-b-2 border-stone-200 pb-4">
-          <h2 class="text-3xl font-black text-stone-900">☀️ Live Community Highlights</h2>
-          <a href="/#/feed" class="font-black text-amber-700 hover:underline text-lg">View All Posts & Kudos →</a>
+      <div class="space-y-4">
+        <div class="flex justify-between items-baseline border-b-2 border-stone-200 pb-2.5">
+          <h2 class="text-2xl font-black text-stone-900">☀️ Live Community Highlights</h2>
+          <a href="/#/feed" class="font-black text-amber-700 hover:underline text-base">View All Posts & Kudos →</a>
         </div>
         <div id="landing-filter-bar" class="bg-white px-5 py-3.5 sm:px-6 sm:py-4 rounded-3xl border border-slate-200/80 shadow-sm space-y-2 my-4">
+          <!-- Search Mode Switcher (Filter Controls vs Conversational Chat Search) -->
+          <div class="flex flex-wrap items-center justify-between gap-2 pb-1 border-b border-slate-100">
+            <div class="inline-flex items-center gap-1 bg-slate-100/90 p-1 rounded-xl border border-slate-200/70" role="tablist" aria-label="Search Mode">
+              <button type="button" id="btn-landing-mode-filters" onclick="switchSearchMode('landing', 'filters')" role="tab" aria-selected="true" class="chat-mode-btn px-3 py-1 rounded-lg font-extrabold text-xs bg-white text-slate-900 shadow-xs transition inline-flex items-center gap-1.5">
+                <span>🎛️ Filter Controls</span>
+              </button>
+              <button type="button" id="btn-landing-mode-chat" onclick="switchSearchMode('landing', 'chat')" role="tab" aria-selected="false" class="chat-mode-btn px-3 py-1 rounded-lg font-extrabold text-xs text-slate-600 hover:text-indigo-700 transition inline-flex items-center gap-1.5">
+                <span>💬 Ask in Chat</span>
+              </button>
+            </div>
+            <div class="flex items-center gap-2">
+              <span id="landing-mode-helper-label" class="text-[11px] font-semibold text-slate-500 hidden sm:inline">Prefer asking in plain English? Switch to <button type="button" onclick="switchSearchMode('landing', 'chat')" class="chat-chip-btn text-indigo-600 hover:text-indigo-800 font-extrabold underline underline-offset-2">Ask in Chat</button></span>
+              <button type="button" id="btn-landing-chat-reset" onclick="clearChatSearch('landing')" class="hidden chat-chip-btn px-2.5 py-1 rounded-lg text-xs font-bold bg-slate-100 hover:bg-slate-200 text-slate-700 border border-slate-200 transition">Reset Chat</button>
+            </div>
+          </div>
+
+          <div id="landing-classic-controls-pane" class="space-y-2">
           <div class="flex flex-col lg:flex-row gap-2">
             <!-- Keyword Search -->
             <div class="relative flex-1 min-w-0">
@@ -378,10 +395,44 @@
               <span class="text-xs font-black uppercase tracking-wider text-amber-800 shrink-0 flex items-center gap-1 pr-1">
                 <span>Type:</span>
               </span>
-              <button type="button" onclick="filterLandingByFormat('GENERAL')" class="landing-format-pill shrink-0 px-3 py-1 rounded-xl font-bold text-xs bg-white hover:bg-amber-100/70 text-slate-700 transition shadow-xs border border-amber-200/60">📝 General Post</button>
-              <button type="button" onclick="filterLandingByFormat('EVENT')" class="landing-format-pill shrink-0 px-3 py-1 rounded-xl font-bold text-xs bg-white hover:bg-amber-100/70 text-slate-700 transition shadow-xs border border-amber-200/60">📅 Community Event</button>
-              <button type="button" onclick="filterLandingByFormat('RESOURCE')" class="landing-format-pill shrink-0 px-3 py-1 rounded-xl font-bold text-xs bg-white hover:bg-amber-100/70 text-slate-700 transition shadow-xs border border-amber-200/60">📚 Community Resource</button>
+              <button type="button" onclick="filterLandingByFormat('GENERAL')" class="landing-format-pill shrink-0 px-3 py-1 rounded-xl font-bold text-xs bg-white hover:bg-amber-100/70 text-slate-700 transition shadow-xs border border-amber-200/60">📝 General Posts</button>
+              <button type="button" onclick="filterLandingByFormat('EVENT')" class="landing-format-pill shrink-0 px-3 py-1 rounded-xl font-bold text-xs bg-white hover:bg-amber-100/70 text-slate-700 transition shadow-xs border border-amber-200/60">📅 Community Events</button>
+              <button type="button" onclick="filterLandingByFormat('RESOURCE')" class="landing-format-pill shrink-0 px-3 py-1 rounded-xl font-bold text-xs bg-white hover:bg-amber-100/70 text-slate-700 transition shadow-xs border border-amber-200/60">📚 Community Resources</button>
             </div>
+          </div>
+          </div>
+
+          <!-- Conversational Chat Search Pane (Landing) -->
+          <div id="landing-chat-search-pane" class="hidden space-y-2.5 pt-1">
+            <div class="flex flex-wrap items-center gap-1.5 overflow-x-auto scrollbar-none">
+              <span class="text-[11px] font-black uppercase tracking-wider text-indigo-700 pr-1 shrink-0">Try asking:</span>
+              <button type="button" onclick="askChatPromptChip('landing', 'What upcoming events are scheduled?')" class="chat-chip-btn shrink-0 px-2.5 py-1 rounded-full text-xs font-bold bg-indigo-50/80 hover:bg-indigo-100 text-indigo-900 border border-indigo-200/80 transition">📅 Upcoming events</button>
+              <button type="button" onclick="askChatPromptChip('landing', 'Are there any mental health or wellness resources?')" class="chat-chip-btn shrink-0 px-2.5 py-1 rounded-full text-xs font-bold bg-teal-50/80 hover:bg-teal-100 text-teal-900 border border-teal-200/80 transition">🧠 Mental health resources</button>
+              <button type="button" onclick="askChatPromptChip('landing', 'What legal, financial, or mutual aid resources are available?')" class="chat-chip-btn shrink-0 px-2.5 py-1 rounded-full text-xs font-bold bg-violet-50/80 hover:bg-violet-100 text-violet-900 border border-violet-200/80 transition">⚖️ Legal &amp; community aid</button>
+              <button type="button" onclick="askChatPromptChip('landing', 'Show recent community Kudos')" class="chat-chip-btn shrink-0 px-2.5 py-1 rounded-full text-xs font-bold bg-amber-50/80 hover:bg-amber-100 text-amber-900 border border-amber-200/80 transition">🌟 Recent Kudos</button>
+              <button type="button" onclick="askChatPromptChip('landing', 'Which Community Spaces can I join?')" class="chat-chip-btn shrink-0 px-2.5 py-1 rounded-full text-xs font-bold bg-stone-100 hover:bg-stone-200 text-stone-800 border border-stone-300/80 transition">👥 Community Spaces</button>
+            </div>
+
+            <div id="landing-chat-messages" class="max-h-80 overflow-y-auto space-y-2.5 bg-slate-50/80 border border-slate-200/80 rounded-2xl p-3.5" aria-live="polite">
+              <div class="flex items-start gap-2.5">
+                <div class="w-7 h-7 rounded-full bg-indigo-600 text-white flex items-center justify-center text-xs font-black shrink-0 shadow-xs">💬</div>
+                <div class="bg-white border border-slate-200/90 rounded-2xl rounded-tl-sm px-3.5 py-2.5 text-sm text-slate-700 shadow-2xs max-w-3xl">
+                  <p class="font-bold text-slate-900">Ask anything about GoodDeeds.space!</p>
+                  <p class="text-xs text-slate-600 mt-0.5">Search Posts, Community Events, Community Resources, Kudos, Spaces, or contacts in natural language — and ask follow-up questions anytime.</p>
+                </div>
+              </div>
+            </div>
+
+            <form onsubmit="submitChatSearch(event, 'landing')" class="flex items-center gap-2">
+              <div class="relative flex-1 min-w-0">
+                <span class="absolute inset-y-0 left-0 pl-3.5 flex items-center pointer-events-none text-indigo-500 text-base" aria-hidden="true">💬</span>
+                <input type="text" id="landing-chat-input" maxlength="500" placeholder="Ask a question (e.g. 'Any mental health resources?', 'Upcoming events?', 'Who is the contact for that?')..." class="w-full pl-10 pr-4 py-2.5 rounded-xl border border-slate-300 font-medium text-sm bg-white focus:border-indigo-600 transition">
+              </div>
+              <button type="submit" id="btn-landing-chat-submit" class="chat-submit-btn px-4 py-2.5 rounded-xl font-extrabold text-sm bg-indigo-600 hover:bg-indigo-700 text-white shadow-sm transition shrink-0 inline-flex items-center gap-1.5">
+                <span>Ask</span>
+                <span>→</span>
+              </button>
+            </form>
           </div>
         </div>
         <div id="landing-space-info-banner" class="hidden animate-fadeIn my-4"></div>
@@ -414,6 +465,27 @@
       </div>
       <!-- Controls Filter Bar Card -->
       <div id="feed-filter-bar-card" class="bg-white px-5 py-3.5 sm:px-6 sm:py-4 rounded-3xl border border-slate-200/80 shadow-sm space-y-2">
+        <!-- Search Mode Switcher (Filter Controls vs Conversational Chat Search) -->
+        <div class="flex flex-wrap items-center justify-between gap-2 pb-1 border-b border-slate-100">
+          <div class="inline-flex items-center gap-1 bg-slate-100/90 p-1 rounded-xl border border-slate-200/70" role="tablist" aria-label="Search Mode">
+            <button type="button" id="btn-feed-mode-filters" onclick="switchSearchMode('feed', 'filters')" role="tab" aria-selected="true" class="chat-mode-btn px-3 py-1 rounded-lg font-extrabold text-xs bg-white text-slate-900 shadow-xs transition inline-flex items-center gap-1.5">
+              <span>🎛️ Filter Controls</span>
+            </button>
+            <button type="button" id="btn-feed-mode-chat" onclick="switchSearchMode('feed', 'chat')" role="tab" aria-selected="false" class="chat-mode-btn px-3 py-1 rounded-lg font-extrabold text-xs text-slate-600 hover:text-indigo-700 transition inline-flex items-center gap-1.5">
+              <span>💬 Ask in Chat</span>
+            </button>
+          </div>
+          <div class="flex items-center gap-2">
+            <span id="feed-mode-helper-label" class="text-[11px] font-semibold text-slate-500 hidden sm:inline">Prefer asking in plain English? Switch to <button type="button" onclick="switchSearchMode('feed', 'chat')" class="chat-chip-btn text-indigo-600 hover:text-indigo-800 font-extrabold underline underline-offset-2">Ask in Chat</button></span>
+            <select id="feed-chat-scope-select" aria-label="Chat Search Scope" class="hidden chat-scope-select px-2.5 py-1 rounded-lg border border-slate-200 bg-slate-50 font-bold text-xs text-slate-700 cursor-pointer focus:border-indigo-600">
+              <option value="all">🌐 Search All Spaces</option>
+              <option value="my_spaces">⭐ My Joined Spaces Only</option>
+            </select>
+            <button type="button" id="btn-feed-chat-reset" onclick="clearChatSearch('feed')" class="hidden chat-chip-btn px-2.5 py-1 rounded-lg text-xs font-bold bg-slate-100 hover:bg-slate-200 text-slate-700 border border-slate-200 transition">Reset Chat</button>
+          </div>
+        </div>
+
+        <div id="feed-classic-controls-pane" class="space-y-2">
         <!-- Filter & Search Bar -->
         <div class="flex flex-col lg:flex-row gap-2">
           <!-- Keyword Search -->
@@ -476,10 +548,44 @@
             <span class="text-xs font-black uppercase tracking-wider text-amber-800 shrink-0 flex items-center gap-1 pr-1">
               <span>Type:</span>
             </span>
-            <button type="button" onclick="filterByFormat('GENERAL')" class="format-pill shrink-0 px-3 py-1 rounded-xl font-bold text-xs bg-white hover:bg-amber-100/70 text-slate-700 transition shadow-xs border border-amber-200/60">📝 General Post</button>
-            <button type="button" onclick="filterByFormat('EVENT')" class="format-pill shrink-0 px-3 py-1 rounded-xl font-bold text-xs bg-white hover:bg-amber-100/70 text-slate-700 transition shadow-xs border border-amber-200/60">📅 Community Event</button>
-            <button type="button" onclick="filterByFormat('RESOURCE')" class="format-pill shrink-0 px-3 py-1 rounded-xl font-bold text-xs bg-white hover:bg-amber-100/70 text-slate-700 transition shadow-xs border border-amber-200/60">📚 Community Resource</button>
+            <button type="button" onclick="filterByFormat('GENERAL')" class="format-pill shrink-0 px-3 py-1 rounded-xl font-bold text-xs bg-white hover:bg-amber-100/70 text-slate-700 transition shadow-xs border border-amber-200/60">📝 General Posts</button>
+            <button type="button" onclick="filterByFormat('EVENT')" class="format-pill shrink-0 px-3 py-1 rounded-xl font-bold text-xs bg-white hover:bg-amber-100/70 text-slate-700 transition shadow-xs border border-amber-200/60">📅 Community Events</button>
+            <button type="button" onclick="filterByFormat('RESOURCE')" class="format-pill shrink-0 px-3 py-1 rounded-xl font-bold text-xs bg-white hover:bg-amber-100/70 text-slate-700 transition shadow-xs border border-amber-200/60">📚 Community Resources</button>
           </div>
+        </div>
+        </div>
+
+        <!-- Conversational Chat Search Pane (Community Feed) -->
+        <div id="feed-chat-search-pane" class="hidden space-y-2.5 pt-1">
+          <div class="flex flex-wrap items-center gap-1.5 overflow-x-auto scrollbar-none">
+            <span class="text-[11px] font-black uppercase tracking-wider text-indigo-700 pr-1 shrink-0">Try asking:</span>
+            <button type="button" onclick="askChatPromptChip('feed', 'What upcoming events are scheduled?')" class="chat-chip-btn shrink-0 px-2.5 py-1 rounded-full text-xs font-bold bg-indigo-50/80 hover:bg-indigo-100 text-indigo-900 border border-indigo-200/80 transition">📅 Upcoming events</button>
+            <button type="button" onclick="askChatPromptChip('feed', 'Are there any mental health or wellness resources?')" class="chat-chip-btn shrink-0 px-2.5 py-1 rounded-full text-xs font-bold bg-teal-50/80 hover:bg-teal-100 text-teal-900 border border-teal-200/80 transition">🧠 Mental health resources</button>
+            <button type="button" onclick="askChatPromptChip('feed', 'What legal, financial, or mutual aid resources are available?')" class="chat-chip-btn shrink-0 px-2.5 py-1 rounded-full text-xs font-bold bg-violet-50/80 hover:bg-violet-100 text-violet-900 border border-violet-200/80 transition">⚖️ Legal &amp; community aid</button>
+            <button type="button" onclick="askChatPromptChip('feed', 'Show recent community Kudos')" class="chat-chip-btn shrink-0 px-2.5 py-1 rounded-full text-xs font-bold bg-amber-50/80 hover:bg-amber-100 text-amber-900 border border-amber-200/80 transition">🌟 Recent Kudos</button>
+            <button type="button" onclick="askChatPromptChip('feed', 'Which Community Spaces can I join?')" class="chat-chip-btn shrink-0 px-2.5 py-1 rounded-full text-xs font-bold bg-stone-100 hover:bg-stone-200 text-stone-800 border border-stone-300/80 transition">👥 Community Spaces</button>
+          </div>
+
+          <div id="feed-chat-messages" class="max-h-80 overflow-y-auto space-y-2.5 bg-slate-50/80 border border-slate-200/80 rounded-2xl p-3.5" aria-live="polite">
+            <div class="flex items-start gap-2.5">
+              <div class="w-7 h-7 rounded-full bg-indigo-600 text-white flex items-center justify-center text-xs font-black shrink-0 shadow-xs">💬</div>
+              <div class="bg-white border border-slate-200/90 rounded-2xl rounded-tl-sm px-3.5 py-2.5 text-sm text-slate-700 shadow-2xs max-w-3xl">
+                <p class="font-bold text-slate-900">Ask anything about GoodDeeds.space!</p>
+                <p class="text-xs text-slate-600 mt-0.5">Search Posts, Community Events, Community Resources, Kudos, Spaces, or contacts in natural language — and ask follow-up questions anytime.</p>
+              </div>
+            </div>
+          </div>
+
+          <form onsubmit="submitChatSearch(event, 'feed')" class="flex items-center gap-2">
+            <div class="relative flex-1 min-w-0">
+              <span class="absolute inset-y-0 left-0 pl-3.5 flex items-center pointer-events-none text-indigo-500 text-base" aria-hidden="true">💬</span>
+              <input type="text" id="feed-chat-input" maxlength="500" placeholder="Ask a question (e.g. 'Any mental health resources?', 'Upcoming events?', 'Who is the contact for that?')..." class="w-full pl-10 pr-4 py-2.5 rounded-xl border border-slate-300 font-medium text-sm bg-white focus:border-indigo-600 transition">
+            </div>
+            <button type="submit" id="btn-feed-chat-submit" class="chat-submit-btn px-4 py-2.5 rounded-xl font-extrabold text-sm bg-indigo-600 hover:bg-indigo-700 text-white shadow-sm transition shrink-0 inline-flex items-center gap-1.5">
+              <span>Ask</span>
+              <span>→</span>
+            </button>
+          </form>
         </div>
       </div>
 
@@ -546,26 +652,29 @@
 
       <!-- Responsive Layout: Left column for tabs/panes, Right column for calendar widget -->
       <div id="group-detail-layout" class="grid grid-cols-1 lg:grid-cols-3 gap-8 items-start">
-        <div id="group-main-content-col" class="lg:col-span-2 space-y-6">
+        <div id="group-main-content-col" class="lg:col-span-3 col-span-full space-y-6">
           <!-- Navigation Tabs & Calendar Toggle Bar -->
           <div class="flex flex-wrap items-center justify-between border-b-2 border-stone-200 gap-2 pb-1">
-            <div class="flex gap-2 overflow-x-auto" role="tablist">
-              <button onclick="switchGroupTab('chat')" id="gtab-chat" class="gtab-btn px-8 py-4 font-black text-xl border-b-4 border-amber-600 text-amber-800 transition touch-target shrink-0">
+            <div class="flex gap-1.5 overflow-x-auto" role="tablist">
+              <button onclick="switchGroupTab('chat')" id="gtab-chat" class="gtab-btn px-5 py-3.5 font-black text-lg border-b-4 border-amber-600 text-amber-800 transition touch-target shrink-0">
                 💬 Chat Board
               </button>
-              <button onclick="switchGroupTab('kudos')" id="gtab-kudos" class="gtab-btn px-8 py-4 font-black text-xl border-b-4 border-transparent text-stone-500 hover:text-stone-800 transition touch-target shrink-0">
+              <button onclick="switchGroupTab('kudos')" id="gtab-kudos" class="gtab-btn px-5 py-3.5 font-black text-lg border-b-4 border-transparent text-stone-500 hover:text-stone-800 transition touch-target shrink-0">
                 🌟 Kudos
               </button>
-              <button onclick="switchGroupTab('posts')" id="gtab-posts" class="gtab-btn px-8 py-4 font-black text-xl border-b-4 border-transparent text-stone-500 hover:text-stone-800 transition touch-target shrink-0">
+              <button onclick="switchGroupTab('posts')" id="gtab-posts" class="gtab-btn px-5 py-3.5 font-black text-lg border-b-4 border-transparent text-stone-500 hover:text-stone-800 transition touch-target shrink-0">
                 📝 Posts
               </button>
-              <button onclick="switchGroupTab('resources')" id="gtab-resources" class="gtab-btn px-8 py-4 font-black text-xl border-b-4 border-transparent text-stone-500 hover:text-stone-800 transition touch-target shrink-0">
+              <button onclick="switchGroupTab('events')" id="gtab-events" class="gtab-btn px-5 py-3.5 font-black text-lg border-b-4 border-transparent text-stone-500 hover:text-stone-800 transition touch-target shrink-0">
+                📅 Events
+              </button>
+              <button onclick="switchGroupTab('resources')" id="gtab-resources" class="gtab-btn px-5 py-3.5 font-black text-lg border-b-4 border-transparent text-stone-500 hover:text-stone-800 transition touch-target shrink-0">
                 📚 Resources
               </button>
             </div>
-            <button type="button" id="btn-toggle-calendar" onclick="toggleCalendarWidget()" class="px-4 py-2 my-2 rounded-xl font-bold text-xs bg-stone-100 hover:bg-amber-100 text-stone-700 hover:text-amber-900 border border-stone-300 transition flex items-center space-x-1.5 shadow-sm touch-target shrink-0" title="Collapse calendar to expand tabs & feeds space" aria-label="Toggle Calendar Widget">
+            <button type="button" id="btn-toggle-calendar" onclick="toggleCalendarWidget()" class="px-4 py-2 my-2 rounded-xl font-bold text-xs bg-amber-100 hover:bg-amber-100 text-amber-900 hover:text-amber-900 border border-amber-400 transition flex items-center space-x-1.5 shadow-sm touch-target shrink-0" title="Expand calendar widget to view scheduled events" aria-label="Toggle Calendar Widget">
               <span id="calendar-toggle-icon">📅</span>
-              <span id="calendar-toggle-text">Hide Calendar</span>
+              <span id="calendar-toggle-text">Show Calendar</span>
             </button>
           </div>
 
@@ -593,6 +702,11 @@
         <div id="group-posts-list" class="space-y-6"></div>
       </div>
 
+      <!-- Tab Content 4: Space Events -->
+      <div id="gcontent-events" class="hidden space-y-6 animate-fadeIn">
+        <div id="group-events-list" class="space-y-6"></div>
+      </div>
+
       <!-- Tab Content 4: Public Member Roster -->
       <div id="gcontent-roster" class="hidden space-y-6 animate-fadeIn">
         <div class="flex items-center justify-between pb-2">
@@ -608,7 +722,7 @@
     </div>
 
         <!-- Right Sidebar Column: Calendar Widget -->
-        <div id="group-calendar-sidebar" class="lg:col-span-1 space-y-6">
+        <div id="group-calendar-sidebar" class="hidden lg:col-span-1 space-y-6">
           <div id="group-calendar-widget" class="bg-white p-6 rounded-3xl border-2 border-stone-200 shadow-sm space-y-4">
             <div class="flex items-center justify-between border-b border-stone-200 pb-3">
               <button type="button" onclick="navigateGroupCalendar(-1)" class="px-3 py-1.5 rounded-xl bg-stone-100 hover:bg-stone-200 font-black text-sm text-stone-700 transition">&lt; Prev</button>
@@ -997,24 +1111,63 @@
         </div>
 
         <div>
-          <label class="block font-bold text-slate-700 text-sm mb-1.5">Description <span class="text-slate-400 font-normal text-xs">*(Your story or announcement)*</span> <span class="text-red-500">*</span></label>
-          <textarea id="post-input-content" required rows="4" placeholder="Share your experience, wisdom, or detailed announcements..." class="w-full px-4 py-3 rounded-xl border border-slate-300 font-medium text-base bg-slate-50 focus:bg-white focus:border-indigo-600 transition"></textarea>
+          <div class="flex flex-wrap items-center justify-between gap-2 mb-1.5">
+            <label for="post-input-content" class="block font-bold text-slate-700 text-sm">Description <span class="text-slate-400 font-normal text-xs">*(Your story or announcement)*</span> <span class="text-red-500">*</span></label>
+            <div class="inline-flex rounded-lg bg-slate-100 p-0.5 border border-slate-200 text-xs font-bold">
+              <button type="button" id="btn-post-editor-write" onclick="switchPostEditorMode('write')" class="rte-toolbar-btn px-2.5 py-1 rounded-md bg-white text-indigo-700 shadow-2xs transition">✏️ Write</button>
+              <button type="button" id="btn-post-editor-preview" onclick="switchPostEditorMode('preview')" class="rte-toolbar-btn px-2.5 py-1 rounded-md text-slate-600 hover:text-slate-900 transition">👁️ Preview</button>
+            </div>
+          </div>
+
+          <div id="post-rich-editor-frame" class="rounded-xl border border-slate-300 bg-slate-50 focus-within:bg-white focus-within:border-indigo-600 transition overflow-hidden">
+            <!-- Formatting Toolbar -->
+            <div id="post-format-toolbar" class="flex flex-wrap items-center gap-1 px-2.5 py-1.5 bg-slate-100/90 border-b border-slate-200" role="toolbar" aria-label="Text formatting toolbar">
+              <button type="button" onclick="applyPostFormat('bold')" class="rte-toolbar-btn px-2.5 py-1 rounded-lg hover:bg-white text-slate-700 hover:text-indigo-700 font-black text-sm transition" title="Bold (Ctrl+B)" aria-label="Bold">B</button>
+              <button type="button" onclick="applyPostFormat('italic')" class="rte-toolbar-btn px-2.5 py-1 rounded-lg hover:bg-white text-slate-700 hover:text-indigo-700 italic font-serif font-bold text-sm transition" title="Italic (Ctrl+I)" aria-label="Italic">I</button>
+              <button type="button" onclick="applyPostFormat('underline')" class="rte-toolbar-btn px-2.5 py-1 rounded-lg hover:bg-white text-slate-700 hover:text-indigo-700 underline font-bold text-sm transition" title="Underline (Ctrl+U)" aria-label="Underline">U</button>
+              <span class="w-px h-4 bg-slate-300 mx-0.5" aria-hidden="true"></span>
+              <button type="button" onclick="applyPostFormat('heading')" class="rte-toolbar-btn px-2 py-1 rounded-lg hover:bg-white text-slate-700 hover:text-indigo-700 font-extrabold text-xs transition" title="Heading" aria-label="Heading">H</button>
+              <button type="button" onclick="applyPostFormat('bullet')" class="rte-toolbar-btn px-2 py-1 rounded-lg hover:bg-white text-slate-700 hover:text-indigo-700 font-bold text-xs transition" title="Bullet List" aria-label="Bullet List">• List</button>
+              <button type="button" onclick="applyPostFormat('numbered')" class="rte-toolbar-btn px-2 py-1 rounded-lg hover:bg-white text-slate-700 hover:text-indigo-700 font-bold text-xs transition" title="Numbered List" aria-label="Numbered List">1. List</button>
+              <button type="button" onclick="applyPostFormat('quote')" class="rte-toolbar-btn px-2 py-1 rounded-lg hover:bg-white text-slate-700 hover:text-indigo-700 font-bold text-xs transition" title="Quote" aria-label="Quote">❝ Quote</button>
+              <span class="w-px h-4 bg-slate-300 mx-0.5" aria-hidden="true"></span>
+              <button type="button" id="btn-post-insert-link" onclick="openPostLinkPopover()" class="rte-toolbar-btn px-2.5 py-1 rounded-lg bg-white hover:bg-indigo-50 text-indigo-700 border border-indigo-200 font-bold text-xs transition inline-flex items-center gap-1 shadow-2xs" title="Insert Hyperlink (Ctrl+K)" aria-label="Insert Hyperlink">
+                <span>🔗</span><span>Add Link</span>
+              </button>
+            </div>
+
+            <!-- Inline Insert Hyperlink Bar -->
+            <div id="post-insert-link-popover" class="hidden px-3 py-2.5 bg-indigo-50/90 border-b border-indigo-200 space-y-2 animate-fadeIn">
+              <div class="grid grid-cols-1 sm:grid-cols-2 gap-2">
+                <input type="text" id="post-link-text-input" placeholder="Link text (e.g. Sign Up Form)" class="px-3 py-1.5 rounded-lg border border-indigo-200 bg-white text-sm font-medium text-slate-800 focus:border-indigo-600 focus:outline-none">
+                <input type="url" id="post-link-url-input" placeholder="https://example.com" class="px-3 py-1.5 rounded-lg border border-indigo-200 bg-white text-sm font-medium text-slate-800 focus:border-indigo-600 focus:outline-none">
+              </div>
+              <div class="flex items-center justify-end gap-2">
+                <button type="button" onclick="closePostLinkPopover()" class="rte-toolbar-btn px-3 py-1 rounded-lg bg-white hover:bg-slate-100 text-slate-600 border border-slate-200 text-xs font-bold transition">Cancel</button>
+                <button type="button" id="btn-confirm-insert-post-link" onclick="confirmInsertPostLink()" class="rte-toolbar-btn px-3 py-1 rounded-lg bg-indigo-600 hover:bg-indigo-700 text-white text-xs font-extrabold shadow-2xs transition">Insert Hyperlink</button>
+              </div>
+            </div>
+
+            <textarea id="post-input-content" required rows="5" placeholder="Share your experience, wisdom, or detailed announcements... Highlight text to format or add hyperlinks, or paste any URL." class="w-full px-4 py-3 font-medium text-base bg-transparent focus:outline-none resize-y border-0"></textarea>
+            <div id="post-editor-live-preview" class="hidden px-4 py-3 min-h-[132px] bg-white text-base text-slate-700 font-medium leading-relaxed post-rich-content"></div>
+          </div>
+          <p class="text-xs text-slate-400 font-medium mt-1">Supports <strong>bold</strong>, <em>italic</em>, lists, quotes, <strong>🔗 Add Link</strong> hyperlinks, and auto-clickable URLs.</p>
         </div>
 
-        <!-- Subtype Radio Buttons -->
-        <div>
-          <label class="block font-bold text-slate-700 text-sm mb-1">Post Subtype <span class="text-red-500">*</span></label>
-          <div class="flex flex-wrap gap-4 pt-1 pb-2">
-            <label class="inline-flex items-center space-x-2 cursor-pointer font-bold text-sm text-slate-700">
-              <input type="radio" name="post_subtype" value="GENERAL" checked onchange="togglePostSubtype(this.value)" class="w-4 h-4 text-indigo-600 focus:ring-indigo-500">
-              <span>General Post</span>
+        <!-- Multi-Select Post Type Checkboxes -->
+        <div id="post-subtype-selector">
+          <label class="block font-bold text-slate-700 text-sm mb-1">Post Type(s) <span class="text-red-500">*</span> <span class="text-slate-400 font-normal text-xs">(Select all that apply — e.g. Event + Resource, or General Post + Resource)</span></label>
+          <div class="flex flex-wrap gap-3 pt-1 pb-2">
+            <label class="inline-flex items-center space-x-2 px-3.5 py-2 rounded-xl border border-slate-300 bg-white hover:bg-indigo-50/60 cursor-pointer font-bold text-sm text-slate-700 transition shadow-2xs">
+              <input type="checkbox" id="post-subtype-chk-general" name="post_subtype" value="GENERAL" checked onchange="togglePostSubtype(this)" class="w-4 h-4 rounded text-indigo-600 focus:ring-indigo-500">
+              <span>📝 General Post</span>
             </label>
-            <label class="inline-flex items-center space-x-2 cursor-pointer font-bold text-sm text-slate-700">
-              <input type="radio" name="post_subtype" value="EVENT" onchange="togglePostSubtype(this.value)" class="w-4 h-4 text-indigo-600 focus:ring-indigo-500">
+            <label class="inline-flex items-center space-x-2 px-3.5 py-2 rounded-xl border border-slate-300 bg-white hover:bg-rose-50/60 cursor-pointer font-bold text-sm text-slate-700 transition shadow-2xs">
+              <input type="checkbox" id="post-subtype-chk-event" name="post_subtype" value="EVENT" onchange="togglePostSubtype(this)" class="w-4 h-4 rounded text-rose-600 focus:ring-rose-500">
               <span>📅 Community Event</span>
             </label>
-            <label class="inline-flex items-center space-x-2 cursor-pointer font-bold text-sm text-slate-700">
-              <input type="radio" name="post_subtype" value="RESOURCE" onchange="togglePostSubtype(this.value)" class="w-4 h-4 text-indigo-600 focus:ring-indigo-500">
+            <label class="inline-flex items-center space-x-2 px-3.5 py-2 rounded-xl border border-slate-300 bg-white hover:bg-teal-50/60 cursor-pointer font-bold text-sm text-slate-700 transition shadow-2xs">
+              <input type="checkbox" id="post-subtype-chk-resource" name="post_subtype" value="RESOURCE" onchange="togglePostSubtype(this)" class="w-4 h-4 rounded text-teal-600 focus:ring-teal-500">
               <span>📚 Community Resource</span>
             </label>
           </div>
@@ -1113,7 +1266,7 @@
           <label class="block font-bold text-slate-700 text-sm">Links</label>
           <div id="post-links-list" class="space-y-2.5">
             <div class="flex gap-2">
-              <input type="url" id="post-input-url" placeholder="https://example.com/resource-link" class="post-link-input flex-1 px-4 py-3 rounded-xl border border-slate-300 font-medium text-sm bg-slate-50 focus:bg-white focus:border-indigo-600 transition">
+              <input type="url" id="post-input-url" oninput="updatePostResourceNudge()" placeholder="https://example.com/resource-link" class="post-link-input flex-1 px-4 py-3 rounded-xl border border-slate-300 font-medium text-sm bg-slate-50 focus:bg-white focus:border-indigo-600 transition">
             </div>
           </div>
           <button type="button" onclick="addPostLinkField()" class="px-4 py-2 bg-indigo-50 hover:bg-indigo-100 text-indigo-700 font-bold text-xs rounded-lg transition flex items-center space-x-1">
@@ -1132,6 +1285,12 @@
             </div>
           </div>
           <div id="post-files-preview" class="space-y-2 pt-1"></div>
+        </div>
+
+        <!-- Gentle Smart Nudge to Optionally Dual-Tag as Community Resource -->
+        <div id="post-resource-nudge" class="hidden px-4 py-3 rounded-2xl bg-teal-50/90 border border-teal-200 flex flex-wrap items-center justify-between gap-2.5 text-xs animate-fadeIn">
+          <span class="font-semibold text-teal-950">💡 Sharing a reusable guide, article, or flyer? You can also list this under <strong>📚 Community Resources</strong>.</span>
+          <button type="button" id="btn-enable-resource-tag-nudge" onclick="enablePostResourceTagFromNudge()" class="rte-toolbar-btn px-3 py-1.5 rounded-xl bg-teal-700 hover:bg-teal-800 text-white font-extrabold text-xs shadow-2xs transition shrink-0">+ Also Tag as 📚 Community Resource</button>
         </div>
 
         <div>

@@ -31,8 +31,51 @@ a.touch-target {
 }
 
 button.format-pill,
-button.landing-format-pill {
+button.landing-format-pill,
+button.rte-toolbar-btn,
+button.chat-mode-btn,
+button.chat-chip-btn,
+select.chat-scope-select {
   min-height: 32px;
+  min-width: auto;
+}
+
+button.chat-submit-btn {
+  min-height: 42px;
+  min-width: auto;
+}
+
+.landing-hero-cta {
+  min-height: 40px;
+}
+
+button.post-expand-btn {
+  min-height: 28px;
+  min-width: auto;
+}
+
+.post-content-collapsed {
+  max-height: 7.75rem;
+  overflow: hidden;
+  -webkit-mask-image: linear-gradient(to bottom, #000000 62%, rgba(0, 0, 0, 0) 100%);
+  mask-image: linear-gradient(to bottom, #000000 62%, rgba(0, 0, 0, 0) 100%);
+}
+
+/* Rich Formatted Post Content & Clickable Hyperlinks */
+.post-rich-content p + p,
+.post-rich-content p + ul,
+.post-rich-content p + ol,
+.post-rich-content p + blockquote,
+.post-rich-content ul + p,
+.post-rich-content ol + p,
+.post-rich-content blockquote + p {
+  margin-top: 0.5rem;
+}
+
+.post-rich-content a.rich-link,
+a.rich-link {
+  text-underline-offset: 3px;
+  transition: color 0.15s ease, text-decoration-color 0.15s ease;
 }
 
 /* Sleek High Contrast Focus States with Warm Amber Glow */

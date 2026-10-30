@@ -11,13 +11,230 @@ function escapeHtml(unsafeStr) {
 }
 window.escapeHtml = escapeHtml;
 
+function decodeEscapedEntities(str) {
+  return String(str || "")
+    .replace(/&quot;/g, '"')
+    .replace(/&#039;/g, "'")
+    .replace(/&lt;/g, "<")
+    .replace(/&gt;/g, ">")
+    .replace(/&amp;/g, "&");
+}
+
+function sanitizeLinkHref(rawOrEscapedUrl) {
+  if (!rawOrEscapedUrl) return null;
+  let decoded = decodeEscapedEntities(rawOrEscapedUrl)
+    .replace(/[\x00-\x1f\x7f]/g, "")
+    .trim();
+  if (!decoded) return null;
+  if (/^www\.[a-zA-Z0-9-]+(?:\.[a-zA-Z0-9-]+)+/i.test(decoded)) {
+    decoded = "https://" + decoded;
+  }
+  if (/^https?:\/\/[^\s<>"']+/i.test(decoded)) {
+    return escapeHtml(decoded);
+  }
+  if (/^mailto:[^\s<>"']+@[^\s<>"']+\.[^\s<>"']+/i.test(decoded)) {
+    return escapeHtml(decoded);
+  }
+  return null;
+}
+window.sanitizeLinkHref = sanitizeLinkHref;
+
+function applyBasicInlineStyles(escapedText) {
+  return String(escapedText || "")
+    .replace(/\*\*([^*\n]+?)\*\*/g, '<strong class="font-bold text-slate-900">$1</strong>')
+    .replace(/__([^_\n]+?)__/g, '<u class="underline decoration-slate-400 underline-offset-2">$1</u>')
+    .replace(/\*([^*\n]+?)\*/g, '<em class="italic">$1</em>')
+    .replace(/(^|[^a-zA-Z0-9<])_([^_\n]+?)_(?![a-zA-Z0-9])/g, '$1<em class="italic">$2</em>');
+}
+
+function formatInlineEscapedText(escapedLine, allowFormatting = true) {
+  if (!escapedLine) return "";
+  const tokens = [];
+  const stash = (html) => {
+    const key = `\x01T${tokens.length}E\x01`;
+    tokens.push(html);
+    return key;
+  };
+
+  let work = String(escapedLine);
+
+  // 1. Inline code spans
+  if (allowFormatting) {
+    work = work.replace(/`([^`\n]+)`/g, (_, codeBody) => {
+      return stash(`<code class="px-1.5 py-0.5 rounded-md bg-slate-100 text-indigo-900 font-mono text-[0.9em] border border-slate-200/80">${codeBody}</code>`);
+    });
+  }
+
+  // 2. Markdown hyperlinks: [label](url)
+  work = work.replace(/\[([^\[\]\n]+)\]\(([^()\s]+(?:\([^()\s]*\)[^()\s]*)*)\)/g, (fullMatch, label, rawUrl) => {
+    const safeHref = sanitizeLinkHref(rawUrl);
+    if (!safeHref) return fullMatch;
+    const renderedLabel = allowFormatting ? applyBasicInlineStyles(label) : label;
+    const isMailto = safeHref.toLowerCase().startsWith("mailto:");
+    const targetAttrs = isMailto ? "" : ' target="_blank" rel="noopener noreferrer"';
+    return stash(`<a href="${safeHref}"${targetAttrs} onclick="event.stopPropagation()" class="rich-link text-indigo-600 hover:text-indigo-800 underline decoration-indigo-300 hover:decoration-indigo-600 font-semibold break-words">${renderedLabel}</a>`);
+  });
+
+  // 3. Auto-linked bare URLs: https://..., http://..., www....
+  work = work.replace(/(^|[^a-zA-Z0-9/@])((?:https?:\/\/|www\.[a-zA-Z0-9-]+(?:\.[a-zA-Z0-9-]+)+)[^\s<\x01]*)/gi, (fullMatch, prefix, urlCandidate) => {
+    let cleanCandidate = urlCandidate;
+    let trailing = "";
+    while (cleanCandidate.length > 0) {
+      const entityTail = cleanCandidate.match(/(&quot;|&#039;|&gt;|&lt;)$/);
+      if (entityTail) {
+        trailing = entityTail[0] + trailing;
+        cleanCandidate = cleanCandidate.slice(0, -entityTail[0].length);
+        continue;
+      }
+      const lastChar = cleanCandidate[cleanCandidate.length - 1];
+      if (/[.,;:!?]/.test(lastChar)) {
+        trailing = lastChar + trailing;
+        cleanCandidate = cleanCandidate.slice(0, -1);
+        continue;
+      }
+      if (lastChar === ")") {
+        const opens = (cleanCandidate.match(/\(/g) || []).length;
+        const closes = (cleanCandidate.match(/\)/g) || []).length;
+        if (closes > opens) {
+          trailing = ")" + trailing;
+          cleanCandidate = cleanCandidate.slice(0, -1);
+          continue;
+        }
+      }
+      if (lastChar === "]") {
+        const opens = (cleanCandidate.match(/\[/g) || []).length;
+        const closes = (cleanCandidate.match(/\]/g) || []).length;
+        if (closes > opens) {
+          trailing = "]" + trailing;
+          cleanCandidate = cleanCandidate.slice(0, -1);
+          continue;
+        }
+      }
+      break;
+    }
+    const safeHref = sanitizeLinkHref(cleanCandidate);
+    if (!safeHref) return fullMatch;
+    const linkHtml = stash(`<a href="${safeHref}" target="_blank" rel="noopener noreferrer" onclick="event.stopPropagation()" class="rich-link text-indigo-600 hover:text-indigo-800 underline decoration-indigo-300 hover:decoration-indigo-600 font-semibold break-all">${cleanCandidate}</a>`);
+    return prefix + linkHtml + trailing;
+  });
+
+  // 4. Plain email addresses / mailto: links
+  work = work.replace(/(^|[^a-zA-Z0-9._%+-/:])(?:mailto:)?([a-zA-Z0-9._%+-]+@[a-zA-Z0-9-]+(?:\.[a-zA-Z0-9-]+)+)/g, (fullMatch, prefix, emailAddr) => {
+    const safeHref = sanitizeLinkHref("mailto:" + emailAddr);
+    if (!safeHref) return fullMatch;
+    const displayLabel = fullMatch.slice(prefix.length);
+    const linkHtml = stash(`<a href="${safeHref}" onclick="event.stopPropagation()" class="rich-link text-indigo-600 hover:text-indigo-800 underline decoration-indigo-300 hover:decoration-indigo-600 font-semibold break-words">${displayLabel}</a>`);
+    return prefix + linkHtml;
+  });
+
+  // 5. Inline styles (bold, underline, italic)
+  if (allowFormatting) {
+    work = applyBasicInlineStyles(work);
+  }
+
+  // 6. Restore stashed links & code spans
+  return work.replace(/\x01T(\d+)E\x01/g, (_, idx) => tokens[Number(idx)] || "");
+}
+
+function linkifyEscapedHtml(escapedStr) {
+  if (!escapedStr) return "";
+  return String(escapedStr)
+    .split(/\r?\n/)
+    .map(line => formatInlineEscapedText(line, false))
+    .join("\n");
+}
+window.linkifyEscapedHtml = linkifyEscapedHtml;
+
+function renderFormattedPostContent(escapedStr) {
+  if (!escapedStr) return "";
+  const cleaned = String(escapedStr).replace(/^📅\s*Event Date:[^\n]*\n+/i, "");
+  const lines = cleaned.split(/\r?\n/);
+  const blocks = [];
+  let currentType = null;
+  let currentItems = [];
+
+  const flushBlock = () => {
+    if (!currentType || currentItems.length === 0) {
+      currentType = null;
+      currentItems = [];
+      return;
+    }
+    if (currentType === "ul") {
+      blocks.push(`<ul class="list-disc pl-6 space-y-1">${currentItems.map(li => `<li>${li}</li>`).join("")}</ul>`);
+    } else if (currentType === "ol") {
+      blocks.push(`<ol class="list-decimal pl-6 space-y-1">${currentItems.map(li => `<li>${li}</li>`).join("")}</ol>`);
+    } else if (currentType === "blockquote") {
+      blocks.push(`<blockquote class="border-l-4 border-indigo-300 bg-indigo-50/40 pl-3.5 py-1.5 pr-3 rounded-r-xl italic text-slate-700">${currentItems.join("<br>")}</blockquote>`);
+    } else if (currentType === "p") {
+      blocks.push(`<p>${currentItems.join("<br>")}</p>`);
+    }
+    currentType = null;
+    currentItems = [];
+  };
+
+  for (const rawLine of lines) {
+    if (rawLine.trim() === "") {
+      flushBlock();
+      continue;
+    }
+    const headingMatch = rawLine.match(/^#{1,3}\s+(.+)$/);
+    if (headingMatch) {
+      flushBlock();
+      blocks.push(`<h4 class="font-extrabold text-slate-900 text-lg sm:text-xl pt-1">${formatInlineEscapedText(headingMatch[1], true)}</h4>`);
+      continue;
+    }
+    const bulletMatch = rawLine.match(/^\s*(?:[-*•])\s+(.+)$/);
+    if (bulletMatch) {
+      if (currentType !== "ul") flushBlock();
+      currentType = "ul";
+      currentItems.push(formatInlineEscapedText(bulletMatch[1], true));
+      continue;
+    }
+    const numMatch = rawLine.match(/^\s*\d+\.\s+(.+)$/);
+    if (numMatch) {
+      if (currentType !== "ol") flushBlock();
+      currentType = "ol";
+      currentItems.push(formatInlineEscapedText(numMatch[1], true));
+      continue;
+    }
+    const quoteMatch = rawLine.match(/^\s*&gt;\s?(.*)$/);
+    if (quoteMatch) {
+      if (currentType !== "blockquote") flushBlock();
+      currentType = "blockquote";
+      currentItems.push(formatInlineEscapedText(quoteMatch[1], true));
+      continue;
+    }
+    if (currentType !== "p") flushBlock();
+    currentType = "p";
+    currentItems.push(formatInlineEscapedText(rawLine, true));
+  }
+  flushBlock();
+  return blocks.join("");
+}
+window.renderFormattedPostContent = renderFormattedPostContent;
+
+function stripFormattingSyntax(rawText) {
+  if (!rawText) return "";
+  return String(rawText)
+    .replace(/\[([^\[\]\n]+)\]\(([^()\s]+(?:\([^()\s]*\)[^()\s]*)*)\)/g, "$1 ($2)")
+    .replace(/\*\*([^*\n]+?)\*\*/g, "$1")
+    .replace(/__([^_\n]+?)__/g, "$1")
+    .replace(/\*([^*\n]+?)\*/g, "$1")
+    .replace(/`([^`\n]+)`/g, "$1")
+    .replace(/^#{1,3}\s+/gm, "")
+    .replace(/^\s*>\s?/gm, "");
+}
+
 const API_BASE = "/api";
 let currentUser = null;
 let currentToken = localStorage.getItem("gd_token") || null;
 window._attachmentCache = window._attachmentCache || {};
 
-// Discussion thread state persistence
+// Discussion thread & long post expansion state persistence
 const expandedThreads = new Set();
+const expandedLongPosts = new Set();
+const LONG_POST_CHAR_THRESHOLD = 420;
+const LONG_POST_LINE_THRESHOLD = 5;
 
 // Synchronized startup sequence promise
 let sessionPromise = null;
@@ -70,12 +287,27 @@ let currentProfileTab = "posts";
 // Autocomplete Users Cache
 let allUsersCache = [];
 
-/* ================= INITIALIZATION & ROUTING ================= */
+// Real-Time In-App Notifications State (declared before startup to prevent TDZ errors)
+let notificationsPollTimer = null;
+let lastSeenNotifId = 0;
 
-sessionPromise = checkSession();
+// Conversational Chat Search State (declared before startup to prevent TDZ errors)
+let feedSearchMode = "filters";
+let landingSearchMode = "filters";
+let feedChatHistory = [];
+let landingChatHistory = [];
+let chatFilterActive = { feed: false, landing: false };
+let isChatSubmitting = { feed: false, landing: false };
+
+/* ================= INITIALIZATION & ROUTING ================= */
 
 async function initApp() {
   setupEventListeners();
+  if (!sessionPromise) {
+    sessionPromise = checkSession().catch(err => {
+      console.error("Session init error:", err);
+    });
+  }
   try {
     await sessionPromise;
   } catch (err) {
@@ -97,7 +329,7 @@ async function initApp() {
 if (document.readyState === "loading") {
   window.addEventListener("DOMContentLoaded", initApp);
 } else {
-  initApp();
+  Promise.resolve().then(initApp);
 }
 
 window.addEventListener("hashchange", async () => {
@@ -207,6 +439,8 @@ function setupEventListeners() {
   document.querySelectorAll(".btn-passkey-login").forEach(btn => {
     btn.addEventListener("click", loginWithPasskey);
   });
+
+  initPostRichEditor();
 }
 
 function trackAnalyticsPageView(pagePath) {
@@ -228,7 +462,9 @@ window.trackAnalyticsPageView = trackAnalyticsPageView;
 window.trackAnalyticsEvent = trackAnalyticsEvent;
 
 async function handleRoute() {
-  await sessionPromise;
+  if (sessionPromise) {
+    try { await sessionPromise; } catch (_) {}
+  }
   const hash = window.location.hash || "#/";
   const path = hash.replace("#", "").split("?")[0];
 
@@ -264,6 +500,8 @@ async function handleRoute() {
   } else if (path.startsWith("/group/")) {
     showView("view-group-detail");
     activeGroupId = path.split("/")[2];
+    window.isCalendarCollapsed = true;
+    if (typeof updateCalendarCollapseUI === "function") updateCalendarCollapseUI();
     loadGroupDetail(activeGroupId);
   } else if (path === "/profile") {
     if (!currentUser) {
@@ -496,6 +734,11 @@ function updateAuthUI(user) {
     stopNotificationsPolling();
   }
   populateGroupFilterDropdown();
+  const chatScopeSel = document.getElementById("feed-chat-scope-select");
+  if (chatScopeSel) {
+    if (user && feedSearchMode === "chat") chatScopeSel.classList.remove("hidden");
+    else chatScopeSel.classList.add("hidden");
+  }
 }
 
 async function handleLogin(e) {
@@ -705,10 +948,10 @@ function highlightSearchMatches(text, rawQuery) {
 
 function extractMatchingSnippet(text, rawQuery, maxLen = 150) {
   if (!text) return "";
-  const clean = String(text).replace(/\s+/g, " ").trim();
-  if (!clean) return "";
   const tokens = getSearchTokens(rawQuery);
   if (tokens.length > 0) {
+    const clean = stripFormattingSyntax(text).replace(/\s+/g, " ").trim();
+    if (!clean) return "";
     const lower = clean.toLowerCase();
     let matchIdx = -1;
     for (const tok of tokens) {
@@ -725,10 +968,19 @@ function extractMatchingSnippet(text, rawQuery, maxLen = 150) {
       const suffix = end < clean.length ? "…" : "";
       return prefix + highlightSearchMatches(clean.slice(start, end), rawQuery) + suffix;
     }
+    const slice = clean.slice(0, maxLen);
+    const suffix = clean.length > maxLen ? "…" : "";
+    return highlightSearchMatches(slice, rawQuery) + suffix;
   }
-  const slice = clean.slice(0, maxLen);
-  const suffix = clean.length > maxLen ? "…" : "";
-  return highlightSearchMatches(slice, rawQuery) + suffix;
+  const cleanPreview = String(text)
+    .replace(/^#{1,3}\s+/gm, "")
+    .replace(/^\s*>\s?/gm, "")
+    .replace(/\s+/g, " ")
+    .trim();
+  if (!cleanPreview) return "";
+  const slice = cleanPreview.slice(0, maxLen);
+  const suffix = cleanPreview.length > maxLen ? "…" : "";
+  return formatInlineEscapedText(escapeHtml(slice), true) + suffix;
 }
 
 function buildSearchMatchInfo(item, searchContext) {
@@ -887,9 +1139,9 @@ function renderSearchResultsToolbar(count, isLanding = false) {
   const typeFilter = isLanding ? landingTypeFilter : currentTypeFilter;
 
   const activeChips = [];
-  if (formatFilter === "RESOURCE") activeChips.push("📚 Community Resource");
-  else if (formatFilter === "EVENT") activeChips.push("📅 Community Event");
-  else if (formatFilter === "GENERAL") activeChips.push("📝 General Post");
+  if (formatFilter === "RESOURCE") activeChips.push("📚 Community Resources");
+  else if (formatFilter === "EVENT") activeChips.push("📅 Community Events");
+  else if (formatFilter === "GENERAL") activeChips.push("📝 General Posts");
   if (categoryFilter) activeChips.push(`🏷️ ${escapeHtml(categoryFilter)}`);
   if (typeFilter === "KUDOS") activeChips.push("🌟 Kudos Only");
   else if (typeFilter === "POST" && !formatFilter) activeChips.push("📝 Posts Only");
@@ -921,6 +1173,87 @@ function renderSearchResultsToolbar(count, isLanding = false) {
   `;
 }
 
+const CANONICAL_POST_SUBTYPES = ["GENERAL", "EVENT", "RESOURCE"];
+
+function normalizeSingleSubtypeToken(token) {
+  const t = String(token || "").trim().toUpperCase();
+  if (t === "EVENT" || t === "COMMUNITY EVENT" || t === "COMMUNITY EVENTS") return "EVENT";
+  if (t === "RESOURCE" || t === "COMMUNITY RESOURCE" || t === "COMMUNITY RESOURCES") return "RESOURCE";
+  if (t === "GENERAL" || t === "GENERAL POST" || t === "GENERAL POSTS") return "GENERAL";
+  return "";
+}
+
+function getItemSubtypes(item) {
+  if (!item || item.item_type === "KUDOS") return [];
+  const found = new Set();
+  if (Array.isArray(item.post_subtypes) && item.post_subtypes.length > 0) {
+    item.post_subtypes.forEach(tok => {
+      const norm = normalizeSingleSubtypeToken(tok);
+      if (norm) found.add(norm);
+    });
+  } else if (item.post_subtype && String(item.post_subtype).trim() !== "") {
+    String(item.post_subtype).split(",").forEach(tok => {
+      const norm = normalizeSingleSubtypeToken(tok);
+      if (norm) found.add(norm);
+    });
+  }
+  if (item.event_date && String(item.event_date).trim() !== "") {
+    found.add("EVENT");
+  }
+  if (found.size === 0) {
+    const resStr = String(item.resource_url || "").trim();
+    if (resStr && resStr !== "[]") {
+      found.add("RESOURCE");
+    } else {
+      found.add("GENERAL");
+    }
+  }
+  return CANONICAL_POST_SUBTYPES.filter(s => found.has(s));
+}
+window.getItemSubtypes = getItemSubtypes;
+
+function renderSubtypeBadgesHtml(subtypes) {
+  const list = (Array.isArray(subtypes) && subtypes.length > 0) ? subtypes : ["GENERAL"];
+  return list.map(st => {
+    if (st === "EVENT") {
+      return `<span class="inline-flex items-center gap-1.5 px-3.5 py-1 rounded-full text-xs font-extrabold uppercase tracking-wider bg-rose-50 text-rose-800 border border-rose-200 shadow-xs">📅 Community Event</span>`;
+    }
+    if (st === "RESOURCE") {
+      return `<span class="inline-flex items-center gap-1.5 px-3.5 py-1 rounded-full text-xs font-extrabold uppercase tracking-wider bg-teal-50 text-teal-800 border border-teal-200 shadow-xs">📚 Community Resource</span>`;
+    }
+    return `<span class="inline-flex items-center gap-1.5 px-3.5 py-1 rounded-full text-xs font-extrabold uppercase tracking-wider bg-indigo-50 text-indigo-800 border border-indigo-200 shadow-xs">📝 General Post</span>`;
+  }).join("");
+}
+window.renderSubtypeBadgesHtml = renderSubtypeBadgesHtml;
+
+function isLongPostContent(rawText) {
+  const txt = String(rawText || "").trim();
+  if (!txt) return false;
+  if (txt.length > LONG_POST_CHAR_THRESHOLD) return true;
+  if (txt.split(/\r?\n/).length > LONG_POST_LINE_THRESHOLD) return true;
+  return false;
+}
+window.isLongPostContent = isLongPostContent;
+
+function togglePostFullText(itemId) {
+  const numId = Number(itemId);
+  const bodyEl = document.getElementById(`post-body-content-${numId}`);
+  const labelEl = document.getElementById(`post-text-toggle-label-${numId}`);
+  if (!bodyEl) return;
+
+  const willExpand = bodyEl.classList.contains("post-content-collapsed");
+  if (willExpand) {
+    expandedLongPosts.add(numId);
+    bodyEl.classList.remove("post-content-collapsed");
+    if (labelEl) labelEl.textContent = "Show less ↑";
+  } else {
+    expandedLongPosts.delete(numId);
+    bodyEl.classList.add("post-content-collapsed");
+    if (labelEl) labelEl.textContent = "Click here to see the full text ↓";
+  }
+}
+window.togglePostFullText = togglePostFullText;
+
 function renderFeedCard(item, isProfileView = false, searchContext = null) {
   if (!item) return "";
   const authorName = escapeHtml(item.author_name || "Anonymous");
@@ -930,6 +1263,9 @@ function renderFeedCard(item, isProfileView = false, searchContext = null) {
   const itemLink = isKudos ? `/#/kudos/${item.id}` : `/#/post/${item.id}`;
   const isCompactSearch = Boolean(searchContext && searchContext.isCompactSearch);
   const isCardExpanded = !isCompactSearch || expandAllSearchCards || expandedSearchCards.has(Number(item.id));
+  const forceFullPostContent = Boolean(searchContext && searchContext.forceExpandContent);
+  const shouldTruncatePost = !isKudos && !forceFullPostContent && isLongPostContent(item.content);
+  const isPostTextExpanded = !shouldTruncatePost || expandedLongPosts.has(Number(item.id));
   
   // Groups badges
   const groupBadges = (item.groups || []).map(g => `
@@ -968,7 +1304,7 @@ function renderFeedCard(item, isProfileView = false, searchContext = null) {
             ${canDeleteComment ? `<button type="button" onclick="deleteComment(${c.id}, ${item.id})" class="text-xs text-stone-400 hover:text-red-600 font-bold" title="Delete comment">🗑️</button>` : ""}
           </div>
         </div>
-        <p class="text-stone-800 pt-0.5 font-medium whitespace-pre-line">${escapeHtml(c.content)}</p>
+        <p class="text-stone-800 pt-0.5 font-medium whitespace-pre-line break-words">${linkifyEscapedHtml(escapeHtml(c.content))}</p>
       </div>
     </div>
   `;
@@ -983,12 +1319,11 @@ function renderFeedCard(item, isProfileView = false, searchContext = null) {
     ? (commentsCount > 0 ? "▲ Hide Thread" : "▲ Hide Reply")
     : (commentsCount > 0 ? "▼ Show Thread" : "▼ Write Reply");
 
+  const itemSubtypes = !isKudos ? getItemSubtypes(item) : [];
+  const isEventOrResourceItem = itemSubtypes.includes("EVENT") || itemSubtypes.includes("RESOURCE");
+
   const postSubtypeBadge = (!isKudos)
-    ? ((item.post_subtype === "EVENT" || item.event_date)
-        ? `<span class="inline-flex items-center gap-1.5 px-3.5 py-1 rounded-full text-xs font-extrabold uppercase tracking-wider bg-rose-50 text-rose-800 border border-rose-200 shadow-xs">📅 Community Event</span>`
-        : ((item.post_subtype === "RESOURCE" || item.resource_url)
-            ? `<span class="inline-flex items-center gap-1.5 px-3.5 py-1 rounded-full text-xs font-extrabold uppercase tracking-wider bg-teal-50 text-teal-800 border border-teal-200 shadow-xs">📚 Community Resource</span>`
-            : `<span class="inline-flex items-center gap-1.5 px-3.5 py-1 rounded-full text-xs font-extrabold uppercase tracking-wider bg-indigo-50 text-indigo-800 border border-indigo-200 shadow-xs">📝 General Post</span>`))
+    ? renderSubtypeBadgesHtml(itemSubtypes)
     : `<span class="inline-flex items-center gap-1.5 px-3.5 py-1 rounded-full text-xs font-extrabold uppercase tracking-wider bg-amber-200/80 text-amber-950 border border-amber-400 shadow-xs">🌟 Gratitude Kudos</span>`;
 
   const categoryBadge = (!isKudos && item.category)
@@ -1138,8 +1473,8 @@ function renderFeedCard(item, isProfileView = false, searchContext = null) {
       <div class="space-y-3">
         ${!isKudos && item.title && !isCompactSearch ? `<h2 class="text-2xl sm:text-3xl font-extrabold text-slate-900 tracking-tight"><a href="${itemLink}" class="hover:text-indigo-600 transition">${escapeHtml(item.title)}</a></h2>` : ""}
         ${isKudos ? `
-          <div class="bg-amber-100/40 border border-amber-300/80 rounded-2xl p-4 sm:p-5 text-slate-900 text-lg whitespace-pre-line font-semibold leading-relaxed shadow-xs">
-            <span class="text-amber-500 font-serif text-2xl leading-none select-none mr-1">“</span>${escapeHtml(item.content)}<span class="text-amber-500 font-serif text-2xl leading-none select-none ml-1">”</span>
+          <div class="bg-amber-100/40 border border-amber-300/80 rounded-2xl p-4 sm:p-5 text-slate-900 text-lg whitespace-pre-line font-semibold leading-relaxed shadow-xs break-words">
+            <span class="text-amber-500 font-serif text-2xl leading-none select-none mr-1">“</span>${linkifyEscapedHtml(escapeHtml(item.content))}<span class="text-amber-500 font-serif text-2xl leading-none select-none ml-1">”</span>
           </div>
         ` : `
           ${(item.event_date || rawEventTime) ? `
@@ -1148,7 +1483,14 @@ function renderFeedCard(item, isProfileView = false, searchContext = null) {
               ${rawEventTime ? `<span>${item.event_date ? "• " : ""}🕒 ${escapeHtml(rawEventTime)}</span>` : ""}
             </div>
           ` : ""}
-          <p class="text-slate-700 text-lg whitespace-pre-line font-medium leading-relaxed">${escapeHtml(item.content).replace(/^📅\s*Event Date:[^\n]*\n+/i, "")}</p>
+          <div class="space-y-1.5">
+            <div id="post-body-content-${item.id}" class="post-rich-content ${!isPostTextExpanded ? 'post-content-collapsed ' : ''}text-slate-700 text-lg font-medium leading-relaxed break-words">${renderFormattedPostContent(escapeHtml(item.content))}</div>
+            ${shouldTruncatePost ? `
+              <button type="button" id="btn-toggle-post-text-${item.id}" onclick="togglePostFullText(${item.id})" class="post-expand-btn inline-flex items-center gap-1.5 px-3 py-1 rounded-lg bg-indigo-50/80 hover:bg-indigo-100 text-indigo-700 hover:text-indigo-900 border border-indigo-200/80 text-xs sm:text-sm font-extrabold transition cursor-pointer">
+                <span id="post-text-toggle-label-${item.id}">${isPostTextExpanded ? "Show less ↑" : "Click here to see the full text ↓"}</span>
+              </button>
+            ` : ""}
+          </div>
           ${(item.target_audience || item.target_geography || item.contact_info) ? `
             <div class="mt-3 p-3.5 sm:p-4 rounded-2xl bg-indigo-50/50 border border-indigo-100/90 grid grid-cols-1 sm:grid-cols-3 gap-3 text-xs">
               ${item.target_audience ? `
@@ -1164,9 +1506,9 @@ function renderFeedCard(item, isProfileView = false, searchContext = null) {
                 </div>
               ` : ""}
               ${item.contact_info ? `
-                <div class="flex flex-col gap-0.5 ${(item.post_subtype === "EVENT" || item.post_subtype === "RESOURCE") ? "bg-white/90 p-2 rounded-xl border border-indigo-200 shadow-2xs" : ""}">
-                  <span class="font-extrabold uppercase tracking-wider text-[10px] text-indigo-700">📇 Key Contact ${(item.post_subtype === "EVENT" || item.post_subtype === "RESOURCE") ? "• Event / Resource" : ""}</span>
-                  <span class="font-bold text-slate-900 text-sm break-words">${escapeHtml(item.contact_info)}</span>
+                <div class="flex flex-col gap-0.5 ${isEventOrResourceItem ? "bg-white/90 p-2 rounded-xl border border-indigo-200 shadow-2xs" : ""}">
+                  <span class="font-extrabold uppercase tracking-wider text-[10px] text-indigo-700">📇 Key Contact ${isEventOrResourceItem ? "• Event / Resource" : ""}</span>
+                  <span class="font-bold text-slate-900 text-sm break-words">${linkifyEscapedHtml(escapeHtml(item.contact_info))}</span>
                 </div>
               ` : ""}
             </div>
@@ -1269,6 +1611,7 @@ async function loadLandingPreview(isLoadMore = false) {
 
   const isCompactSearch = isSearchOrTypeFilterActive(true);
   if (!isLoadMore) {
+    chatFilterActive.landing = false;
     landingPreviewOffset = 0;
     expandedSearchCards.clear();
     expandAllSearchCards = false;
@@ -1359,7 +1702,9 @@ async function loadMoreLandingPreview() {
 }
 
 async function loadFeed(isLoadMore = false, isReload = false) {
-  await sessionPromise;
+  if (sessionPromise) {
+    try { await sessionPromise; } catch (_) {}
+  }
   checkPendingInvitations();
   const container = document.getElementById("feed-items-container");
   const loadMoreContainer = document.getElementById("feed-load-more-container");
@@ -1368,6 +1713,7 @@ async function loadFeed(isLoadMore = false, isReload = false) {
   const isCompactSearch = isSearchOrTypeFilterActive(false);
 
   if (!isLoadMore && !isReload) {
+    chatFilterActive.feed = false;
     feedOffset = 0;
     displayedFeedLimit = isCompactSearch ? 25 : 4;
     expandedSearchCards.clear();
@@ -1845,13 +2191,15 @@ async function populateGroupFilterDropdown() {
 /* ================= SINGLE ITEM VIEW (DIRECT URL) ================= */
 
 async function loadSingleItemView(id) {
-  await sessionPromise;
+  if (sessionPromise) {
+    try { await sessionPromise; } catch (_) {}
+  }
   const container = document.getElementById("single-item-container");
   if (!container) return;
   container.innerHTML = `<p class="text-center font-bold text-xl text-stone-500 py-12">Loading celebration...</p>`;
   try {
     const data = await apiFetch(`/feed/${id}`);
-    container.innerHTML = renderFeedCard(data.item, false);
+    container.innerHTML = renderFeedCard(data.item, false, { forceExpandContent: true });
   } catch (err) {
     container.innerHTML = `
       <div class="bg-white p-12 rounded-3xl border-2 border-red-200 text-center space-y-4">
@@ -2034,14 +2382,89 @@ async function handleGiveKudos(e) {
   }
 }
 
-/* Create Post Subtype & Event Date Logic (Req #3) */
-function togglePostSubtype(subtype) {
+/* Create Post Multi-Select Subtypes, Event Date & Smart Resource Nudge Logic */
+function getSelectedPostSubtypes() {
+  const checked = Array.from(document.querySelectorAll("input[name='post_subtype']:checked, input[name='post-subtype']:checked"));
+  const found = new Set();
+  checked.forEach(el => {
+    String(el.value || "").split(",").forEach(tok => {
+      const norm = normalizeSingleSubtypeToken(tok);
+      if (norm) found.add(norm);
+    });
+  });
+  if (found.size === 0) found.add("GENERAL");
+  return CANONICAL_POST_SUBTYPES.filter(s => found.has(s));
+}
+window.getSelectedPostSubtypes = getSelectedPostSubtypes;
+
+function updatePostResourceNudge() {
+  const nudgeEl = document.getElementById("post-resource-nudge");
+  if (!nudgeEl) return;
+  const resCheckbox = document.getElementById("post-subtype-chk-resource")
+    || document.querySelector("input[name='post_subtype'][value='RESOURCE']");
+  const isResourceChecked = Boolean(resCheckbox && resCheckbox.checked);
+
+  const hasLink = Array.from(document.querySelectorAll(".post-link-input"))
+    .some(inp => inp && inp.value && inp.value.trim().length > 0);
+  const fileInput = document.getElementById("post-file-input");
+  const hasFiles = Boolean(fileInput && fileInput.files && fileInput.files.length > 0);
+
+  if ((hasLink || hasFiles) && !isResourceChecked) {
+    nudgeEl.classList.remove("hidden");
+  } else {
+    nudgeEl.classList.add("hidden");
+  }
+}
+window.updatePostResourceNudge = updatePostResourceNudge;
+
+function enablePostResourceTagFromNudge() {
+  const resCheckbox = document.getElementById("post-subtype-chk-resource")
+    || document.querySelector("input[name='post_subtype'][value='RESOURCE']");
+  if (resCheckbox) {
+    resCheckbox.checked = true;
+    togglePostSubtype(resCheckbox);
+    showToast("📚 Tagged as Community Resource too!");
+  }
+  updatePostResourceNudge();
+}
+window.enablePostResourceTagFromNudge = enablePostResourceTagFromNudge;
+
+function togglePostSubtype(triggerOrValue) {
+  const allBoxes = Array.from(document.querySelectorAll("input[name='post_subtype'], input[name='post-subtype']"));
+  let explicitSubtypes = null;
+
+  if (typeof triggerOrValue === "string" && triggerOrValue.trim() !== "") {
+    const requested = new Set();
+    triggerOrValue.split(",").forEach(tok => {
+      const norm = normalizeSingleSubtypeToken(tok);
+      if (norm) requested.add(norm);
+    });
+    if (requested.size === 0) requested.add("GENERAL");
+    explicitSubtypes = CANONICAL_POST_SUBTYPES.filter(s => requested.has(s));
+    if (allBoxes.length > 0) {
+      allBoxes.forEach(box => {
+        const norm = normalizeSingleSubtypeToken(box.value);
+        box.checked = requested.has(norm);
+      });
+    }
+  } else if (triggerOrValue && typeof triggerOrValue === "object" && triggerOrValue.tagName === "INPUT") {
+    const currentlyChecked = allBoxes.filter(b => b.checked);
+    if (currentlyChecked.length === 0) {
+      triggerOrValue.checked = true;
+      showToast("Please keep at least one Post Type selected.");
+    }
+  }
+
+  const selectedSubtypes = (allBoxes.length > 0)
+    ? getSelectedPostSubtypes()
+    : (explicitSubtypes || ["GENERAL"]);
+
   const container = document.getElementById("post-event-date-container");
   const dateInput = document.getElementById("post-event-date");
   const contactBox = document.getElementById("post-contact-box");
   const contactBadge = document.getElementById("post-contact-event-resource-badge");
-  const isEvent = (subtype === "Community Event" || subtype === "EVENT");
-  const isResource = (subtype === "Community Resource" || subtype === "RESOURCE");
+  const isEvent = selectedSubtypes.includes("EVENT");
+  const isResource = selectedSubtypes.includes("RESOURCE");
 
   if (container) {
     if (isEvent) {
@@ -2072,7 +2495,9 @@ function togglePostSubtype(subtype) {
       contactBadge.classList.add("hidden");
     }
   }
+  updatePostResourceNudge();
 }
+window.togglePostSubtype = togglePostSubtype;
 
 function selectPostCategoryPreset(cat) {
   const catInput = document.getElementById("post-category");
@@ -2083,13 +2508,260 @@ function selectPostCategoryPreset(cat) {
 }
 window.selectPostCategoryPreset = selectPostCategoryPreset;
 
-async function populatePostModal() {
-  await populateGroupCheckboxes("post-groups-list", "post-group");
-  const defaultSubtypeRadio = document.querySelector("input[name='post_subtype'][value='GENERAL'], input[name='post-subtype'][value='General Post'], input[name='post_subtype'][value='GENERAL']");
-  if (defaultSubtypeRadio) {
-    defaultSubtypeRadio.checked = true;
-    togglePostSubtype(defaultSubtypeRadio.value);
+let _postSavedLinkSelection = { start: 0, end: 0 };
+
+function switchPostEditorMode(mode) {
+  const textarea = document.getElementById("post-input-content");
+  const preview = document.getElementById("post-editor-live-preview");
+  const toolbar = document.getElementById("post-format-toolbar");
+  const linkPopover = document.getElementById("post-insert-link-popover");
+  const writeBtn = document.getElementById("btn-post-editor-write");
+  const previewBtn = document.getElementById("btn-post-editor-preview");
+  if (!textarea || !preview) return;
+
+  if (mode === "preview") {
+    if (linkPopover) linkPopover.classList.add("hidden");
+    if (toolbar) toolbar.classList.add("hidden");
+    textarea.classList.add("hidden");
+    preview.classList.remove("hidden");
+    const raw = textarea.value.trim();
+    preview.innerHTML = raw
+      ? renderFormattedPostContent(escapeHtml(raw))
+      : `<p class="text-slate-400 italic text-sm">Nothing to preview yet — switch to Write to add your description.</p>`;
+    if (writeBtn) writeBtn.className = "rte-toolbar-btn px-2.5 py-1 rounded-md text-slate-600 hover:text-slate-900 transition";
+    if (previewBtn) previewBtn.className = "rte-toolbar-btn px-2.5 py-1 rounded-md bg-white text-indigo-700 shadow-2xs transition";
+  } else {
+    preview.classList.add("hidden");
+    if (toolbar) toolbar.classList.remove("hidden");
+    textarea.classList.remove("hidden");
+    if (writeBtn) writeBtn.className = "rte-toolbar-btn px-2.5 py-1 rounded-md bg-white text-indigo-700 shadow-2xs transition";
+    if (previewBtn) previewBtn.className = "rte-toolbar-btn px-2.5 py-1 rounded-md text-slate-600 hover:text-slate-900 transition";
   }
+}
+window.switchPostEditorMode = switchPostEditorMode;
+
+function applyPostFormat(formatType) {
+  switchPostEditorMode("write");
+  const textarea = document.getElementById("post-input-content");
+  if (!textarea) return;
+  const val = textarea.value;
+  const start = textarea.selectionStart || 0;
+  const end = textarea.selectionEnd || 0;
+  const selected = val.slice(start, end);
+
+  const wrapSelection = (marker, placeholder) => {
+    const mLen = marker.length;
+    if (selected && val.slice(start - mLen, start) === marker && val.slice(end, end + mLen) === marker) {
+      textarea.value = val.slice(0, start - mLen) + selected + val.slice(end + mLen);
+      textarea.focus();
+      textarea.setSelectionRange(start - mLen, end - mLen);
+      return;
+    }
+    if (selected.startsWith(marker) && selected.endsWith(marker) && selected.length > mLen * 2) {
+      const inner = selected.slice(mLen, -mLen);
+      textarea.value = val.slice(0, start) + inner + val.slice(end);
+      textarea.focus();
+      textarea.setSelectionRange(start, start + inner.length);
+      return;
+    }
+    const textToWrap = selected || placeholder;
+    const replacement = marker + textToWrap + marker;
+    textarea.value = val.slice(0, start) + replacement + val.slice(end);
+    textarea.focus();
+    textarea.setSelectionRange(start + mLen, start + mLen + textToWrap.length);
+  };
+
+  const prefixSelectedLines = (prefixFn, placeholder) => {
+    const lineStart = val.lastIndexOf("\n", Math.max(0, start - 1)) + 1;
+    const nextNewline = val.indexOf("\n", end);
+    const lineEnd = nextNewline === -1 ? val.length : nextNewline;
+    const block = val.slice(lineStart, lineEnd);
+    const lines = block ? block.split("\n") : [""];
+    const transformed = lines.map((ln, idx) => prefixFn(ln, idx, lines.length)).join("\n");
+    const finalBlock = (!block && placeholder) ? prefixFn(placeholder, 0, 1) : transformed;
+    textarea.value = val.slice(0, lineStart) + finalBlock + val.slice(lineEnd);
+    textarea.focus();
+    if (!block && placeholder) {
+      const pIdx = finalBlock.indexOf(placeholder);
+      const selStart = lineStart + (pIdx >= 0 ? pIdx : finalBlock.length);
+      textarea.setSelectionRange(selStart, selStart + placeholder.length);
+    } else {
+      textarea.setSelectionRange(lineStart, lineStart + finalBlock.length);
+    }
+  };
+
+  if (formatType === "bold") {
+    wrapSelection("**", "bold text");
+  } else if (formatType === "italic") {
+    wrapSelection("*", "italic text");
+  } else if (formatType === "underline") {
+    wrapSelection("__", "underlined text");
+  } else if (formatType === "heading") {
+    prefixSelectedLines((ln) => /^#{1,3}\s+/.test(ln) ? ln.replace(/^#{1,3}\s+/, "") : `### ${ln}`, "Section Heading");
+  } else if (formatType === "bullet") {
+    prefixSelectedLines((ln) => /^\s*[-*•]\s+/.test(ln) ? ln.replace(/^\s*[-*•]\s+/, "") : `- ${ln}`, "List item");
+  } else if (formatType === "numbered") {
+    prefixSelectedLines((ln, idx) => /^\s*\d+\.\s+/.test(ln) ? ln.replace(/^\s*\d+\.\s+/, "") : `${idx + 1}. ${ln}`, "First item");
+  } else if (formatType === "quote") {
+    prefixSelectedLines((ln) => /^\s*>\s?/.test(ln) ? ln.replace(/^\s*>\s?/, "") : `> ${ln}`, "Highlighted quote");
+  }
+}
+window.applyPostFormat = applyPostFormat;
+
+function openPostLinkPopover() {
+  switchPostEditorMode("write");
+  const textarea = document.getElementById("post-input-content");
+  const popover = document.getElementById("post-insert-link-popover");
+  const textInput = document.getElementById("post-link-text-input");
+  const urlInput = document.getElementById("post-link-url-input");
+  if (!textarea || !popover || !textInput || !urlInput) return;
+
+  const start = textarea.selectionStart || 0;
+  const end = textarea.selectionEnd || 0;
+  _postSavedLinkSelection = { start, end };
+  const selected = textarea.value.slice(start, end).trim();
+
+  if (/^(https?:\/\/|www\.)\S+$/i.test(selected)) {
+    textInput.value = "";
+    urlInput.value = selected.startsWith("www.") ? `https://${selected}` : selected;
+  } else {
+    textInput.value = selected;
+    urlInput.value = "";
+  }
+
+  popover.classList.remove("hidden");
+  if (textInput.value && !urlInput.value) {
+    urlInput.focus();
+  } else {
+    textInput.focus();
+  }
+}
+window.openPostLinkPopover = openPostLinkPopover;
+
+function closePostLinkPopover() {
+  const popover = document.getElementById("post-insert-link-popover");
+  if (popover) popover.classList.add("hidden");
+  const textarea = document.getElementById("post-input-content");
+  if (textarea && !textarea.classList.contains("hidden")) {
+    textarea.focus();
+  }
+}
+window.closePostLinkPopover = closePostLinkPopover;
+
+function confirmInsertPostLink() {
+  const textarea = document.getElementById("post-input-content");
+  const textInput = document.getElementById("post-link-text-input");
+  const urlInput = document.getElementById("post-link-url-input");
+  if (!textarea || !urlInput) return;
+
+  let rawUrl = urlInput.value.trim();
+  if (!rawUrl) {
+    showToast("Please enter a destination URL (e.g. https://example.com).");
+    urlInput.focus();
+    return;
+  }
+  if (!/^(https?:\/\/|mailto:)/i.test(rawUrl)) {
+    if (/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(rawUrl)) {
+      rawUrl = "mailto:" + rawUrl;
+    } else if (/^[a-zA-Z0-9-]+(?:\.[a-zA-Z0-9-]+)+/.test(rawUrl)) {
+      rawUrl = "https://" + rawUrl;
+    }
+  }
+  const safeHref = sanitizeLinkHref(rawUrl);
+  if (!safeHref) {
+    showToast("Please enter a valid http://, https://, or email link.");
+    urlInput.focus();
+    return;
+  }
+  const cleanUrl = decodeEscapedEntities(safeHref);
+  const label = (textInput && textInput.value.trim()) ? textInput.value.trim() : cleanUrl;
+  const markdownLink = `[${label}](${cleanUrl})`;
+
+  const val = textarea.value;
+  const start = Math.min(_postSavedLinkSelection.start || 0, val.length);
+  const end = Math.min(Math.max(start, _postSavedLinkSelection.end || 0), val.length);
+  textarea.value = val.slice(0, start) + markdownLink + val.slice(end);
+
+  closePostLinkPopover();
+  const cursorPos = start + markdownLink.length;
+  textarea.focus();
+  textarea.setSelectionRange(cursorPos, cursorPos);
+}
+window.confirmInsertPostLink = confirmInsertPostLink;
+
+function initPostRichEditor() {
+  const textarea = document.getElementById("post-input-content");
+  if (textarea && !textarea.dataset.richBound) {
+    textarea.dataset.richBound = "1";
+    textarea.addEventListener("keydown", (e) => {
+      if (e.ctrlKey || e.metaKey) {
+        const k = (e.key || "").toLowerCase();
+        if (k === "b") {
+          e.preventDefault();
+          applyPostFormat("bold");
+        } else if (k === "i") {
+          e.preventDefault();
+          applyPostFormat("italic");
+        } else if (k === "u") {
+          e.preventDefault();
+          applyPostFormat("underline");
+        } else if (k === "k") {
+          e.preventDefault();
+          openPostLinkPopover();
+        }
+      }
+    });
+
+    textarea.addEventListener("paste", (e) => {
+      const start = textarea.selectionStart || 0;
+      const end = textarea.selectionEnd || 0;
+      if (start >= end) return;
+      const selected = textarea.value.slice(start, end);
+      if (!selected.trim() || /\n/.test(selected) || /^(https?:\/\/|www\.)/i.test(selected.trim())) return;
+      const clipText = (e.clipboardData && e.clipboardData.getData("text")) ? e.clipboardData.getData("text").trim() : "";
+      if (/^(https?:\/\/|www\.[a-zA-Z0-9-]+(?:\.[a-zA-Z0-9-]+)+)[^\s]*$/i.test(clipText)) {
+        const safeHref = sanitizeLinkHref(clipText);
+        if (safeHref) {
+          e.preventDefault();
+          const cleanUrl = decodeEscapedEntities(safeHref);
+          const md = `[${selected}](${cleanUrl})`;
+          const val = textarea.value;
+          textarea.value = val.slice(0, start) + md + val.slice(end);
+          const pos = start + md.length;
+          textarea.setSelectionRange(pos, pos);
+        }
+      }
+    });
+  }
+
+  ["post-link-text-input", "post-link-url-input"].forEach((id) => {
+    const inp = document.getElementById(id);
+    if (inp && !inp.dataset.richBound) {
+      inp.dataset.richBound = "1";
+      inp.addEventListener("keydown", (e) => {
+        if (e.key === "Enter") {
+          e.preventDefault();
+          confirmInsertPostLink();
+        } else if (e.key === "Escape") {
+          e.preventDefault();
+          e.stopPropagation();
+          closePostLinkPopover();
+        }
+      });
+    }
+  });
+}
+window.initPostRichEditor = initPostRichEditor;
+
+async function populatePostModal(initialSubtype) {
+  switchPostEditorMode("write");
+  const popover = document.getElementById("post-insert-link-popover");
+  if (popover) popover.classList.add("hidden");
+  const desiredSubtype = window._pendingPostSubtype || initialSubtype || "GENERAL";
+  window._pendingPostSubtype = null;
+  await populateGroupCheckboxes("post-groups-list", "post-group");
+  togglePostSubtype(desiredSubtype);
+  updatePostResourceNudge();
   const currentSpaceId = getCurrentSpaceContextId();
   if (currentSpaceId && typeof activeGroupData !== "undefined" && activeGroupData) {
     const spaceTheme = activeGroupData.theme || (activeGroupData.themes && activeGroupData.themes[0]);
@@ -2104,6 +2776,17 @@ async function populatePostModal() {
     }
   }
 }
+
+function openSpaceEventPostModal() {
+  if (!currentUser) {
+    showToast("Please log in to share events.");
+    openModal("modal-login");
+    return;
+  }
+  window._pendingPostSubtype = "EVENT";
+  openModal("modal-post");
+}
+window.openSpaceEventPostModal = openSpaceEventPostModal;
 
 async function populateGroupCheckboxes(containerId, inputName) {
   const container = document.getElementById(containerId);
@@ -2133,14 +2816,14 @@ async function reviewPostStep(e) {
   const target_audience = document.getElementById("post-target-audience") ? document.getElementById("post-target-audience").value.trim() : "";
   const target_geography = document.getElementById("post-target-geography") ? document.getElementById("post-target-geography").value.trim() : "";
   const contact_info = document.getElementById("post-contact-info") ? document.getElementById("post-contact-info").value.trim() : "";
-  const subtypeRadio = document.querySelector("input[name='post_subtype']:checked, input[name='post-subtype']:checked");
-  const rawSubtype = subtypeRadio ? subtypeRadio.value : "GENERAL";
-  const subtype = rawSubtype === "Community Event" ? "EVENT" : (rawSubtype === "Community Resource" ? "RESOURCE" : (rawSubtype === "General Post" ? "GENERAL" : rawSubtype));
-  const isEventSubtype = (subtype === "Community Event" || subtype === "EVENT");
+  const selectedSubtypes = getSelectedPostSubtypes();
+  const subtype = selectedSubtypes.join(",");
+  const isEventSubtype = selectedSubtypes.includes("EVENT");
   const eventDate = (isEventSubtype && document.getElementById("post-event-date")) ? document.getElementById("post-event-date").value.trim() : "";
   const eventTime = (isEventSubtype && document.getElementById("post-event-time")) ? document.getElementById("post-event-time").value.trim() : "";
 
   if (!title || !content) {
+    switchPostEditorMode("write");
     showToast("Please provide both a title and description/story content.");
     return;
   }
@@ -2181,6 +2864,7 @@ async function reviewPostStep(e) {
     resource_url,
     group_ids,
     post_subtype: subtype,
+    post_subtypes: selectedSubtypes,
     event_date: eventDate,
     event_time: eventTime,
     target_audience,
@@ -2232,7 +2916,7 @@ async function reviewPostStep(e) {
       ${contact_info ? `
         <div>
           <div class="font-extrabold uppercase tracking-wider text-[10px] text-indigo-700">📇 Key Contact</div>
-          <div class="font-bold text-slate-900 text-sm break-words">${escapeHtml(contact_info)}</div>
+          <div class="font-bold text-slate-900 text-sm break-words">${linkifyEscapedHtml(escapeHtml(contact_info))}</div>
         </div>
       ` : ""}
     </div>
@@ -2241,11 +2925,11 @@ async function reviewPostStep(e) {
   previewBox.innerHTML = `
     <div class="font-extrabold text-2xl text-slate-900 tracking-tight">${escapeHtml(title)}</div>
     <div class="flex flex-wrap gap-2 pt-1">
-      <span class="px-3 py-1 bg-emerald-50 text-emerald-800 border border-emerald-200 rounded-full text-xs font-bold">${isEventSubtype ? "📅 Community Event" : (subtype === "Community Resource" || subtype === "RESOURCE") ? "📚 Community Resource" : "📝 General Post"}</span>
+      ${renderSubtypeBadgesHtml(selectedSubtypes)}
       ${category ? `<span class="px-3 py-1 bg-violet-50 text-violet-800 border border-violet-200 rounded-full text-xs font-bold">🏷️ ${escapeHtml(category)}</span>` : ""}
       ${isEventSubtype && (eventDate || eventTime) ? `<span class="px-3 py-1 bg-rose-50 text-rose-900 border border-rose-200 rounded-full text-xs font-bold">${eventDate ? `📅 Event Date: ${escapeHtml(eventDate)}` : ""}${eventTime ? `${eventDate ? " • " : ""}🕒 ${escapeHtml(eventTime)}` : ""}</span>` : ""}
     </div>
-    <p class="text-base text-slate-700 pt-3 whitespace-pre-line font-medium leading-relaxed">${escapeHtml(content)}</p>
+    <div class="post-rich-content text-base text-slate-700 pt-3 font-medium leading-relaxed break-words">${renderFormattedPostContent(escapeHtml(content))}</div>
     ${optionalMetaPreviewHtml}
     ${attachmentsPreviewHtml}
   `;
@@ -2257,8 +2941,8 @@ function addPostLinkField() {
   const div = document.createElement("div");
   div.className = "flex gap-2 animate-fadeIn";
   div.innerHTML = `
-    <input type="url" placeholder="https://example.com/another-resource" class="post-link-input flex-1 px-4 py-3 rounded-xl border border-slate-300 font-medium text-sm bg-slate-50 focus:bg-white focus:border-indigo-600 transition">
-    <button type="button" onclick="this.closest('.flex').remove()" class="px-3 py-2 text-slate-400 hover:text-red-500 font-bold text-lg rounded-lg border border-slate-200 bg-white" title="Remove link">×</button>
+    <input type="url" oninput="updatePostResourceNudge()" placeholder="https://example.com/another-resource" class="post-link-input flex-1 px-4 py-3 rounded-xl border border-slate-300 font-medium text-sm bg-slate-50 focus:bg-white focus:border-indigo-600 transition">
+    <button type="button" onclick="this.closest('.flex').remove(); updatePostResourceNudge();" class="px-3 py-2 text-slate-400 hover:text-red-500 font-bold text-lg rounded-lg border border-slate-200 bg-white" title="Remove link">×</button>
   `;
   container.appendChild(div);
 }
@@ -2269,6 +2953,7 @@ function handlePostFilesSelect(e) {
   const files = e.target.files ? Array.from(e.target.files) : [];
   if (files.length === 0) {
     preview.innerHTML = "";
+    updatePostResourceNudge();
     return;
   }
   preview.innerHTML = files.map(f => `
@@ -2277,16 +2962,19 @@ function handlePostFilesSelect(e) {
       <span class="text-emerald-600 font-extrabold uppercase">Ready</span>
     </div>
   `).join("");
+  updatePostResourceNudge();
 }
 
 function backToPostStep1() {
   document.getElementById("post-step-1").classList.remove("hidden");
   document.getElementById("post-step-2").classList.add("hidden");
+  switchPostEditorMode("write");
 }
 
 async function confirmPublishPost() {
   if (!draftPost) return;
   try {
+    const publishedSubtype = draftPost.post_subtype;
     await apiFetch("/posts", {
       method: "POST",
       body: JSON.stringify(draftPost)
@@ -2297,16 +2985,33 @@ async function confirmPublishPost() {
     document.getElementById("post-input-title").value = "";
     document.getElementById("post-input-content").value = "";
     document.getElementById("post-input-url").value = "";
+    const linksList = document.getElementById("post-links-list");
+    if (linksList) {
+      Array.from(linksList.querySelectorAll(".post-link-input")).forEach((inp, idx) => {
+        if (idx === 0) inp.value = "";
+        else if (inp.closest(".flex")) inp.closest(".flex").remove();
+      });
+    }
+    const fileInput = document.getElementById("post-file-input");
+    if (fileInput) fileInput.value = "";
+    const filesPreview = document.getElementById("post-files-preview");
+    if (filesPreview) filesPreview.innerHTML = "";
     if (document.getElementById("post-category")) document.getElementById("post-category").value = "";
     if (document.getElementById("post-event-date")) document.getElementById("post-event-date").value = "";
     if (document.getElementById("post-event-time")) document.getElementById("post-event-time").value = "";
     if (document.getElementById("post-target-audience")) document.getElementById("post-target-audience").value = "";
     if (document.getElementById("post-target-geography")) document.getElementById("post-target-geography").value = "";
     if (document.getElementById("post-contact-info")) document.getElementById("post-contact-info").value = "";
+    togglePostSubtype("GENERAL");
     backToPostStep1();
     showToast("✅ Post published permanently to community feed!");
     if (window.location.hash.startsWith("#/group/")) {
-      loadGroupDetail(activeGroupId);
+      await loadGroupDetail(activeGroupId);
+      if (String(publishedSubtype || "").split(",").map(s => s.trim()).includes("EVENT")) {
+        switchGroupTab("events");
+      } else {
+        switchGroupTab("posts");
+      }
     } else {
       navigateTo("/feed");
       loadFeed();
@@ -2410,7 +3115,7 @@ async function reviewCurateStep(e) {
       <span class="px-3 py-1 bg-emerald-50 text-emerald-800 border border-emerald-200 rounded-full text-xs font-bold">${subtype === "Community Event" ? "📅 Event" : subtype === "Community Resource" ? "📚 Resource" : "📝 Post"}</span>
       ${subtype === "Community Event" && (eventDate || eventTime) ? `<span class="px-3 py-1 bg-rose-50 text-rose-900 border border-rose-200 rounded-full text-xs font-bold">${eventDate ? `📅 Event Date: ${escapeHtml(eventDate)}` : ""}${eventTime ? `${eventDate ? " • " : ""}🕒 ${escapeHtml(eventTime)}` : ""}</span>` : ""}
     </div>
-    <p class="text-base text-slate-700 pt-3 whitespace-pre-line font-medium leading-relaxed">${desc}</p>
+    <div class="post-rich-content text-base text-slate-700 pt-3 font-medium leading-relaxed break-words">${renderFormattedPostContent(escapeHtml(desc))}</div>
     <div class="pt-3 font-bold text-indigo-600 text-sm">📎 ${resources.length} Resource Item(s) Ready to Add</div>
   `;
 }
@@ -2614,7 +3319,7 @@ async function loadGroupDetail(gid) {
             <h1 class="text-3xl sm:text-4xl font-black text-stone-900">${activeGroupData.name}</h1>
             ${(isGroupAdmin || isSiteAdmin) ? `<span class="px-3 py-1 bg-amber-500 text-white font-black text-xs rounded-full shadow-xs">Space Admin</span>` : ""}
           </div>
-          <p class="text-stone-700 font-medium text-lg max-w-2xl">${activeGroupData.description}</p>
+          <p class="text-stone-700 font-medium text-lg max-w-2xl break-words">${linkifyEscapedHtml(escapeHtml(activeGroupData.description))}</p>
           <div class="flex flex-wrap gap-2 pt-1">
             ${(activeGroupData.themes || []).map(t => `<span class="px-3 py-1 bg-stone-200 text-stone-800 font-bold text-xs rounded-full">${t}</span>`).join("")}
           </div>
@@ -2676,7 +3381,7 @@ async function toggleGroupMembership(gid, action) {
 }
 
 function switchGroupTab(tabName) {
-  ["chat", "kudos", "posts", "roster", "resources"].forEach(t => {
+  ["chat", "kudos", "posts", "events", "roster", "resources"].forEach(t => {
     const btn = document.getElementById(`gtab-${t}`);
     const box = document.getElementById(`gcontent-${t}`);
     if (box) {
@@ -2685,9 +3390,9 @@ function switchGroupTab(tabName) {
     }
     if (btn) {
       if (t === tabName) {
-        btn.className = "gtab-btn px-8 py-4 font-black text-xl border-b-4 border-amber-600 text-amber-800 transition touch-target shrink-0";
+        btn.className = "gtab-btn px-5 py-3.5 font-black text-lg border-b-4 border-amber-600 text-amber-800 transition touch-target shrink-0";
       } else {
-        btn.className = "gtab-btn px-8 py-4 font-black text-xl border-b-4 border-transparent text-stone-500 hover:text-stone-800 transition touch-target shrink-0";
+        btn.className = "gtab-btn px-5 py-3.5 font-black text-lg border-b-4 border-transparent text-stone-500 hover:text-stone-800 transition touch-target shrink-0";
       }
     }
   });
@@ -2704,6 +3409,7 @@ function switchGroupTab(tabName) {
   if (tabName === "chat") renderGroupChatList();
   if (tabName === "kudos") renderGroupKudos();
   if (tabName === "posts") renderGroupPosts();
+  if (tabName === "events") renderGroupEvents();
   if (tabName === "roster") renderGroupRoster();
   if (tabName === "resources") renderGroupResources();
 }
@@ -2761,7 +3467,7 @@ async function renderGroupPosts() {
     banner.innerHTML = `
       <div class="space-y-1 text-center sm:text-left">
         <h3 class="text-lg font-black text-slate-900">Share with Space Members</h3>
-        <p class="text-sm font-medium text-slate-600">Post discussions, stories, or events to ${spaceName}.</p>
+        <p class="text-sm font-medium text-slate-600">Post discussions, stories, or resources to ${spaceName}.</p>
       </div>
       <button onclick="openModal('modal-post')" class="px-6 py-3 rounded-2xl font-black text-sm bg-gradient-to-r from-indigo-600 to-violet-600 hover:from-indigo-700 hover:to-violet-700 text-white shadow-md transition touch-target flex items-center space-x-2 shrink-0">
         <span>✍️ + Share Space Post</span>
@@ -2770,8 +3476,8 @@ async function renderGroupPosts() {
   }
   container.innerHTML = `<p class="text-stone-500 font-bold text-center py-8">Loading Posts...</p>`;
   try {
-    const data = await apiFetch(`/feed?group_id=${activeGroupId}&filter_type=POST`);
-    const feed = data.feed || [];
+    const data = await apiFetch(`/feed?group_id=${activeGroupId}&filter_type=POST&exclude_subtype=EVENT`);
+    const feed = (data.feed || []).filter(item => !getItemSubtypes(item).includes("EVENT") && !item.event_date);
     if (feed.length === 0) {
       container.innerHTML = `<p class="text-slate-400 font-bold text-center py-8 text-base">No Posts shared in this space yet. Create a post tagged with this space!</p>`;
       return;
@@ -2781,6 +3487,50 @@ async function renderGroupPosts() {
     container.innerHTML = `<p class="text-red-500 font-bold text-center py-8">Failed to load Posts.</p>`;
   }
 }
+
+async function renderGroupEvents() {
+  const container = document.getElementById("group-events-list");
+  if (!container || !activeGroupId) return;
+  const parent = container.parentNode;
+  if (parent) {
+    let banner = document.getElementById("group-events-creation-banner");
+    if (!banner) {
+      banner = document.createElement("div");
+      banner.id = "group-events-creation-banner";
+      parent.insertBefore(banner, container);
+    }
+    const spaceName = activeGroupData ? activeGroupData.name : 'this space';
+    banner.className = "bg-gradient-to-r from-rose-500/10 via-white to-amber-500/10 p-6 rounded-3xl border border-rose-200/80 shadow-sm flex flex-col sm:flex-row items-center justify-between gap-4 mb-6";
+    banner.innerHTML = `
+      <div class="space-y-1 text-center sm:text-left">
+        <h3 class="text-lg font-black text-slate-900">Host &amp; Discover Space Events</h3>
+        <p class="text-sm font-medium text-slate-600">Share upcoming gatherings, workshops, or volunteer meetups in ${spaceName}.</p>
+      </div>
+      <button onclick="openSpaceEventPostModal()" class="px-6 py-3 rounded-2xl font-black text-sm bg-gradient-to-r from-rose-600 to-amber-600 hover:from-rose-700 hover:to-amber-700 text-white shadow-md transition touch-target flex items-center space-x-2 shrink-0">
+        <span>📅 + Share Space Event</span>
+      </button>
+    `;
+  }
+  container.innerHTML = `<p class="text-stone-500 font-bold text-center py-8">Loading Events...</p>`;
+  try {
+    const data = await apiFetch(`/feed?group_id=${activeGroupId}&filter_type=POST&subtype=EVENT`);
+    const feed = (data.feed || []).filter(item => getItemSubtypes(item).includes("EVENT") || Boolean(item.event_date));
+    if (feed.length === 0) {
+      container.innerHTML = `<p class="text-slate-400 font-bold text-center py-8 text-base">No Events scheduled in this space yet. Share an upcoming event with fellow members!</p>`;
+      return;
+    }
+    const todayStr = new Date().toISOString().split("T")[0];
+    const upcoming = feed.filter(ev => ev.event_date && String(ev.event_date).split("T")[0] >= todayStr)
+      .sort((a, b) => String(a.event_date).localeCompare(String(b.event_date)));
+    const pastOrUndated = feed.filter(ev => !ev.event_date || String(ev.event_date).split("T")[0] < todayStr)
+      .sort((a, b) => String(b.event_date || b.created_at || "").localeCompare(String(a.event_date || a.created_at || "")));
+    const ordered = [...upcoming, ...pastOrUndated];
+    container.innerHTML = ordered.map(item => renderFeedCard(item, false)).join("");
+  } catch (err) {
+    container.innerHTML = `<p class="text-red-500 font-bold text-center py-8">Failed to load Events.</p>`;
+  }
+}
+window.renderGroupEvents = renderGroupEvents;
 
 function renderGroupChatList() {
   const container = document.getElementById("group-chat-list");
@@ -2806,7 +3556,7 @@ function renderGroupChatList() {
             ${canDeleteMsg ? `<button type="button" onclick="deleteGroupChatMessage(${m.id})" class="text-xs text-slate-400 hover:text-red-600 font-bold" title="Delete chat message">🗑️</button>` : ""}
           </div>
         </div>
-        <p class="text-base text-slate-800 font-normal whitespace-pre-line leading-relaxed break-words">${escapeHtml(m.message)}</p>
+        <p class="text-base text-slate-800 font-normal whitespace-pre-line leading-relaxed break-words">${linkifyEscapedHtml(escapeHtml(m.message))}</p>
       </div>
     </div>
   `;
@@ -4486,7 +5236,7 @@ window.handlePostFilesSelect = handlePostFilesSelect;
 // ================== SPACE CALENDAR CONTROLLER & SCRAPING ==================
 window.currentCalendarYear = new Date().getFullYear();
 window.currentCalendarMonth = new Date().getMonth();
-window.isCalendarCollapsed = false;
+window.isCalendarCollapsed = true;
 window._cachedCalendarEvents = {};
 window._groupCalendarEvents = {};
 window._scrapedCalendarEvents = [];
@@ -4587,7 +5337,7 @@ async function renderGroupCalendar() {
   const eventsByDate = {};
 
   posts.forEach(p => {
-    if (p.item_type === "POST" && p.post_subtype === "EVENT" && p.event_date) {
+    if (p.item_type === "POST" && getItemSubtypes(p).includes("EVENT") && p.event_date) {
       const dateStr = String(p.event_date).split("T")[0];
       if (!eventsByDate[dateStr]) eventsByDate[dateStr] = [];
       eventsByDate[dateStr].push({
@@ -4751,12 +5501,12 @@ function showCalendarDayEvents(dateStr) {
         }
       }
 
-      // Extract standalone URLs from description so they render as consistent pill buttons
-      const urlRegex = /(https?:\/\/[^\s]+)/gi;
-      const embeddedUrls = cleanDesc.match(urlRegex) || [];
+      // Extract standalone URLs (not inside [label](url)) so they render as consistent pill buttons
+      const scanDesc = cleanDesc.replace(/\[([^\[\]\n]+)\]\(([^()\s]+(?:\([^()\s]*\)[^()\s]*)*)\)/g, "");
+      const embeddedUrls = scanDesc.match(/(https?:\/\/[^\s)]+)/gi) || [];
       embeddedUrls.forEach(u => {
         if (!urls.includes(u)) urls.push(u);
-        cleanDesc = cleanDesc.replace(u, "").trim();
+        cleanDesc = cleanDesc.replace(new RegExp(`(^|\\s)${escapeRegExp(u)}(?=\\s|$)`), "$1").trim();
       });
 
       let attachmentHtml = "";
@@ -4807,7 +5557,7 @@ function showCalendarDayEvents(dateStr) {
               ${actionsHtml}
             </div>
           </div>
-          ${cleanDesc ? `<p class="text-stone-700 font-medium text-sm leading-relaxed whitespace-pre-line">${cleanDesc}</p>` : ""}
+          ${cleanDesc ? `<div class="post-rich-content text-stone-700 font-medium text-sm leading-relaxed break-words">${renderFormattedPostContent(escapeHtml(cleanDesc))}</div>` : ""}
           ${attachmentHtml}
         </div>
       `;
@@ -5116,6 +5866,7 @@ async function submitAddEventModal(event) {
         await renderGroupCalendar();
         if (updatedDate) showCalendarDayEvents(updatedDate);
         if (typeof renderGroupPosts === "function") renderGroupPosts();
+        if (typeof renderGroupEvents === "function") renderGroupEvents();
       }
     } else {
       const res = await apiFetch("/api/posts", {
@@ -5127,6 +5878,7 @@ async function submitAddEventModal(event) {
         closeModal("modal-add-event");
         await renderGroupCalendar();
         if (typeof renderGroupPosts === "function") renderGroupPosts();
+        if (typeof renderGroupEvents === "function") renderGroupEvents();
       }
     }
   } catch (err) {
@@ -5249,6 +6001,7 @@ async function confirmImportScrapedEvents() {
   closeModal("modal-scrape-preview");
   await renderGroupCalendar();
   if (typeof renderGroupPosts === "function") renderGroupPosts();
+  if (typeof renderGroupEvents === "function") renderGroupEvents();
 }
 
 window.renderGroupCalendar = renderGroupCalendar;
@@ -5655,9 +6408,6 @@ window.resolveReport = resolveReport;
 
 /* ================= REAL-TIME IN-APP NOTIFICATIONS ================= */
 
-let notificationsPollTimer = null;
-let lastSeenNotifId = 0;
-
 function startNotificationsPolling() {
   stopNotificationsPolling();
   notificationsPollTimer = setInterval(() => {
@@ -5761,5 +6511,410 @@ window.handleNotificationClick = handleNotificationClick;
 window.toggleNotificationsDropdown = toggleNotificationsDropdown;
 window.startNotificationsPolling = startNotificationsPolling;
 window.stopNotificationsPolling = stopNotificationsPolling;
+
+/* ================= CONVERSATIONAL CHAT SEARCH ================= */
+
+function getDefaultChatWelcomeHtml() {
+  return `
+    <div class="flex items-start gap-2.5">
+      <div class="w-7 h-7 rounded-full bg-indigo-600 text-white flex items-center justify-center text-xs font-black shrink-0 shadow-xs">💬</div>
+      <div class="bg-white border border-slate-200/90 rounded-2xl rounded-tl-sm px-3.5 py-2.5 text-sm text-slate-700 shadow-2xs max-w-3xl">
+        <p class="font-bold text-slate-900">Ask anything about GoodDeeds.space!</p>
+        <p class="text-xs text-slate-600 mt-0.5">Search Posts, Community Events, Community Resources, Kudos, Spaces, or contacts in natural language — and ask follow-up questions anytime.</p>
+      </div>
+    </div>
+  `;
+}
+
+function switchSearchMode(context, mode) {
+  const ctx = context === "landing" ? "landing" : "feed";
+  const nextMode = mode === "chat" ? "chat" : "filters";
+
+  if (ctx === "landing") {
+    landingSearchMode = nextMode;
+  } else {
+    feedSearchMode = nextMode;
+  }
+
+  const classicPane = document.getElementById(`${ctx}-classic-controls-pane`);
+  const chatPane = document.getElementById(`${ctx}-chat-search-pane`);
+  const btnFilters = document.getElementById(`btn-${ctx}-mode-filters`);
+  const btnChat = document.getElementById(`btn-${ctx}-mode-chat`);
+  const helperLabel = document.getElementById(`${ctx}-mode-helper-label`);
+  const resetBtn = document.getElementById(`btn-${ctx}-chat-reset`);
+  const scopeSel = ctx === "feed" ? document.getElementById("feed-chat-scope-select") : null;
+
+  const activeTabClass = "chat-mode-btn px-3 py-1 rounded-lg font-extrabold text-xs bg-white text-slate-900 shadow-xs transition inline-flex items-center gap-1.5";
+  const activeChatTabClass = "chat-mode-btn px-3 py-1 rounded-lg font-extrabold text-xs bg-indigo-600 text-white shadow-xs transition inline-flex items-center gap-1.5";
+  const inactiveTabClass = "chat-mode-btn px-3 py-1 rounded-lg font-extrabold text-xs text-slate-600 hover:text-indigo-700 transition inline-flex items-center gap-1.5";
+
+  if (nextMode === "chat") {
+    if (classicPane) classicPane.classList.add("hidden");
+    if (chatPane) chatPane.classList.remove("hidden");
+    if (btnFilters) {
+      btnFilters.className = inactiveTabClass;
+      btnFilters.setAttribute("aria-selected", "false");
+    }
+    if (btnChat) {
+      btnChat.className = activeChatTabClass;
+      btnChat.setAttribute("aria-selected", "true");
+    }
+    if (helperLabel) helperLabel.classList.add("hidden");
+    if (resetBtn) resetBtn.classList.remove("hidden");
+    if (scopeSel) {
+      if (currentUser) scopeSel.classList.remove("hidden");
+      else scopeSel.classList.add("hidden");
+    }
+    const chatInput = document.getElementById(`${ctx}-chat-input`);
+    if (chatInput) {
+      setTimeout(() => {
+        try { chatInput.focus(); } catch (_) {}
+      }, 20);
+    }
+  } else {
+    if (chatPane) chatPane.classList.add("hidden");
+    if (classicPane) classicPane.classList.remove("hidden");
+    if (btnFilters) {
+      btnFilters.className = activeTabClass;
+      btnFilters.setAttribute("aria-selected", "true");
+    }
+    if (btnChat) {
+      btnChat.className = inactiveTabClass;
+      btnChat.setAttribute("aria-selected", "false");
+    }
+    if (helperLabel) helperLabel.classList.remove("hidden");
+    if (resetBtn) resetBtn.classList.add("hidden");
+    if (scopeSel) scopeSel.classList.add("hidden");
+
+    if (chatFilterActive[ctx]) {
+      clearChatFeedFilter(ctx);
+    }
+  }
+}
+window.switchSearchMode = switchSearchMode;
+
+function scrollToFeedCard(itemId) {
+  const card = document.getElementById(`feed-card-${Number(itemId)}`);
+  if (!card) return;
+  try {
+    card.scrollIntoView({ behavior: "smooth", block: "center" });
+    card.classList.add("ring-4", "ring-indigo-400/60");
+    setTimeout(() => {
+      card.classList.remove("ring-4", "ring-indigo-400/60");
+    }, 1800);
+  } catch (_) {}
+}
+window.scrollToFeedCard = scrollToFeedCard;
+
+function clearChatFeedFilter(context) {
+  const ctx = context === "landing" ? "landing" : "feed";
+  chatFilterActive[ctx] = false;
+  const toolbarEl = document.getElementById(ctx === "landing" ? "landing-search-results-toolbar" : "feed-search-results-toolbar");
+  if (toolbarEl) {
+    toolbarEl.classList.add("hidden");
+    toolbarEl.innerHTML = "";
+  }
+  if (ctx === "landing") {
+    loadLandingPreview();
+  } else {
+    loadFeed();
+  }
+}
+window.clearChatFeedFilter = clearChatFeedFilter;
+
+function clearChatSearch(context) {
+  const ctx = context === "landing" ? "landing" : "feed";
+  if (ctx === "landing") {
+    landingChatHistory = [];
+  } else {
+    feedChatHistory = [];
+  }
+  const messagesEl = document.getElementById(`${ctx}-chat-messages`);
+  if (messagesEl) {
+    messagesEl.innerHTML = getDefaultChatWelcomeHtml();
+  }
+  const inputEl = document.getElementById(`${ctx}-chat-input`);
+  if (inputEl) {
+    inputEl.value = "";
+  }
+  if (chatFilterActive[ctx]) {
+    clearChatFeedFilter(ctx);
+  }
+}
+window.clearChatSearch = clearChatSearch;
+
+function applyChatMatchesToFeed(context, queryText, matchedItems, matchedSpaces) {
+  const ctx = context === "landing" ? "landing" : "feed";
+  const isLanding = ctx === "landing";
+  const container = document.getElementById(isLanding ? "landing-public-feed-preview" : "feed-items-container");
+  const loadMoreContainer = document.getElementById(isLanding ? "landing-load-more-container" : "feed-load-more-container");
+  const toolbarEl = document.getElementById(isLanding ? "landing-search-results-toolbar" : "feed-search-results-toolbar");
+  if (!container) return;
+
+  const items = Array.isArray(matchedItems) ? matchedItems : [];
+  const spaces = Array.isArray(matchedSpaces) ? matchedSpaces : [];
+
+  if (items.length === 0 && spaces.length > 0) {
+    if (chatFilterActive[ctx]) {
+      clearChatFeedFilter(ctx);
+    }
+    return;
+  }
+
+  chatFilterActive[ctx] = true;
+  if (loadMoreContainer) loadMoreContainer.innerHTML = "";
+
+  if (toolbarEl) {
+    toolbarEl.classList.remove("hidden");
+    toolbarEl.innerHTML = `
+      <div class="bg-indigo-50/90 border border-indigo-200/90 rounded-2xl px-4 py-2.5 sm:px-5 sm:py-3 flex flex-wrap items-center justify-between gap-3 shadow-xs">
+        <div class="flex flex-wrap items-center gap-2 text-xs sm:text-sm font-bold text-slate-800">
+          <span class="inline-flex items-center gap-1.5 font-extrabold text-indigo-950">
+            <span>💬</span>
+            <span>Chat Search: ${items.length} Matching ${items.length === 1 ? "Item" : "Items"}</span>
+          </span>
+          <span class="px-2.5 py-0.5 rounded-full bg-white border border-indigo-200 text-indigo-900 font-extrabold text-xs shadow-2xs">“${escapeHtml(queryText)}”</span>
+        </div>
+        <button type="button" onclick="clearChatFeedFilter('${ctx}')" class="chat-chip-btn px-3 py-1.5 rounded-xl text-xs font-extrabold bg-white hover:bg-indigo-100 text-indigo-800 border border-indigo-200 transition shadow-2xs">
+          Show All Posts &amp; Kudos
+        </button>
+      </div>
+    `;
+  }
+
+  if (items.length === 0) {
+    container.innerHTML = `
+      <div class="bg-white p-8 rounded-3xl border border-slate-200 text-center space-y-3 ${isLanding ? "col-span-2" : ""}">
+        <div class="text-4xl">💬</div>
+        <h3 class="text-xl font-bold text-slate-800">No Direct Post or Kudos Matches</h3>
+        <p class="text-sm text-slate-500 font-medium">Try rephrasing your question above, or restore all community Posts &amp; Kudos below.</p>
+        <button type="button" onclick="clearChatFeedFilter('${ctx}')" class="chat-submit-btn px-5 py-2.5 bg-indigo-600 hover:bg-indigo-700 text-white font-bold text-sm rounded-xl shadow-sm transition">Show All Posts &amp; Kudos</button>
+      </div>
+    `;
+    return;
+  }
+
+  if (!isLanding) {
+    container.className = "space-y-6";
+  }
+  const searchContext = { isCompactSearch: false, query: queryText };
+  container.innerHTML = items.map(item => {
+    try {
+      return renderFeedCard(item, false, searchContext);
+    } catch (err) {
+      console.error("Failed to render chat-matched card:", err, item);
+      return "";
+    }
+  }).join("");
+}
+window.applyChatMatchesToFeed = applyChatMatchesToFeed;
+
+function renderChatMatchMiniCard(item) {
+  if (!item) return "";
+  const isKudos = item.item_type === "KUDOS";
+  const itemHref = isKudos ? `/#/kudos/${item.id}` : `/#/post/${item.id}`;
+  const subtypes = !isKudos ? getItemSubtypes(item) : [];
+  let typeBadge = `<span class="px-2 py-0.5 rounded-full text-[10px] font-extrabold bg-indigo-50 text-indigo-800 border border-indigo-200">📝 Post</span>`;
+  if (isKudos) {
+    typeBadge = `<span class="px-2 py-0.5 rounded-full text-[10px] font-extrabold bg-amber-100 text-amber-950 border border-amber-300">🌟 Kudos</span>`;
+  } else if (subtypes.includes("EVENT") && subtypes.includes("RESOURCE")) {
+    typeBadge = `<span class="px-2 py-0.5 rounded-full text-[10px] font-extrabold bg-teal-50 text-teal-900 border border-teal-200">📅 Event • 📚 Resource</span>`;
+  } else if (subtypes.includes("EVENT")) {
+    typeBadge = `<span class="px-2 py-0.5 rounded-full text-[10px] font-extrabold bg-rose-50 text-rose-800 border border-rose-200">📅 Event</span>`;
+  } else if (subtypes.includes("RESOURCE")) {
+    typeBadge = `<span class="px-2 py-0.5 rounded-full text-[10px] font-extrabold bg-teal-50 text-teal-800 border border-teal-200">📚 Resource</span>`;
+  }
+
+  const heading = isKudos
+    ? `${escapeHtml(item.recipient_name || "Community Member")} ← ${escapeHtml(item.author_name || "Anonymous")}`
+    : escapeHtml(item.title || "Community Post");
+
+  const spacePills = (item.groups || []).slice(0, 2).map(g =>
+    `<a href="/#/group/${g.id}" class="text-[11px] font-bold text-stone-700 bg-stone-100 hover:bg-stone-200 px-2 py-0.5 rounded-full transition">👥 ${escapeHtml(g.name)}</a>`
+  ).join("");
+
+  let urls = [];
+  if (item.resource_url) {
+    try {
+      if (String(item.resource_url).startsWith("[")) urls = JSON.parse(item.resource_url);
+      else urls = String(item.resource_url).split("\n").filter(Boolean);
+    } catch (_) {
+      urls = [item.resource_url];
+    }
+  }
+  const attachmentButtons = urls.slice(0, 2).map((u, idx) => {
+    const cacheKey = `attachment_${item.id}_${idx}`;
+    window._attachmentCache[cacheKey] = u;
+    return `<button type="button" onclick="window.openAttachment(window._attachmentCache['${cacheKey}'], 'attachment_${item.id}_${idx}')" class="chat-chip-btn px-2 py-0.5 rounded-md bg-indigo-50 hover:bg-indigo-100 text-indigo-800 border border-indigo-200 text-[11px] font-bold transition">${formatAttachmentLabel(u, idx, urls.length)}</button>`;
+  }).join("");
+
+  return `
+    <div class="bg-slate-50/90 hover:bg-slate-100/80 border border-slate-200/90 rounded-xl px-3 py-2 flex flex-wrap items-center justify-between gap-2 transition">
+      <div class="min-w-0 flex-1 space-y-0.5">
+        <div class="flex flex-wrap items-center gap-1.5">
+          ${typeBadge}
+          <a href="${itemHref}" class="font-extrabold text-xs sm:text-sm text-slate-900 hover:text-indigo-700 hover:underline truncate">${heading}</a>
+          ${spacePills}
+        </div>
+        <div class="flex flex-wrap items-center gap-2 text-[11px] text-slate-500 font-semibold">
+          ${!isKudos && item.event_date ? `<span class="text-rose-700 font-bold">📅 ${escapeHtml(item.event_date)}${item.event_time ? ` • ${escapeHtml(item.event_time)}` : ""}</span>` : ""}
+          ${!isKudos && item.contact_info ? `<span>📇 ${escapeHtml(item.contact_info)}</span>` : ""}
+          ${attachmentButtons}
+        </div>
+      </div>
+      <div class="flex items-center gap-1.5 shrink-0">
+        <button type="button" onclick="scrollToFeedCard(${Number(item.id)})" class="chat-chip-btn px-2.5 py-1 rounded-lg bg-white hover:bg-indigo-50 text-indigo-700 border border-slate-200 text-xs font-extrabold transition" title="Scroll to card below">Card ↓</button>
+        <a href="${itemHref}" class="px-2.5 py-1 rounded-lg bg-indigo-600 hover:bg-indigo-700 text-white text-xs font-extrabold transition">Open ↗</a>
+      </div>
+    </div>
+  `;
+}
+
+function askChatPromptChip(context, promptText) {
+  const ctx = context === "landing" ? "landing" : "feed";
+  const text = String(promptText || "").trim();
+  if (!text) return;
+  switchSearchMode(ctx, "chat");
+  const inputEl = document.getElementById(`${ctx}-chat-input`);
+  if (inputEl) inputEl.value = text;
+  submitChatSearch(null, ctx, text);
+}
+window.askChatPromptChip = askChatPromptChip;
+
+async function submitChatSearch(event, context, presetMessage = null) {
+  if (event && typeof event.preventDefault === "function") {
+    event.preventDefault();
+  }
+  const ctx = context === "landing" ? "landing" : "feed";
+  if (isChatSubmitting[ctx]) return;
+
+  const inputEl = document.getElementById(`${ctx}-chat-input`);
+  const submitBtn = document.getElementById(`btn-${ctx}-chat-submit`);
+  const messagesEl = document.getElementById(`${ctx}-chat-messages`);
+  const rawMessage = presetMessage !== null ? String(presetMessage).trim() : (inputEl ? inputEl.value.trim() : "");
+
+  if (!rawMessage) {
+    if (inputEl) inputEl.focus();
+    return;
+  }
+  if (!messagesEl) return;
+
+  if (inputEl) inputEl.value = "";
+  isChatSubmitting[ctx] = true;
+  if (submitBtn) submitBtn.disabled = true;
+
+  // Append user bubble
+  const userBubbleHtml = `
+    <div class="flex justify-end">
+      <div class="bg-indigo-600 text-white rounded-2xl rounded-tr-sm px-3.5 py-2 text-sm font-semibold shadow-xs max-w-xl break-words">
+        ${escapeHtml(rawMessage)}
+      </div>
+    </div>
+  `;
+  messagesEl.insertAdjacentHTML("beforeend", userBubbleHtml);
+
+  // Append temporary thinking bubble
+  const pendingId = `chat-pending-${ctx}-${Date.now()}`;
+  messagesEl.insertAdjacentHTML("beforeend", `
+    <div id="${pendingId}" class="flex items-start gap-2.5">
+      <div class="w-7 h-7 rounded-full bg-indigo-600 text-white flex items-center justify-center text-xs font-black shrink-0 shadow-xs">💬</div>
+      <div class="bg-white border border-slate-200/90 rounded-2xl rounded-tl-sm px-3.5 py-2.5 text-xs font-bold text-slate-500 shadow-2xs">
+        Searching community Posts, Events, Resources, Kudos &amp; Spaces...
+      </div>
+    </div>
+  `);
+  messagesEl.scrollTop = messagesEl.scrollHeight;
+
+  const historyArr = ctx === "landing" ? landingChatHistory : feedChatHistory;
+  const scopeSel = ctx === "feed" ? document.getElementById("feed-chat-scope-select") : null;
+  const scopeVal = (ctx === "feed" && currentUser && scopeSel && scopeSel.value === "my_spaces") ? "my_spaces" : "all";
+
+  try {
+    const res = await apiFetch("/chat_search", {
+      method: "POST",
+      body: {
+        message: rawMessage,
+        history: historyArr.slice(-6),
+        scope: scopeVal
+      }
+    });
+
+    const pendingEl = document.getElementById(pendingId);
+    if (pendingEl) pendingEl.remove();
+
+    const matchedItems = Array.isArray(res.matched_items) ? res.matched_items : [];
+    const matchedSpaces = Array.isArray(res.matched_spaces) ? res.matched_spaces : [];
+    const followups = Array.isArray(res.suggested_followups) ? res.suggested_followups : [];
+    const engineBadge = res.engine === "gemini_rag"
+      ? `<span class="text-[10px] font-extrabold uppercase tracking-wider text-indigo-700 bg-indigo-50 border border-indigo-200 px-2 py-0.5 rounded-full">✨ Grounded AI Answer</span>`
+      : `<span class="text-[10px] font-extrabold uppercase tracking-wider text-teal-800 bg-teal-50 border border-teal-200 px-2 py-0.5 rounded-full">🧭 Smart Community Search</span>`;
+
+    const miniCardsHtml = matchedItems.length > 0
+      ? `<div class="space-y-1.5 pt-2 border-t border-slate-100">${matchedItems.slice(0, 4).map(renderChatMatchMiniCard).join("")}</div>`
+      : "";
+
+    const spacesHtml = matchedSpaces.length > 0
+      ? `
+        <div class="pt-2 border-t border-slate-100 flex flex-wrap items-center gap-1.5">
+          <span class="text-[11px] font-extrabold text-slate-500 uppercase tracking-wider mr-1">Related Spaces:</span>
+          ${matchedSpaces.map(sp => `<a href="/#/group/${sp.id}" class="px-2.5 py-1 rounded-full text-xs font-extrabold bg-stone-100 hover:bg-teal-50 text-stone-800 hover:text-teal-900 border border-stone-200 transition">👥 ${escapeHtml(sp.name)}</a>`).join("")}
+        </div>
+      `
+      : "";
+
+    const followupsHtml = followups.length > 0
+      ? `
+        <div class="pt-2 flex flex-wrap items-center gap-1.5">
+          <span class="text-[11px] font-bold text-slate-400">Follow up:</span>
+          ${followups.map(q => `<button type="button" data-prompt="${escapeHtml(q)}" onclick="askChatPromptChip('${ctx}', this.dataset.prompt)" class="chat-chip-btn px-2.5 py-0.5 rounded-full text-[11px] font-bold bg-slate-100 hover:bg-indigo-50 text-slate-700 hover:text-indigo-800 border border-slate-200 transition">${escapeHtml(q)}</button>`).join("")}
+        </div>
+      `
+      : "";
+
+    const assistantHtml = `
+      <div class="flex items-start gap-2.5">
+        <div class="w-7 h-7 rounded-full bg-indigo-600 text-white flex items-center justify-center text-xs font-black shrink-0 shadow-xs">💬</div>
+        <div class="bg-white border border-slate-200/90 rounded-2xl rounded-tl-sm px-4 py-3 text-sm text-slate-800 shadow-2xs flex-1 max-w-3xl space-y-2">
+          <div class="flex items-center justify-between gap-2">
+            ${engineBadge}
+            ${matchedItems.length > 0 ? `<span class="text-[11px] font-bold text-slate-400">Updated feed below (${matchedItems.length})</span>` : ""}
+          </div>
+          <div class="post-rich-content text-sm leading-relaxed text-slate-800">
+            ${renderFormattedPostContent(escapeHtml(res.answer || "Here is what I found in the community."))}
+          </div>
+          ${miniCardsHtml}
+          ${spacesHtml}
+          ${followupsHtml}
+        </div>
+      </div>
+    `;
+    messagesEl.insertAdjacentHTML("beforeend", assistantHtml);
+    messagesEl.scrollTop = messagesEl.scrollHeight;
+
+    historyArr.push({ role: "user", content: rawMessage });
+    historyArr.push({ role: "assistant", content: String(res.answer || "") });
+    if (historyArr.length > 12) {
+      historyArr.splice(0, historyArr.length - 12);
+    }
+
+    applyChatMatchesToFeed(ctx, rawMessage, matchedItems, matchedSpaces);
+  } catch (err) {
+    const pendingEl = document.getElementById(pendingId);
+    if (pendingEl) pendingEl.remove();
+    messagesEl.insertAdjacentHTML("beforeend", `
+      <div class="flex items-start gap-2.5">
+        <div class="w-7 h-7 rounded-full bg-red-600 text-white flex items-center justify-center text-xs font-black shrink-0">!</div>
+        <div class="bg-red-50 border border-red-200 rounded-2xl rounded-tl-sm px-3.5 py-2.5 text-xs font-bold text-red-800">
+          Sorry, search encountered an error: ${escapeHtml(err.message || "Please try again.")}
+        </div>
+      </div>
+    `);
+    messagesEl.scrollTop = messagesEl.scrollHeight;
+  } finally {
+    isChatSubmitting[ctx] = false;
+    if (submitBtn) submitBtn.disabled = false;
+  }
+}
+window.submitChatSearch = submitChatSearch;
 
 

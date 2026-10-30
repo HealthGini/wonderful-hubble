@@ -307,6 +307,41 @@ def parse_bulk_email_addresses(raw_emails):
     return valid_emails, invalid_tokens
 
 # ================== MODULE-LEVEL FEED HELPER FUNCTIONS ==================
+CANONICAL_POST_SUBTYPES = ("GENERAL", "EVENT", "RESOURCE")
+
+def parse_post_subtypes_list(raw_val, event_date="", resource_url="", apply_legacy_fallback=False):
+    """
+    Parses a single or comma-separated post_subtype string (or list) into a canonical ordered list
+    of subtypes from ("GENERAL", "EVENT", "RESOURCE").
+    """
+    tokens = []
+    if isinstance(raw_val, (list, tuple)):
+        raw_parts = [str(x) for x in raw_val if x is not None]
+    else:
+        raw_parts = str(raw_val or "").split(",")
+
+    for part in raw_parts:
+        p = part.strip().upper()
+        if p in ("COMMUNITY EVENT", "UPCOMING COMMUNITY EVENT", "EVENT"):
+            tokens.append("EVENT")
+        elif p in ("COMMUNITY RESOURCE", "RESOURCE"):
+            tokens.append("RESOURCE")
+        elif p in ("GENERAL POST", "GENERAL"):
+            tokens.append("GENERAL")
+
+    ordered = [s for s in CANONICAL_POST_SUBTYPES if s in tokens]
+    if apply_legacy_fallback:
+        if event_date and "EVENT" not in ordered:
+            ordered.append("EVENT")
+            ordered = [s for s in CANONICAL_POST_SUBTYPES if s in ordered]
+        if not ordered:
+            has_res = bool(resource_url and str(resource_url).strip() not in ("", "[]"))
+            ordered = ["RESOURCE"] if (has_res and not event_date) else ["GENERAL"]
+    elif not ordered:
+        ordered = ["GENERAL"]
+    return ordered
+
+
 def enrich_items_list(raw_items, user_id=None):
     """
     Enriches a list of raw feed items with groups, reactions, and comments.
@@ -349,6 +384,16 @@ def enrich_items_list(raw_items, user_id=None):
                 ORDER BY c.created_at ASC
             """, (item_id,))
             item["comments"] = [dict(c) for c in cursor.fetchall()]
+
+            if item.get("item_type") == "POST":
+                item["post_subtypes"] = parse_post_subtypes_list(
+                    item.get("post_subtype"),
+                    event_date=item.get("event_date") or "",
+                    resource_url=item.get("resource_url") or "",
+                    apply_legacy_fallback=True
+                )
+            else:
+                item["post_subtypes"] = []
 
             is_joined_tag = any(g["id"] in joined_group_ids for g in item["groups"])
             item["_score"] = (100 if is_joined_tag else 0) + item["total_reactions"]
@@ -507,6 +552,486 @@ def parse_calendar_events_from_text(extracted_text: str) -> list:
     return suggested_events
 
 parse_scraped_calendar_events = parse_calendar_events_from_text
+
+# ================== CONVERSATIONAL SEARCH (LOCAL NLU + OPTIONAL GEMINI RAG) ==================
+
+CHAT_STOP_WORDS = {
+    "a", "an", "the", "is", "are", "was", "were", "be", "been", "being",
+    "do", "does", "did", "have", "has", "had", "can", "could", "would", "should", "will",
+    "i", "me", "my", "we", "our", "you", "your", "it", "its", "they", "them", "their",
+    "there", "here", "this", "that", "these", "those", "any", "some", "all",
+    "find", "search", "show", "list", "tell", "give", "get", "see", "looking", "look",
+    "need", "want", "know", "for", "about", "related", "to", "in", "on", "at", "of",
+    "from", "with", "by", "or", "and", "as", "into", "around", "near",
+    "what", "where", "when", "who", "which", "how", "why",
+    "please", "thanks", "thank", "hi", "hello", "hey", "gooddeeds", "good", "deeds",
+    "community", "platform", "website", "site", "available", "current", "recent", "latest",
+    "join", "joined", "joining", "explore", "browse"
+}
+
+CHAT_FOLLOWUP_PRONOUNS = {"that", "those", "it", "them", "same", "above", "previous"}
+
+CHAT_DOMAIN_SYNONYMS = {
+    "mental": ["mental", "anxiety", "wellbeing", "wellness", "nami", "crisis", "counseling", "therapy"],
+    "anxiety": ["anxiety", "mental", "crisis", "ssri", "nami", "wellness"],
+    "health": ["health", "healthcare", "wellness", "medical", "apple health", "medicaid", "wellbeing"],
+    "healthcare": ["healthcare", "health", "medical", "medicaid", "apple health", "coverage"],
+    "medicaid": ["medicaid", "apple health", "healthcare", "insurance", "federal"],
+    "legal": ["legal", "wills", "will", "clinic", "attorney", "lawyer", "financial"],
+    "wills": ["wills", "will", "legal", "estate", "clinic"],
+    "food": ["food", "pantry", "meal", "meals", "groceries", "hunger", "mutual aid"],
+    "pantry": ["pantry", "food", "restock", "mutual aid"],
+    "tutor": ["tutor", "tutoring", "mentorship", "mentor", "education", "student", "learning"],
+    "tutoring": ["tutor", "tutoring", "mentorship", "education", "learning"],
+    "mentorship": ["mentorship", "mentor", "tutoring", "youth", "education"],
+    "emergency": ["emergency", "crisis", "urgent", "hotline", "numbers", "988", "911"],
+    "crisis": ["crisis", "emergency", "mental", "anxiety", "hotline"],
+    "immigrant": ["immigrant", "immigration", "coverage", "healthcare"],
+    "tool": ["tool", "tools", "library", "repair", "gardening"],
+    "tools": ["tool", "tools", "library", "repair", "gardening"],
+}
+
+
+def _stem_token(tok):
+    if len(tok) > 5 and tok.endswith("ing"):
+        return tok[:-3]
+    if len(tok) > 4 and tok.endswith("ies"):
+        return tok[:-3] + "y"
+    if len(tok) > 4 and tok.endswith("es"):
+        return tok[:-2]
+    if len(tok) > 3 and tok.endswith("s") and not tok.endswith("ss"):
+        return tok[:-1]
+    return tok
+
+
+def _extract_chat_query_signals(raw_message, history=None):
+    text_lower = (raw_message or "").lower().strip()
+    raw_words = re.findall(r"[a-z0-9_@.-]+", text_lower)
+
+    intent_subtype = ""
+    intent_item_type = ""
+    wants_upcoming = False
+    wants_spaces = False
+    wants_contact = any(w in raw_words for w in ("contact", "reach", "email", "phone", "organizer", "coordinator"))
+
+    event_triggers = {"event", "events", "upcoming", "calendar", "schedule", "scheduled", "happening", "meetup", "meetups", "gathering", "gatherings"}
+    resource_triggers = {"resource", "resources", "guide", "guides", "directory", "directories", "material", "materials", "handbook"}
+    kudos_triggers = {"kudos", "gratitude", "appreciation", "appreciated", "recognized", "shoutout", "shoutouts"}
+    post_triggers = {"post", "posts", "story", "stories", "discussion", "discussions"}
+    space_triggers = {"space", "spaces", "group", "groups"}
+
+    if any(w in event_triggers for w in raw_words) or "this week" in text_lower or "this month" in text_lower or "next week" in text_lower:
+        intent_subtype = "EVENT"
+        intent_item_type = "POST"
+        if any(w in raw_words for w in ("upcoming", "next", "future", "soon", "scheduled")) or "coming up" in text_lower:
+            wants_upcoming = True
+    elif any(w in resource_triggers for w in raw_words):
+        intent_subtype = "RESOURCE"
+        intent_item_type = "POST"
+    elif any(w in kudos_triggers for w in raw_words):
+        intent_item_type = "KUDOS"
+    elif any(w in post_triggers for w in raw_words):
+        intent_item_type = "POST"
+
+    if any(w in space_triggers for w in raw_words):
+        wants_spaces = True
+
+    intent_strip_words = event_triggers | resource_triggers | kudos_triggers | post_triggers | space_triggers | {
+        "contact", "contacts", "reach", "organizer", "organizers", "info", "information"
+    }
+    # Preserve "will" as a topical noun when user asks about "will clinic" or "free will"
+    topical_tokens = []
+    for idx, w in enumerate(raw_words):
+        clean_w = w.lstrip("@")
+        if not clean_w or len(clean_w) < 2:
+            continue
+        if clean_w == "will" and ("clinic" in raw_words or "free" in raw_words or "legal" in raw_words or "estate" in raw_words):
+            topical_tokens.append("wills")
+            continue
+        if clean_w in CHAT_STOP_WORDS or clean_w in intent_strip_words:
+            continue
+        if clean_w not in topical_tokens:
+            topical_tokens.append(clean_w)
+
+    # Multi-turn follow-up carryover if user refers back ("that", "those", "what about ...")
+    is_followup_ref = (
+        any(w in CHAT_FOLLOWUP_PRONOUNS for w in raw_words)
+        or text_lower.startswith("what about")
+        or text_lower.startswith("how about")
+        or (wants_contact and not topical_tokens)
+    )
+    if not topical_tokens and is_followup_ref and isinstance(history, list):
+        for prev in reversed(history):
+            if isinstance(prev, dict) and prev.get("role") == "user" and prev.get("content"):
+                prev_signals = _extract_chat_query_signals(prev.get("content"), history=None)
+                if prev_signals["topical_tokens"]:
+                    topical_tokens = prev_signals["topical_tokens"]
+                    break
+
+    return {
+        "topical_tokens": topical_tokens,
+        "intent_subtype": intent_subtype,
+        "intent_item_type": intent_item_type,
+        "wants_upcoming": wants_upcoming,
+        "wants_spaces": wants_spaces,
+        "wants_contact": wants_contact,
+    }
+
+
+def _try_gemini_rag_answer(user_message, history, matched_items, matched_spaces):
+    api_key = os.environ.get("GEMINI_API_KEY", "").strip()
+    if not api_key or os.environ.get("DISABLE_EXTERNAL_LLM", "").strip() == "1":
+        return None
+
+    context_lines = []
+    for idx, it in enumerate(matched_items[:6], 1):
+        if it.get("item_type") == "KUDOS":
+            context_lines.append(
+                f"{idx}. [KUDOS #{it['id']}] {it.get('recipient_name', 'Member')} received Kudos from {it.get('author_name', 'Member')}: "
+                f"{(it.get('content') or '')[:300]}"
+            )
+        else:
+            subtypes_str = ", ".join(it.get("post_subtypes") or [it.get("post_subtype") or "GENERAL"])
+            spaces_str = ", ".join(g.get("name", "") for g in (it.get("groups") or [])) or "General Feed"
+            ev_str = f" | Event Date: {it.get('event_date')} {it.get('event_time') or ''}".strip() if it.get("event_date") else ""
+            contact_str = f" | Contact: {it.get('contact_info')}" if it.get("contact_info") else ""
+            aud_str = f" | Audience: {it.get('target_audience')}" if it.get("target_audience") else ""
+            geo_str = f" | Geography: {it.get('target_geography')}" if it.get("target_geography") else ""
+            body_snip = re.sub(r"\s+", " ", (it.get("content") or ""))[:360]
+            context_lines.append(
+                f"{idx}. [POST #{it['id']} | Types: {subtypes_str} | Space: {spaces_str} | Category: {it.get('category') or it.get('theme') or 'General'}"
+                f"{ev_str}{contact_str}{aud_str}{geo_str}] Title: {it.get('title') or 'Untitled'} — {body_snip}"
+            )
+
+    for sp in matched_spaces[:3]:
+        context_lines.append(
+            f"- [SPACE #{sp['id']}] {sp['name']} ({sp.get('theme') or 'Community'}): {(sp.get('description') or '')[:220]}"
+        )
+
+    grounded_blob = "\n".join(context_lines) if context_lines else "No matching community posts, events, resources, or spaces were found in GoodDeeds.space."
+    sys_prompt = (
+        "You are the friendly GoodDeeds.space Community Search Assistant. "
+        "Answer the user's question concisely (2-4 short sentences or compact bullets) using ONLY the GoodDeeds.space records below. "
+        "Use **bold** for post titles and Space names, include event dates or contact info when relevant, and never invent facts outside the provided records.\n\n"
+        f"GOODDEEDS.SPACE RECORDS:\n{grounded_blob}"
+    )
+
+    contents = []
+    if isinstance(history, list):
+        for turn in history[-4:]:
+            if not isinstance(turn, dict):
+                continue
+            role = "model" if turn.get("role") == "assistant" else "user"
+            txt = str(turn.get("content") or "").strip()
+            if txt:
+                contents.append({"role": role, "parts": [{"text": txt[:600]}]})
+    contents.append({"role": "user", "parts": [{"text": user_message[:600]}]})
+
+    payload = {
+        "system_instruction": {"parts": [{"text": sys_prompt}]},
+        "contents": contents,
+        "generationConfig": {"temperature": 0.2, "maxOutputTokens": 320}
+    }
+    url = f"https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key={api_key}"
+    try:
+        req = urllib.request.Request(
+            url,
+            data=json.dumps(payload).encode("utf-8"),
+            headers={"Content-Type": "application/json"},
+            method="POST"
+        )
+        with urllib.request.urlopen(req, timeout=4.0) as resp:
+            resp_data = json.loads(resp.read().decode("utf-8"))
+        candidates = resp_data.get("candidates") or []
+        if candidates:
+            parts = (candidates[0].get("content") or {}).get("parts") or []
+            text_out = "".join(p.get("text", "") for p in parts).strip()
+            if text_out:
+                return text_out
+    except Exception:
+        return None
+    return None
+
+
+def _compose_local_nlu_answer(user_message, signals, matched_items, matched_spaces, used_broader_fallback=False):
+    tokens = signals["topical_tokens"]
+    intent_subtype = signals["intent_subtype"]
+    intent_item_type = signals["intent_item_type"]
+    wants_contact = signals["wants_contact"]
+    topic_label = " ".join(tokens)
+
+    type_noun = "community items"
+    if intent_item_type == "KUDOS":
+        type_noun = "Kudos"
+    elif intent_subtype == "EVENT":
+        type_noun = "Community Events" if len(matched_items) != 1 else "Community Event"
+    elif intent_subtype == "RESOURCE":
+        type_noun = "Community Resources" if len(matched_items) != 1 else "Community Resource"
+    elif intent_item_type == "POST":
+        type_noun = "Posts" if len(matched_items) != 1 else "Post"
+    elif len(matched_items) == 1:
+        type_noun = "community item"
+
+    if not matched_items and not matched_spaces:
+        if topic_label:
+            return (
+                f"I couldn't find any posts, events, resources, or Spaces matching **\"{topic_label}\"** right now.\n"
+                "- Try asking with broader keywords (for example, *\"mental health\"*, *\"upcoming events\"*, *\"free legal help\"*, or *\"recent Kudos\"*)."
+            )
+        return (
+            "I couldn't find matching items for that request yet. Try asking about **upcoming events**, **community resources**, **Spaces**, or **recent Kudos**!"
+        )
+
+    lines = []
+    if used_broader_fallback and intent_subtype and topic_label:
+        subtype_friendly = "Community Events" if intent_subtype == "EVENT" else "Community Resources"
+        lines.append(
+            f"I didn't find {subtype_friendly} specifically tagged for **\"{topic_label}\"**, "
+            f"but I found **{len(matched_items)} related community {'item' if len(matched_items) == 1 else 'items'}** that may help:"
+        )
+    elif matched_items:
+        if topic_label:
+            lines.append(f"I found **{len(matched_items)} {type_noun}** matching **\"{topic_label}\"**" + (f" (plus **{len(matched_spaces)} {'Space' if len(matched_spaces) == 1 else 'Spaces'}**):" if matched_spaces else ":"))
+        else:
+            lines.append(f"Here {'is' if len(matched_items) == 1 else 'are'} **{len(matched_items)} {type_noun}** from the community:")
+    elif matched_spaces:
+        lines.append(f"I found **{len(matched_spaces)} Community {'Space' if len(matched_spaces) == 1 else 'Spaces'}** matching your question:")
+
+    for it in matched_items[:3]:
+        if it.get("item_type") == "KUDOS":
+            snip = re.sub(r"\s+", " ", (it.get("content") or "").strip())
+            if len(snip) > 110:
+                snip = snip[:107].rstrip() + "..."
+            lines.append(f"- 🌟 **Kudos to {it.get('recipient_name', 'Member')}** (from *{it.get('author_name', 'Member')}*): \"{snip}\"")
+        else:
+            subtypes = it.get("post_subtypes") or ["GENERAL"]
+            badge = "📅 Event" if "EVENT" in subtypes else ("📚 Resource" if "RESOURCE" in subtypes else "📝 Post")
+            if "EVENT" in subtypes and "RESOURCE" in subtypes:
+                badge = "📅 Event & 📚 Resource"
+            elif "GENERAL" in subtypes and "RESOURCE" in subtypes:
+                badge = "📝 Post & 📚 Resource"
+            title = it.get("title") or "Community Post"
+            meta_bits = [badge]
+            if it.get("groups"):
+                meta_bits.append("in **" + ", ".join(g["name"] for g in it["groups"][:2]) + "**")
+            if it.get("event_date"):
+                ev_txt = f"on {it['event_date']}" + (f" at {it['event_time']}" if it.get("event_time") else "")
+                meta_bits.append(ev_txt)
+            if it.get("contact_info") and (wants_contact or "EVENT" in subtypes or "RESOURCE" in subtypes):
+                meta_bits.append(f"Contact: {it['contact_info']}")
+            lines.append(f"- **{title}** ({' • '.join(meta_bits)})")
+
+    if matched_spaces and (signals["wants_spaces"] or not matched_items):
+        for sp in matched_spaces[:3]:
+            lines.append(f"- 👥 **{sp['name']}** (*{sp.get('theme') or 'Community Space'}*) — {(sp.get('description') or '')[:120]}")
+
+    return "\n".join(lines)
+
+
+def run_conversational_search(raw_message, history=None, user=None, scope=""):
+    signals = _extract_chat_query_signals(raw_message, history=history)
+    tokens = signals["topical_tokens"]
+    intent_subtype = signals["intent_subtype"]
+    intent_item_type = signals["intent_item_type"]
+    wants_upcoming = signals["wants_upcoming"]
+
+    uid = user["id"] if user else None
+    all_items = fetch_enriched_items("", [], uid, "smart")
+
+    conn = get_db()
+    cursor = conn.cursor()
+    cursor.execute("""
+        SELECT g.id, g.name, g.description, g.themes, g.icon_url,
+               (SELECT COUNT(*) FROM group_members gm WHERE gm.group_id = g.id) as member_count
+        FROM groups g
+        ORDER BY member_count DESC, g.name ASC
+    """)
+    all_spaces = []
+    for r in cursor.fetchall():
+        sp_dict = dict(r)
+        try:
+            parsed_themes = json.loads(sp_dict.get("themes") or "[]")
+            if not isinstance(parsed_themes, list):
+                parsed_themes = [str(parsed_themes)]
+        except Exception:
+            parsed_themes = []
+        sp_dict["themes"] = parsed_themes
+        sp_dict["theme"] = ", ".join(str(t) for t in parsed_themes if t) or "Community Space"
+        all_spaces.append(sp_dict)
+
+    joined_space_ids = set()
+    if uid:
+        cursor.execute("SELECT group_id FROM group_members WHERE user_id = ?", (uid,))
+        joined_space_ids = {r["group_id"] for r in cursor.fetchall()}
+    conn.close()
+
+    today_str = datetime.date.today().isoformat()
+    phrase_lower = " ".join(tokens).lower()
+
+    scored_entries = []
+    for item in all_items:
+        title_l = (item.get("title") or "").lower()
+        content_l = (item.get("content") or "").lower()
+        cat_l = ((item.get("category") or "") + " " + (item.get("theme") or "")).lower()
+        groups_l = " ".join((g.get("name") or "") for g in (item.get("groups") or [])).lower()
+        meta_l = " ".join([
+            item.get("target_audience") or "",
+            item.get("target_geography") or "",
+            item.get("contact_info") or "",
+            item.get("author_name") or "",
+            item.get("recipient_name") or "",
+        ]).lower()
+        ext_l = ((item.get("extracted_text") or "") + " " + (item.get("resource_url") or "")).lower()
+
+        topical_score = 0
+        if tokens:
+            if len(tokens) > 1 and phrase_lower in title_l:
+                topical_score += 25
+            elif len(tokens) > 1 and phrase_lower in content_l:
+                topical_score += 15
+
+            for tok in tokens:
+                stem = _stem_token(tok)
+                primary_candidates = {tok, stem}
+                matched_primary = False
+                for cand in primary_candidates:
+                    if not cand or len(cand) < 2:
+                        continue
+                    if cand in title_l:
+                        topical_score += 14
+                        matched_primary = True
+                    if cand in groups_l:
+                        topical_score += 12
+                        matched_primary = True
+                    if cand in cat_l:
+                        topical_score += 10
+                        matched_primary = True
+                    if cand in meta_l:
+                        topical_score += 9
+                        matched_primary = True
+                    if cand in content_l:
+                        topical_score += 7
+                        matched_primary = True
+                    if cand in ext_l:
+                        topical_score += 5
+                        matched_primary = True
+
+                if not matched_primary:
+                    for syn in CHAT_DOMAIN_SYNONYMS.get(tok, CHAT_DOMAIN_SYNONYMS.get(stem, [])):
+                        if syn in title_l or syn in groups_l or syn in cat_l:
+                            topical_score += 6
+                        elif syn in content_l or syn in meta_l or syn in ext_l:
+                            topical_score += 3
+
+        subtypes = item.get("post_subtypes") or []
+        matches_type_strict = True
+        if intent_item_type == "KUDOS":
+            matches_type_strict = (item.get("item_type") == "KUDOS")
+        elif intent_subtype == "EVENT":
+            matches_type_strict = (item.get("item_type") == "POST" and ("EVENT" in subtypes or bool(item.get("event_date"))))
+            if matches_type_strict and wants_upcoming and item.get("event_date"):
+                ev_d = str(item.get("event_date")).split("T")[0]
+                if ev_d < today_str:
+                    matches_type_strict = False
+        elif intent_subtype == "RESOURCE":
+            matches_type_strict = (item.get("item_type") == "POST" and "RESOURCE" in subtypes)
+        elif intent_item_type == "POST":
+            matches_type_strict = (item.get("item_type") == "POST")
+
+        if tokens and topical_score == 0:
+            continue
+
+        total_score = topical_score
+        if matches_type_strict:
+            total_score += 20
+        if scope == "my_spaces" and joined_space_ids:
+            item_gids = {g.get("id") for g in (item.get("groups") or [])}
+            if item_gids & joined_space_ids:
+                total_score += 4
+
+        scored_entries.append((total_score, topical_score, matches_type_strict, item))
+
+    strict_matches = [e for e in scored_entries if e[2]]
+    used_broader_fallback = False
+
+    if strict_matches:
+        chosen = strict_matches
+    elif tokens and scored_entries:
+        chosen = scored_entries
+        used_broader_fallback = True
+    else:
+        chosen = []
+
+    if intent_subtype == "EVENT" and not used_broader_fallback:
+        def _event_sort_key(entry):
+            ev_date = str(entry[3].get("event_date") or "9999-99-99").split("T")[0]
+            is_upcoming_flag = 0 if ev_date >= today_str else 1
+            return (-entry[1], is_upcoming_flag, ev_date if is_upcoming_flag == 0 else "")
+        chosen.sort(key=_event_sort_key)
+    else:
+        chosen.sort(key=lambda e: (-e[0], -int(e[3].get("id") or 0)))
+
+    matched_items = [e[3] for e in chosen[:8]]
+
+    # Score Community Spaces as well
+    matched_spaces = []
+    if signals["wants_spaces"] and not tokens:
+        matched_spaces = all_spaces[:5]
+    elif tokens:
+        space_scored = []
+        for sp in all_spaces:
+            sp_blob = f"{sp.get('name') or ''} {sp.get('description') or ''} {sp.get('theme') or ''}".lower()
+            s_score = 0
+            for tok in tokens:
+                stem = _stem_token(tok)
+                if tok in (sp.get("name") or "").lower() or stem in (sp.get("name") or "").lower():
+                    s_score += 15
+                elif tok in sp_blob or stem in sp_blob:
+                    s_score += 7
+                else:
+                    for syn in CHAT_DOMAIN_SYNONYMS.get(tok, CHAT_DOMAIN_SYNONYMS.get(stem, [])):
+                        if syn in sp_blob:
+                            s_score += 4
+            if s_score > 0:
+                space_scored.append((s_score, sp))
+        space_scored.sort(key=lambda x: -x[0])
+        matched_spaces = [x[1] for x in space_scored[:3]]
+        if signals["wants_spaces"] and not matched_spaces:
+            matched_spaces = all_spaces[:5]
+
+    llm_answer = _try_gemini_rag_answer(raw_message, history, matched_items, matched_spaces)
+    if llm_answer:
+        answer = llm_answer
+        engine = "gemini_rag"
+    else:
+        answer = _compose_local_nlu_answer(raw_message, signals, matched_items, matched_spaces, used_broader_fallback=used_broader_fallback)
+        engine = "local_nlu"
+
+    suggested_followups = []
+    if intent_subtype != "EVENT":
+        suggested_followups.append("What upcoming events are scheduled?")
+    if intent_subtype != "RESOURCE":
+        suggested_followups.append("Are there mental health or wellness resources?")
+    if intent_item_type != "KUDOS":
+        suggested_followups.append("Show recent community Kudos")
+    if not signals["wants_spaces"]:
+        suggested_followups.append("Which Community Spaces can I join?")
+
+    return {
+        "success": True,
+        "engine": engine,
+        "answer": answer,
+        "matched_items": matched_items,
+        "matched_item_ids": [it["id"] for it in matched_items],
+        "matched_spaces": matched_spaces,
+        "detected_intent": {
+            "subtype": intent_subtype,
+            "item_type": intent_item_type,
+            "keywords": tokens,
+            "upcoming_only": wants_upcoming,
+        },
+        "suggested_followups": suggested_followups[:3],
+    }
 
 # ================== MAIN API DISPATCHER ==================
 def handle_api_request(method, path, headers, body_bytes):
@@ -1278,7 +1803,11 @@ def handle_api_request(method, path, headers, body_bytes):
             resource_url = str(raw_res_url or "").strip()
         event_date = body.get("event_date", "").strip() or None
         event_time = str(body.get("event_time") if body.get("event_time") is not None else (body.get("time") or "")).strip() or None
-        post_subtype = body.get("post_subtype", "").strip().upper() or None
+        raw_put_subtype = body.get("post_subtypes") if body.get("post_subtypes") is not None else body.get("post_subtype", "")
+        if raw_put_subtype:
+            post_subtype = ",".join(parse_post_subtypes_list(raw_put_subtype))
+        else:
+            post_subtype = None
         target_audience = str(body.get("target_audience") or "").strip() or None
         target_geography = str(body.get("target_geography") or body.get("target_geographical_areas") or "").strip() or None
         contact_info = str(body.get("contact_info") or body.get("key_contact_info") or "").strip() or None
@@ -1401,14 +1930,18 @@ def handle_api_request(method, path, headers, body_bytes):
         subtype_param = query.get("subtype", [""])[0].strip().upper()
         if subtype_param:
             if subtype_param == "EVENT":
-                where_parts.append("(f.item_type = 'POST' AND (f.post_subtype = 'EVENT' OR (f.event_date IS NOT NULL AND f.event_date != '')))")
+                where_parts.append("(f.item_type = 'POST' AND ((',' || UPPER(COALESCE(f.post_subtype, '')) || ',') LIKE '%,EVENT,%' OR (f.event_date IS NOT NULL AND f.event_date != '')))")
             elif subtype_param == "RESOURCE":
-                where_parts.append("(f.item_type = 'POST' AND (f.post_subtype IS NULL OR f.post_subtype != 'EVENT') AND (f.event_date IS NULL OR f.event_date = '') AND (f.post_subtype = 'RESOURCE' OR (f.resource_url IS NOT NULL AND f.resource_url != '' AND f.resource_url != '[]')))")
+                where_parts.append("(f.item_type = 'POST' AND ((',' || UPPER(COALESCE(f.post_subtype, '')) || ',') LIKE '%,RESOURCE,%' OR (TRIM(COALESCE(f.post_subtype, '')) = '' AND (f.event_date IS NULL OR f.event_date = '') AND (f.resource_url IS NOT NULL AND f.resource_url != '' AND f.resource_url != '[]'))))")
             elif subtype_param == "GENERAL":
-                where_parts.append("(f.item_type = 'POST' AND (f.post_subtype IS NULL OR (f.post_subtype != 'EVENT' AND f.post_subtype != 'RESOURCE')) AND (f.event_date IS NULL OR f.event_date = '') AND (f.resource_url IS NULL OR f.resource_url = '' OR f.resource_url = '[]'))")
+                where_parts.append("(f.item_type = 'POST' AND ((',' || UPPER(COALESCE(f.post_subtype, '')) || ',') LIKE '%,GENERAL,%' OR (TRIM(COALESCE(f.post_subtype, '')) = '' AND (f.event_date IS NULL OR f.event_date = '') AND (f.resource_url IS NULL OR f.resource_url = '' OR f.resource_url = '[]'))))")
             else:
-                where_parts.append("f.post_subtype = ?")
-                params.append(subtype_param)
+                where_parts.append("(',' || UPPER(COALESCE(f.post_subtype, '')) || ',') LIKE ?")
+                params.append(f"%,{subtype_param},%")
+
+        exclude_subtype = query.get("exclude_subtype", [""])[0].strip().upper()
+        if exclude_subtype == "EVENT":
+            where_parts.append("((',' || UPPER(COALESCE(f.post_subtype, '')) || ',') NOT LIKE '%,EVENT,%' AND (f.event_date IS NULL OR f.event_date = ''))")
 
         category_param = query.get("category", [""])[0].strip()
         if category_param:
@@ -1423,9 +1956,9 @@ def handle_api_request(method, path, headers, body_bytes):
                 "Community & Action": ["Community & Action", "General", "General & Mutual Aid"]
             }
             if theme == "Events":
-                where_parts.append("(f.post_subtype = 'EVENT' OR f.theme = 'Events' OR (f.event_date IS NOT NULL AND f.event_date != ''))")
+                where_parts.append("((',' || UPPER(COALESCE(f.post_subtype, '')) || ',') LIKE '%,EVENT,%' OR f.theme = 'Events' OR (f.event_date IS NOT NULL AND f.event_date != ''))")
             elif theme == "Resources":
-                where_parts.append("((f.post_subtype IS NULL OR f.post_subtype != 'EVENT') AND (f.event_date IS NULL OR f.event_date = '') AND (f.post_subtype = 'RESOURCE' OR f.theme = 'Resources' OR (f.resource_url IS NOT NULL AND f.resource_url != '' AND f.resource_url != '[]')))")
+                where_parts.append("((',' || UPPER(COALESCE(f.post_subtype, '')) || ',') LIKE '%,RESOURCE,%' OR f.theme = 'Resources' OR (TRIM(COALESCE(f.post_subtype, '')) = '' AND (f.event_date IS NULL OR f.event_date = '') AND (f.resource_url IS NOT NULL AND f.resource_url != '' AND f.resource_url != '[]')))")
             elif theme in THEME_ALIASES:
                 aliases = THEME_ALIASES[theme]
                 where_parts.append(f"f.theme IN ({','.join(['?']*len(aliases))})")
@@ -1525,6 +2058,18 @@ def handle_api_request(method, path, headers, body_bytes):
 
         return json_response(res_dict)
 
+    # ================== CONVERSATIONAL CHAT SEARCH ==================
+    if path_only == "/api/chat_search" and method == "POST":
+        raw_msg = str(body.get("message") or body.get("query") or "").strip()
+        if not raw_msg:
+            return error_response("Please enter a question or search message.", 400)
+        if len(raw_msg) > 1000:
+            raw_msg = raw_msg[:1000]
+        history = body.get("history") if isinstance(body.get("history"), list) else []
+        scope = str(body.get("scope") or "").strip()
+        result = run_conversational_search(raw_msg, history=history, user=user, scope=scope)
+        return json_response(result)
+
     # ================== CREATE KUDOS ==================
     if path_only == "/api/kudos" and method == "POST":
         if not user:
@@ -1609,9 +2154,14 @@ def handle_api_request(method, path, headers, body_bytes):
         else:
             resource_url = str(raw_res_url or "").strip()
         group_ids = body.get("group_ids", [])
-        post_subtype = body.get("post_subtype", "").strip().upper()
+        raw_post_subtype = body.get("post_subtypes") if body.get("post_subtypes") is not None else body.get("post_subtype", "")
+        subtypes_list = parse_post_subtypes_list(raw_post_subtype)
+        post_subtype = ",".join(subtypes_list)
         event_date = body.get("event_date", "").strip()
         event_time = str(body.get("event_time") if body.get("event_time") is not None else (body.get("time") or "")).strip()
+        if "EVENT" not in subtypes_list:
+            event_date = ""
+            event_time = ""
 
         target_audience = str(body.get("target_audience") or "").strip()
         target_geography = str(body.get("target_geography") or body.get("target_geographical_areas") or "").strip()
@@ -1630,7 +2180,7 @@ def handle_api_request(method, path, headers, body_bytes):
         if theme not in VALID_THEMES:
             return error_response(f"Invalid theme: {theme}", 400)
 
-        if post_subtype == "EVENT":
+        if "EVENT" in subtypes_list:
             if not event_date:
                 return error_response("Event date is required for Community Events.", 400)
             today_str = datetime.date.today().isoformat()

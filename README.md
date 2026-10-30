@@ -3,7 +3,7 @@
 GoodDeeds.space is a community-focused web application designed to promote goodness, build meaningful connections, and facilitate mutual aid. With a warm, accessible, and senior-friendly design philosophy, it connects volunteers, organizers, and neighbors to support each other.
 
 ## 📊 Verification & Test Status
-- **132/132** Automated Unit & Integration Tests Passing 100% OK (`./run_tests.sh`).
+- **149/149** Automated Unit, Integration & UI Regression Tests Passing 100% OK (`./run_tests.sh`).
 - Zero external framework bloat: Pure Python standard-library HTTP server + SQLite backend with a responsive Tailwind CSS Single-Page Application (SPA).
 
 ---
@@ -11,18 +11,20 @@ GoodDeeds.space is a community-focused web application designed to promote goodn
 ## System Overview & Mission
 
 The core mission of GoodDeeds.space is to encourage small acts of kindness that ripple outward to transform neighborhoods. The platform is designed to be accessible to all age groups, particularly seniors, featuring:
-*   **Warm Aesthetics**: Inviting and easy-to-read interface.
+*   **Warm Aesthetics**: Inviting and easy-to-read interface with compact above-the-fold layout so community highlights are immediately visible.
 *   **Intergenerational Connection**: Facilitating mentorship and support between youth and seniors.
 *   **Low Barrier to Entry**: Simple workflows for posting help requests, sharing inspiring stories, and giving thanks (Kudos).
 
 ### Core Capabilities
-- **Unified Social Feed**: A merged stream of Kudos (appreciation) and Posts (information/stories) sorted using a "smart sort" algorithm that prioritizes items from Spaces the user has joined and items with high engagement.
-- **Spaces**: Dedicated sub-communities where members can chat on the **Chat Board**, share curated resources & events, and invite others.
+- **Unified Social Feed & Multi-Tag Posts**: A merged stream of **Kudos** (appreciation) and **Posts** sorted using a "smart sort" algorithm. Posts support multi-select types (**General Posts**, **Community Events**, **Community Resources** — e.g., `GENERAL,RESOURCE` or `EVENT,RESOURCE`) with a non-intrusive smart nudge when links or files are attached.
+- **Conversational Chat Search (`💬 Ask in Chat` ↔ `🎛️ Filter Controls`)**: Top-bar mode switcher on both the Home/Landing page and Community Feed allowing users to search in plain English instead of dropdown filters. Powered by a **hybrid search engine**: built-in zero-config local NLU (`local_nlu`) with domain synonyms, extracted PDF/attachment text indexing, and multi-turn pronoun follow-ups, plus automatic upgrade to grounded Gemini RAG (`gemini_rag`) when `GEMINI_API_KEY` is configured.
+- **Rich Text Formatting, Hyperlinks & Collapsible Long Posts**: Built-in formatting toolbar (bold, italic, underline, headings, bulleted/numbered lists, blockquotes, link insertion, and live `Write / Preview` tabs), safe auto-linkification of URLs and emails, and automatic `"Click here to see the full text ↓"` / `"Show less ↑"` collapsible previews for long posts.
+- **Spaces**: Dedicated sub-communities with separated **📝 Posts**, **📅 Events**, **📚 Resources**, and **💬 Chat Board** tabs, an optional toggleable Events Calendar (hidden by default for clean focus), Space Admin editing, and bulk/single email invitations.
 - **Real-Time In-App Notifications**: Bell dropdown with live unread badges, 15-second background polling, and instant toast alerts for new Kudos, Comments, and Space Invitations.
 - **Multi-Modal Authentication**: Support for WebAuthn Passkeys (`fido2`), Google OAuth 2.0, and standard Email/Username + Password sessions.
 - **Three-Tiered Moderation & Safety System**: Direct Admin Controls, Community Content Reporting & Admin Moderation Queue (`/#/moderation`), and Automated Server-Side Safety Guardrails.
 - **Google Analytics (GA4)**: Integrated SPA pageview and custom event tracking (`gtag.js` + `window.dataLayer`).
-- **Simulated & Real Communications**: Integrated email notifications for kudos and invitations, with a built-in outbox viewer for testing.
+- **Simulated & Real Communications**: Integrated email notifications for Kudos, Space invitations, and platform invitations, with a built-in outbox viewer for testing.
 
 ---
 
@@ -32,10 +34,10 @@ The application is built on the Python 3.13 standard library and uses SQLite for
 
 ```
 ├── database.py         # Database schema, initialization, and demo data seeding
-├── handlers.py         # Core API request handlers, auth, moderation, and business logic
+├── handlers.py         # Core API request handlers, conversational search, auth, and moderation
 ├── server.py           # Threaded HTTP server routing API and serving static files
 ├── run.sh              # Shell script to start the server
-├── run_tests.sh        # Shell script to run the automated test suite (132 tests)
+├── run_tests.sh        # Shell script to run the automated test suite (149 tests)
 ├── static/             # Frontend assets
 │   ├── index.html      # Single Page Application (SPA) entry point
 │   ├── app.js          # Frontend application logic (vanilla JS)
@@ -49,14 +51,14 @@ The application is built on the Python 3.13 standard library and uses SQLite for
     ├── test_groups.py  # Space management, chat, and resources tests
     ├── test_invitations.py # Space invitations flow tests
     ├── test_spotlight.py # Spotlight and rotation tests
-    ├── test_regression_coverage.py # Comprehensive regression & moderation tests
+    ├── test_regression_coverage.py # Comprehensive UI, NLU chat search & security regression tests
     └── test_suite.py   # Test suite runner and discoverer
 ```
 
 ### Component Roles
 *   **`server.py`**: Listens on a specified port (default 8080). Routes requests starting with `/api/` to `handlers.handle_api_request` and serves static files from the `static/` directory for other requests.
 *   **`database.py`**: Manages the SQLite database (`gooddeeds.db`). Defines the schema (15+ tables including `group_bans` and `content_reports`) and populates realistic demo data on the first run.
-*   **`handlers.py`**: Parses incoming HTTP requests, performs authentication checks, executes database queries, enforces automated safety guardrails (`check_content_moderation`), handles simulated/real email delivery, and returns JSON responses.
+*   **`handlers.py`**: Parses incoming HTTP requests, performs authentication checks, executes database queries, runs hybrid conversational search (`run_conversational_search`), enforces automated safety guardrails (`check_content_moderation`), handles simulated/real email delivery, and returns JSON responses.
 *   **`static/`**: A pure HTML5/CSS3/Vanilla JS single-page application (SPA).
 
 ---
@@ -80,6 +82,8 @@ You can configure the server using the following environment variables:
 | :--- | :--- | :--- |
 | `PORT` | Port number the HTTP server listens on | `8080` |
 | `DB_PATH` | Path to the SQLite database file | `gooddeeds.db` (next to script) |
+| `GEMINI_API_KEY` | Optional Gemini API key enabling grounded `gemini-2.5-flash` RAG synthesis in `/api/chat_search` (falls back automatically to built-in `local_nlu` when unset) | *None* |
+| `SUPPORT_ALERT_EMAIL` | Destination email for customer support inquiry alerts | `support@gooddeeds.space` |
 | `SMTP_HOST` | Hostname of the live SMTP server (optional) | *None* |
 | `SMTP_PORT` | Port of the live SMTP server | `587` |
 | `SMTP_USER` | SMTP username for authentication | *None* |
@@ -239,11 +243,45 @@ Retrieves details of the currently authenticated user. Requires authentication.
 Retrieves a list of posts and kudos.
 *   **Query Parameters**:
     *   `sort`: `smart` (default, weights by Space membership and reactions) or `recent`.
-    *   `theme`: Filter by specific theme (e.g., "Mental Health").
-    *   `subtype`: Filter by post subtype (`EVENT` or `RESOURCE`).
+    *   `theme`: Filter by specific theme (e.g., "Wellbeing & Care").
+    *   `category`: Filter by category (e.g., "Health & Wellness", "Legal & Financial Aid").
+    *   `subtype`: Filter by post subtype (`GENERAL`, `EVENT`, or `RESOURCE`).
     *   `group_id`: Filter items tagged to a specific Space (`my_spaces` or Space ID).
-    *   `search`: Search text in title, content, extracted PDF text, or username.
+    *   `search`: Search text in title, content, audience, geography, contact, category, extracted PDF text, or username.
     *   `filter_type`: Filter by type (`KUDOS` or `POST`).
+    *   `limit` / `offset`: Incremental pagination parameters.
+
+#### `POST /api/chat_search`
+Executes conversational natural-language search across Posts, Community Events, Community Resources, Kudos, and Spaces using built-in smart NLU (`local_nlu`) or grounded Gemini RAG (`gemini_rag` when `GEMINI_API_KEY` is set). Accessible to both guests and authenticated users.
+*   **Payload**:
+    ```json
+    {
+      "message": "Are there any mental health resources?",
+      "history": [
+        { "role": "user", "content": "..." },
+        { "role": "assistant", "content": "..." }
+      ],
+      "scope": "all"
+    }
+    ```
+*   **Response (200 OK)**:
+    ```json
+    {
+      "success": true,
+      "engine": "local_nlu",
+      "answer": "I found **4 Community Resources** matching **\"mental health\"**...",
+      "matched_items": [ ... ],
+      "matched_item_ids": [13, 10],
+      "matched_spaces": [ ... ],
+      "detected_intent": {
+        "subtype": "RESOURCE",
+        "item_type": "POST",
+        "keywords": ["mental", "health"],
+        "upcoming_only": false
+      },
+      "suggested_followups": ["What upcoming events are scheduled?", "Show recent community Kudos"]
+    }
+    ```
 
 #### `POST /api/kudos`
 Creates a new Kudos thanking another user. Checked against automated safety guardrails. Requires authentication.
@@ -258,16 +296,21 @@ Creates a new Kudos thanking another user. Checked against automated safety guar
 *   **Response (201 Created)**: `{"item": { ... }, "success": true}`
 
 #### `POST /api/posts`
-Creates a new community post, event, or resource. Checked against automated safety guardrails. Requires authentication.
+Creates a new community post, event, or resource (supporting comma-separated multi-select subtypes such as `"GENERAL,RESOURCE"` or `"EVENT,RESOURCE"`). Checked against automated safety guardrails. Requires authentication.
 *   **Payload**:
     ```json
     {
       "title": "Community Garden",
-      "theme": "Community Services",
-      "content": "Let's start a garden!",
-      "resource_url": "https://example.com/garden_plan.pdf",
-      "post_subtype": "EVENT",
+      "theme": "Community & Action",
+      "category": "Environment & Sustainability",
+      "content": "Let's start a **neighborhood garden**! More info at [Garden Guide](https://example.com).",
+      "resource_url": "[\"https://example.com/garden_plan.pdf\"]",
+      "post_subtype": "EVENT,RESOURCE",
       "event_date": "2026-10-15",
+      "event_time": "10:00 AM",
+      "target_audience": "All Neighbors",
+      "target_geography": "Oakwood District",
+      "contact_info": "garden@gooddeeds.space",
       "group_ids": [3]
     }
     ```
@@ -299,8 +342,8 @@ Retrieves all Spaces, optionally filtered by search query or theme.
 *   **Query Parameters**: `search`, `theme`, `joined` (true/false)
 *   **Response (200 OK)**: `{"groups": [...]}`
 
-#### `POST /api/groups`
-Creates a new Space. The creator is automatically added as Space admin. Requires authentication.
+#### `POST /api/groups` & `PUT /api/groups/<id>`
+Creates a new Space (creator becomes Space Admin) or updates an existing Space's name, description, themes, or icon (requires Space Admin or Site Admin privileges).
 
 #### `GET /api/groups/<id>`
 Retrieves detailed metadata for a Space, including roster, resources, Chat Board messages, and invitations.
@@ -319,10 +362,13 @@ Posts or deletes a message on the Space's Chat Board.
 
 ---
 
-### Space Invitations
+### Space & Platform Invitations
 
 #### `POST /api/groups/<id>/invite`
 Invites users to join a Space. Sends an email (real or simulated) to recipients. Requires authentication.
+
+#### `POST /api/invitations/website`
+Sends single or bulk email invitations to join GoodDeeds.space. Requires authentication.
 
 #### `GET /api/invitations/pending`
 Retrieves pending Space invitations for the currently authenticated user.
@@ -372,7 +418,7 @@ Users can submit inquiries which log to `customer_service_inquiries`.
 
 ## Running the Testing Suite
 
-The testing suite verifies all 136+ unit, API integration, and UI regression tests using isolated temporary databases.
+The testing suite verifies all 149 unit, API integration, and UI regression tests using isolated temporary databases.
 
 ### Running with the Helper Script
 Ensure the script is executable, then run it:
@@ -558,9 +604,14 @@ CREATE TABLE feed_items (
     title VARCHAR(255), -- For POST
     content TEXT NOT NULL,
     theme VARCHAR(100), -- For POST
-    resource_url VARCHAR(512), -- Link/PDF URL for POST
-    post_subtype VARCHAR(50),
+    category VARCHAR(100), -- Optional category tag
+    resource_url TEXT, -- JSON array or URL string for POST attachments
+    post_subtype VARCHAR(100), -- Comma-separated subtypes e.g. 'GENERAL,RESOURCE'
     event_date VARCHAR(50),
+    event_time VARCHAR(50),
+    target_audience VARCHAR(255),
+    target_geography VARCHAR(255),
+    contact_info VARCHAR(255),
     extracted_text TEXT,
     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
     FOREIGN KEY (author_id) REFERENCES users(id) ON DELETE CASCADE,
