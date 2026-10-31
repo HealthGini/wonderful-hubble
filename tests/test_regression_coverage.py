@@ -3284,6 +3284,7 @@ class TestRegressionCoverage(GoodDeedsTestCase):
         self.assertIn("Free &amp; Open Spaces", html)
         self.assertNotIn(">100%<", html)
         self.assertNotIn("Free & Open Space<", html)
+        self.assertIn('id="landing-hero-headline" class="text-2xl sm:text-3xl lg:text-4xl font-bold tracking-tight leading-tight font-heading text-stone-700"', html)
 
     def test_guest_landing_refresh_no_tdz_deadlock(self):
         """
@@ -3347,7 +3348,7 @@ class TestRegressionCoverage(GoodDeedsTestCase):
         """
         Regression test verifying the conversational chat search interface (Landing & Feed)
         and the POST /api/chat_search hybrid NLU/RAG endpoint:
-        1. Both #landing-filter-bar and #feed-filter-bar-card expose Filter Controls <-> Ask in Chat
+        1. Both #landing-filter-bar and #feed-filter-bar-card expose Search Controls <-> Ask in Chat
            mode toggles, classic controls panes, and chat search panes.
         2. Chat state variables are declared before initApp() (no TDZ), and window exports
            switchSearchMode, submitChatSearch, askChatPromptChip, clearChatSearch,
@@ -3512,6 +3513,68 @@ class TestRegressionCoverage(GoodDeedsTestCase):
             )
             self.assertEqual(status, 200)
             self.assertTrue(len(q5.get("matched_spaces", [])) >= 1)
+
+    def test_search_controls_label_and_prominent_search_bar(self):
+        """
+        Regression test verifying:
+        1. 'Filter Controls' is replaced with 'Search Controls' on both Landing and Feed mode toggles.
+        2. Both #landing-search-input and #feed-search-input live inside full-width
+           .prominent-search-shell containers with explicit Search CTA buttons
+           (#btn-landing-search-submit, #btn-feed-search-submit) and TDZ-safe immediate
+           search handlers (triggerLandingSearchNow, triggerFeedSearchNow).
+        3. Clear search buttons (#landing-search-clear-btn, #feed-search-clear-btn) do not
+           combine 'hidden' with 'flex' in static HTML so '✕' stays hidden when empty.
+        """
+        base_dir = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+        with open(os.path.join(base_dir, "static", "index.html"), "r", encoding="utf-8") as f:
+            html = f.read()
+        with open(os.path.join(base_dir, "static", "app.js"), "r", encoding="utf-8") as f:
+            js = f.read()
+        with open(os.path.join(base_dir, "static", "style.css"), "r", encoding="utf-8") as f:
+            css = f.read()
+
+        # 1. 'Search Controls' label replaces 'Filter Controls'
+        self.assertNotIn("Filter Controls", html)
+        self.assertEqual(html.count("<span>🔍 Search Controls</span>"), 2)
+        self.assertEqual(html.count("<span>Search &amp; Discover</span>"), 2)
+
+        # 2. Prominent search bar containers, CTA buttons, CSS rules & JS bindings
+        self.assertEqual(html.count('class="prominent-search-shell '), 2)
+        self.assertIn('id="btn-landing-search-submit"', html)
+        self.assertIn('id="btn-feed-search-submit"', html)
+        self.assertIn(".prominent-search-shell", css)
+        self.assertIn("button.search-action-btn", css)
+        self.assertIn("button.search-clear-btn", css)
+
+        init_idx = js.find("async function initApp()")
+        feed_timer_idx = js.find("let feedSearchDebounceTimer = null;")
+        landing_timer_idx = js.find("let landingSearchDebounceTimer = null;")
+        self.assertNotEqual(feed_timer_idx, -1)
+        self.assertNotEqual(landing_timer_idx, -1)
+        self.assertLess(feed_timer_idx, init_idx)
+        self.assertLess(landing_timer_idx, init_idx)
+        self.assertIn("window.triggerFeedSearchNow = triggerFeedSearchNow", js)
+        self.assertIn("window.triggerLandingSearchNow = triggerLandingSearchNow", js)
+
+        # 3. Clear buttons must not carry both 'hidden' and 'flex' in static class attributes
+        import re
+        for clear_id in ('id="landing-search-clear-btn"', 'id="feed-search-clear-btn"'):
+            idx = html.find(clear_id)
+            self.assertNotEqual(idx, -1)
+            tag_end = html.find(">", idx)
+            tag_snippet = html[idx:tag_end]
+            class_match = re.search(r'class="([^"]*)"', tag_snippet)
+            self.assertIsNotNone(class_match)
+            tokens = class_match.group(1).split()
+            self.assertIn("hidden", tokens)
+            self.assertNotIn("flex", tokens)
+
+        # 4. Compact SSO / Passkey buttons in Sign Up & Log In modals
+        self.assertIn("button.auth-sso-btn", css)
+        self.assertEqual(html.count("btn-passkey-login auth-sso-btn w-full py-2 px-3.5"), 2)
+        self.assertIn('id="btn-google-signup" type="button" onclick="triggerGoogleSignIn()" class="auth-sso-btn w-full py-2 px-3.5', html)
+        self.assertIn('id="btn-google-login" type="button" onclick="triggerGoogleSignIn()" class="auth-sso-btn w-full py-2 px-3.5', html)
+
 
 
 

@@ -230,7 +230,7 @@
       <div id="landing-hero-card" class="bg-gradient-to-br from-amber-500/10 via-rose-500/5 to-indigo-600/10 bg-white rounded-3xl px-6 py-5 sm:px-8 sm:py-6 text-stone-900 shadow-sm border border-stone-200/80 relative overflow-hidden flex flex-col lg:flex-row items-center justify-between gap-6">
         <div class="space-y-2.5 max-w-2xl relative z-10">
           <span class="px-3 py-0.5 rounded-full bg-amber-100 font-extrabold tracking-wider text-[11px] border border-amber-300/60 inline-block uppercase text-amber-900 shadow-2xs">✨ Promoting Goodness in Our Communities</span>
-          <h1 class="text-2xl sm:text-3xl lg:text-4xl font-black tracking-tight leading-tight font-heading text-stone-900">Become the Best Version of Yourself — One Good Deed at a Time.</h1>
+          <h1 id="landing-hero-headline" class="text-2xl sm:text-3xl lg:text-4xl font-bold tracking-tight leading-tight font-heading text-stone-700">Become the Best Version of Yourself — One Good Deed at a Time.</h1>
           <p class="text-sm sm:text-base text-stone-600 font-medium leading-snug">
             gooddeeds.space is a universal social platform built to enable collaboration, recognize intrinsic kindness with public Kudos, and lend or seek support across mental health, education, and community services.
           </p>
@@ -326,77 +326,89 @@
           <a href="/#/feed" class="font-black text-amber-700 hover:underline text-base">View All Posts & Kudos →</a>
         </div>
         <div id="landing-filter-bar" class="bg-white px-5 py-3.5 sm:px-6 sm:py-4 rounded-3xl border border-slate-200/80 shadow-sm space-y-2 my-4">
-          <!-- Search Mode Switcher (Filter Controls vs Conversational Chat Search) -->
-          <div class="flex flex-wrap items-center justify-between gap-2 pb-1 border-b border-slate-100">
-            <div class="inline-flex items-center gap-1 bg-slate-100/90 p-1 rounded-xl border border-slate-200/70" role="tablist" aria-label="Search Mode">
-              <button type="button" id="btn-landing-mode-filters" onclick="switchSearchMode('landing', 'filters')" role="tab" aria-selected="true" class="chat-mode-btn px-3 py-1 rounded-lg font-extrabold text-xs bg-white text-slate-900 shadow-xs transition inline-flex items-center gap-1.5">
-                <span>🎛️ Filter Controls</span>
-              </button>
-              <button type="button" id="btn-landing-mode-chat" onclick="switchSearchMode('landing', 'chat')" role="tab" aria-selected="false" class="chat-mode-btn px-3 py-1 rounded-lg font-extrabold text-xs text-slate-600 hover:text-indigo-700 transition inline-flex items-center gap-1.5">
-                <span>💬 Ask in Chat</span>
-              </button>
+          <!-- Search Mode Switcher (Search Controls vs Conversational Chat Search) -->
+          <div class="flex flex-wrap items-center justify-between gap-2 pb-1.5 border-b border-indigo-100/90">
+            <div class="flex flex-wrap items-center gap-2.5">
+              <span class="text-xs sm:text-sm font-black text-indigo-950 tracking-tight inline-flex items-center gap-1.5">
+                <span>🔎</span>
+                <span>Search &amp; Discover</span>
+              </span>
+              <div class="inline-flex items-center gap-1 bg-indigo-100/80 p-1 rounded-xl border border-indigo-200/80" role="tablist" aria-label="Search Mode">
+                <button type="button" id="btn-landing-mode-filters" onclick="switchSearchMode('landing', 'filters')" role="tab" aria-selected="true" class="chat-mode-btn px-3 py-1 rounded-lg font-extrabold text-xs bg-white text-indigo-950 shadow-xs transition inline-flex items-center gap-1.5">
+                  <span>🔍 Search Controls</span>
+                </button>
+                <button type="button" id="btn-landing-mode-chat" onclick="switchSearchMode('landing', 'chat')" role="tab" aria-selected="false" class="chat-mode-btn px-3 py-1 rounded-lg font-extrabold text-xs text-slate-600 hover:text-indigo-700 transition inline-flex items-center gap-1.5">
+                  <span>💬 Ask in Chat</span>
+                </button>
+              </div>
             </div>
             <div class="flex items-center gap-2">
-              <span id="landing-mode-helper-label" class="text-[11px] font-semibold text-slate-500 hidden sm:inline">Prefer asking in plain English? Switch to <button type="button" onclick="switchSearchMode('landing', 'chat')" class="chat-chip-btn text-indigo-600 hover:text-indigo-800 font-extrabold underline underline-offset-2">Ask in Chat</button></span>
+              <span id="landing-mode-helper-label" class="text-[11px] font-semibold text-slate-600 hidden sm:inline">Prefer asking in plain English? Switch to <button type="button" onclick="switchSearchMode('landing', 'chat')" class="chat-chip-btn text-indigo-700 hover:text-indigo-900 font-extrabold underline underline-offset-2">Ask in Chat</button></span>
               <button type="button" id="btn-landing-chat-reset" onclick="clearChatSearch('landing')" class="hidden chat-chip-btn px-2.5 py-1 rounded-lg text-xs font-bold bg-slate-100 hover:bg-slate-200 text-slate-700 border border-slate-200 transition">Reset Chat</button>
             </div>
           </div>
 
-          <div id="landing-classic-controls-pane" class="space-y-2">
-          <div class="flex flex-col lg:flex-row gap-2">
-            <!-- Keyword Search -->
-            <div class="relative flex-1 min-w-0">
-              <span class="absolute inset-y-0 left-0 pl-4 flex items-center pointer-events-none text-slate-400 text-lg" aria-hidden="true">🔍</span>
-              <input type="search" id="landing-search-input" placeholder="Search Kudos, Posts, Events, Resources, Audience, Geography, Contact, or Username..." class="w-full pl-11 pr-11 py-3 rounded-xl border border-slate-300 font-medium text-sm bg-slate-50 focus:bg-white focus:border-indigo-600 transition">
-              <button id="landing-search-clear-btn" type="button" onclick="clearLandingSearchInput()" class="hidden absolute inset-y-0 right-0 pr-3.5 flex items-center text-slate-400 hover:text-slate-700 font-bold text-sm transition" title="Clear search" aria-label="Clear search">✕</button>
-            </div>
-            <select id="landing-category-select" onchange="filterLandingByCategory(this.value)" class="px-3 py-3 lg:w-40 shrink-0 rounded-xl border border-slate-300 font-bold text-sm bg-white focus:border-indigo-600 cursor-pointer touch-target">
-              <option value="">All Categories</option>
-              <option value="Education &amp; Tutoring">🏷️ Education &amp; Tutoring</option>
-              <option value="Health &amp; Wellness">🏷️ Health &amp; Wellness</option>
-              <option value="Food &amp; Mutual Aid">🏷️ Food &amp; Mutual Aid</option>
-              <option value="Senior Support">🏷️ Senior Support</option>
-              <option value="Youth &amp; Mentorship">🏷️ Youth &amp; Mentorship</option>
-              <option value="Housing &amp; Shelter">🏷️ Housing &amp; Shelter</option>
-              <option value="Career &amp; Job Skills">🏷️ Career &amp; Job Skills</option>
-              <option value="Environment &amp; Sustainability">🏷️ Environment &amp; Sustainability</option>
-              <option value="Arts, Culture &amp; Recreation">🏷️ Arts, Culture &amp; Recreation</option>
-              <option value="Legal &amp; Financial Aid">🏷️ Legal &amp; Financial Aid</option>
-              <option value="Disability &amp; Accessibility">🏷️ Disability &amp; Accessibility</option>
-              <option value="General Community">🏷️ General Community</option>
-            </select>
-            <select id="landing-group-select" onchange="filterLandingByGroup(this.value)" class="px-3 py-3 lg:w-[228px] shrink-0 rounded-xl border border-slate-300 font-bold text-sm bg-white focus:border-indigo-600 cursor-pointer touch-target">
-              <option value="">All Spaces</option>
-            </select>
-            <select id="landing-type-select" onchange="filterLandingByType(this.value)" class="px-3 py-3 shrink-0 rounded-xl border border-slate-300 font-bold text-sm bg-white focus:border-indigo-600 cursor-pointer touch-target">
-              <option value="">All Kudos and Posts</option>
-              <option value="KUDOS">Kudos Only</option>
-              <option value="POST">Posts Only</option>
-            </select>
-            <button type="button" id="btn-toggle-landing-theme-pills" onclick="toggleLandingThemePillsBar()" class="hidden px-3.5 py-2.5 rounded-xl border border-slate-300 font-bold text-sm bg-white hover:bg-slate-50 text-slate-700 transition items-center space-x-1.5 shrink-0 touch-target" title="Toggle Type Filters" aria-label="Toggle Type Filters" aria-expanded="true">
-              <span id="landing-theme-pills-active-indicator" class="hidden w-2 h-2 rounded-full bg-amber-500"></span>
-              <span id="landing-theme-pills-toggle-icon" class="text-xs text-slate-500 font-black">▲</span>
-            </button>
+          <div id="landing-classic-controls-pane" class="space-y-2.5 pt-0.5">
+          <!-- Prominent Full-Width Keyword Search Bar -->
+          <div class="prominent-search-shell relative flex items-center w-full rounded-2xl">
+            <span class="ml-2.5 w-9 h-9 rounded-xl bg-indigo-600 text-white flex items-center justify-center pointer-events-none text-base shadow-xs shrink-0" aria-hidden="true">🔍</span>
+            <input type="search" id="landing-search-input" placeholder="Search Kudos, Posts, Events, Resources, Audience, Geography, Contact, or Username..." class="w-full pl-3 pr-28 sm:pr-32 py-3.5 rounded-2xl border-0 font-semibold text-base text-slate-900 placeholder:text-slate-500 bg-transparent focus:outline-none">
+            <button id="landing-search-clear-btn" type="button" onclick="clearLandingSearchInput()" class="hidden search-clear-btn absolute right-24 sm:right-28 top-1/2 -translate-y-1/2 px-2 py-1 rounded-lg text-slate-400 hover:text-slate-700 hover:bg-slate-100 font-bold text-sm transition" title="Clear search" aria-label="Clear search">✕</button>
+            <button type="button" id="btn-landing-search-submit" onclick="triggerLandingSearchNow()" class="search-action-btn mr-2 px-4 sm:px-5 py-2 rounded-xl bg-gradient-to-r from-indigo-600 to-violet-600 hover:from-indigo-700 hover:to-violet-700 text-white font-extrabold text-sm shadow-sm transition shrink-0">Search</button>
           </div>
-          <div id="landing-theme-pills-bar" class="pt-0" role="group" aria-label="Landing Filter by Type">
-            <!-- Line 1: Primary Topics (Hidden per user preference; Type filter retained) -->
-            <div id="landing-topic-pills-row" class="hidden overflow-x-auto whitespace-nowrap scrollbar-none py-1 items-center gap-2">
-              <span class="text-xs font-black uppercase tracking-wider text-slate-500 pr-1 shrink-0">Topic:</span>
-              <button type="button" onclick="filterLandingByTheme('')" class="landing-theme-pill shrink-0 px-3.5 py-1.5 rounded-xl font-bold text-sm bg-slate-900 text-white transition touch-target shadow-sm">All</button>
-              <button type="button" onclick="filterLandingByTheme('Inspiring Stories')" class="landing-theme-pill shrink-0 px-3.5 py-1.5 rounded-xl font-bold text-sm bg-white hover:bg-slate-50 text-slate-700 transition touch-target shadow-xs">✨ Inspiring Stories</button>
-              <button type="button" onclick="filterLandingByTheme('Wellbeing & Care')" class="landing-theme-pill shrink-0 px-3.5 py-1.5 rounded-xl font-bold text-sm bg-white hover:bg-slate-50 text-slate-700 transition touch-target shadow-xs">🌱 Wellbeing & Care</button>
-              <button type="button" onclick="filterLandingByTheme('Skills & Learning')" class="landing-theme-pill shrink-0 px-3.5 py-1.5 rounded-xl font-bold text-sm bg-white hover:bg-slate-50 text-slate-700 transition touch-target shadow-xs">💡 Skills & Learning</button>
-              <button type="button" onclick="filterLandingByTheme('Community & Action')" class="landing-theme-pill shrink-0 px-3.5 py-1.5 rounded-xl font-bold text-sm bg-white hover:bg-slate-50 text-slate-700 transition touch-target shadow-xs">🤝 Community & Action</button>
-            </div>
 
-            <!-- Filter by Type -->
-            <div id="landing-type-pills-row" class="overflow-x-auto whitespace-nowrap scrollbar-none py-0 flex items-center gap-2">
-              <span class="text-xs font-black uppercase tracking-wider text-amber-800 shrink-0 flex items-center gap-1 pr-1">
-                <span>Type:</span>
-              </span>
-              <button type="button" onclick="filterLandingByFormat('GENERAL')" class="landing-format-pill shrink-0 px-3 py-1 rounded-xl font-bold text-xs bg-white hover:bg-amber-100/70 text-slate-700 transition shadow-xs border border-amber-200/60">📝 General Posts</button>
-              <button type="button" onclick="filterLandingByFormat('EVENT')" class="landing-format-pill shrink-0 px-3 py-1 rounded-xl font-bold text-xs bg-white hover:bg-amber-100/70 text-slate-700 transition shadow-xs border border-amber-200/60">📅 Community Events</button>
-              <button type="button" onclick="filterLandingByFormat('RESOURCE')" class="landing-format-pill shrink-0 px-3 py-1 rounded-xl font-bold text-xs bg-white hover:bg-amber-100/70 text-slate-700 transition shadow-xs border border-amber-200/60">📚 Community Resources</button>
+          <!-- Secondary Filters & Type Pills Row -->
+          <div class="flex flex-col xl:flex-row xl:items-center xl:justify-between gap-2 pt-0.5">
+            <div class="flex flex-col sm:flex-row flex-wrap items-stretch sm:items-center gap-2">
+              <span class="text-xs font-black uppercase tracking-wider text-indigo-900/75 shrink-0 hidden sm:inline pr-0.5">Filter:</span>
+              <select id="landing-category-select" onchange="filterLandingByCategory(this.value)" class="px-3 py-3 lg:w-40 shrink-0 rounded-xl border border-slate-300 font-bold text-sm bg-white focus:border-indigo-600 cursor-pointer touch-target">
+                <option value="">All Categories</option>
+                <option value="Education &amp; Tutoring">🏷️ Education &amp; Tutoring</option>
+                <option value="Health &amp; Wellness">🏷️ Health &amp; Wellness</option>
+                <option value="Food &amp; Mutual Aid">🏷️ Food &amp; Mutual Aid</option>
+                <option value="Senior Support">🏷️ Senior Support</option>
+                <option value="Youth &amp; Mentorship">🏷️ Youth &amp; Mentorship</option>
+                <option value="Housing &amp; Shelter">🏷️ Housing &amp; Shelter</option>
+                <option value="Career &amp; Job Skills">🏷️ Career &amp; Job Skills</option>
+                <option value="Environment &amp; Sustainability">🏷️ Environment &amp; Sustainability</option>
+                <option value="Arts, Culture &amp; Recreation">🏷️ Arts, Culture &amp; Recreation</option>
+                <option value="Legal &amp; Financial Aid">🏷️ Legal &amp; Financial Aid</option>
+                <option value="Disability &amp; Accessibility">🏷️ Disability &amp; Accessibility</option>
+                <option value="General Community">🏷️ General Community</option>
+              </select>
+              <select id="landing-group-select" onchange="filterLandingByGroup(this.value)" class="px-3 py-3 lg:w-[228px] shrink-0 rounded-xl border border-slate-300 font-bold text-sm bg-white focus:border-indigo-600 cursor-pointer touch-target">
+                <option value="">All Spaces</option>
+              </select>
+              <select id="landing-type-select" onchange="filterLandingByType(this.value)" class="px-3 py-3 shrink-0 rounded-xl border border-slate-300 font-bold text-sm bg-white focus:border-indigo-600 cursor-pointer touch-target">
+                <option value="">All Kudos and Posts</option>
+                <option value="KUDOS">Kudos Only</option>
+                <option value="POST">Posts Only</option>
+              </select>
+              <button type="button" id="btn-toggle-landing-theme-pills" onclick="toggleLandingThemePillsBar()" class="hidden px-3.5 py-2.5 rounded-xl border border-slate-300 font-bold text-sm bg-white hover:bg-slate-50 text-slate-700 transition items-center space-x-1.5 shrink-0 touch-target" title="Toggle Type Filters" aria-label="Toggle Type Filters" aria-expanded="true">
+                <span id="landing-theme-pills-active-indicator" class="hidden w-2 h-2 rounded-full bg-amber-500"></span>
+                <span id="landing-theme-pills-toggle-icon" class="text-xs text-slate-500 font-black">▲</span>
+              </button>
+            </div>
+            <div id="landing-theme-pills-bar" class="pt-0" role="group" aria-label="Landing Filter by Type">
+              <!-- Line 1: Primary Topics (Hidden per user preference; Type filter retained) -->
+              <div id="landing-topic-pills-row" class="hidden overflow-x-auto whitespace-nowrap scrollbar-none py-1 items-center gap-2">
+                <span class="text-xs font-black uppercase tracking-wider text-slate-500 pr-1 shrink-0">Topic:</span>
+                <button type="button" onclick="filterLandingByTheme('')" class="landing-theme-pill shrink-0 px-3.5 py-1.5 rounded-xl font-bold text-sm bg-slate-900 text-white transition touch-target shadow-sm">All</button>
+                <button type="button" onclick="filterLandingByTheme('Inspiring Stories')" class="landing-theme-pill shrink-0 px-3.5 py-1.5 rounded-xl font-bold text-sm bg-white hover:bg-slate-50 text-slate-700 transition touch-target shadow-xs">✨ Inspiring Stories</button>
+                <button type="button" onclick="filterLandingByTheme('Wellbeing & Care')" class="landing-theme-pill shrink-0 px-3.5 py-1.5 rounded-xl font-bold text-sm bg-white hover:bg-slate-50 text-slate-700 transition touch-target shadow-xs">🌱 Wellbeing & Care</button>
+                <button type="button" onclick="filterLandingByTheme('Skills & Learning')" class="landing-theme-pill shrink-0 px-3.5 py-1.5 rounded-xl font-bold text-sm bg-white hover:bg-slate-50 text-slate-700 transition touch-target shadow-xs">💡 Skills & Learning</button>
+                <button type="button" onclick="filterLandingByTheme('Community & Action')" class="landing-theme-pill shrink-0 px-3.5 py-1.5 rounded-xl font-bold text-sm bg-white hover:bg-slate-50 text-slate-700 transition touch-target shadow-xs">🤝 Community & Action</button>
+              </div>
+
+              <!-- Filter by Type -->
+              <div id="landing-type-pills-row" class="overflow-x-auto whitespace-nowrap scrollbar-none py-0 flex items-center gap-2">
+                <span class="text-xs font-black uppercase tracking-wider text-amber-800 shrink-0 flex items-center gap-1 pr-1">
+                  <span>Type:</span>
+                </span>
+                <button type="button" onclick="filterLandingByFormat('GENERAL')" class="landing-format-pill shrink-0 px-3 py-1 rounded-xl font-bold text-xs bg-white hover:bg-amber-100/70 text-slate-700 transition shadow-xs border border-amber-200/60">📝 General Posts</button>
+                <button type="button" onclick="filterLandingByFormat('EVENT')" class="landing-format-pill shrink-0 px-3 py-1 rounded-xl font-bold text-xs bg-white hover:bg-amber-100/70 text-slate-700 transition shadow-xs border border-amber-200/60">📅 Community Events</button>
+                <button type="button" onclick="filterLandingByFormat('RESOURCE')" class="landing-format-pill shrink-0 px-3 py-1 rounded-xl font-bold text-xs bg-white hover:bg-amber-100/70 text-slate-700 transition shadow-xs border border-amber-200/60">📚 Community Resources</button>
+              </div>
             </div>
           </div>
           </div>
@@ -424,10 +436,10 @@
 
             <form onsubmit="submitChatSearch(event, 'landing')" class="flex items-center gap-2">
               <div class="relative flex-1 min-w-0">
-                <span class="absolute inset-y-0 left-0 pl-3.5 flex items-center pointer-events-none text-indigo-500 text-base" aria-hidden="true">💬</span>
-                <input type="text" id="landing-chat-input" maxlength="500" placeholder="Ask a question (e.g. 'Any mental health resources?', 'Upcoming events?', 'Who is the contact for that?')..." class="w-full pl-10 pr-4 py-2.5 rounded-xl border border-slate-300 font-medium text-sm bg-white focus:border-indigo-600 transition">
+                <span class="absolute inset-y-0 left-0 pl-3.5 flex items-center pointer-events-none text-indigo-600 text-base" aria-hidden="true">💬</span>
+                <input type="text" id="landing-chat-input" maxlength="500" placeholder="Ask a question (e.g. 'Any mental health resources?', 'Upcoming events?', 'Who is the contact for that?')..." class="w-full pl-10 pr-4 py-3 rounded-xl border-2 border-indigo-400 font-semibold text-base text-slate-900 bg-white focus:border-indigo-600 shadow-xs transition">
               </div>
-              <button type="submit" id="btn-landing-chat-submit" class="chat-submit-btn px-4 py-2.5 rounded-xl font-extrabold text-sm bg-indigo-600 hover:bg-indigo-700 text-white shadow-sm transition shrink-0 inline-flex items-center gap-1.5">
+              <button type="submit" id="btn-landing-chat-submit" class="chat-submit-btn px-5 py-3 rounded-xl font-extrabold text-sm bg-gradient-to-r from-indigo-600 to-violet-600 hover:from-indigo-700 hover:to-violet-700 text-white shadow-sm transition shrink-0 inline-flex items-center gap-1.5">
                 <span>Ask</span>
                 <span>→</span>
               </button>
@@ -462,20 +474,26 @@
           </button>
         </div>
       </div>
-      <!-- Controls Filter Bar Card -->
+      <!-- Search Controls Bar Card -->
       <div id="feed-filter-bar-card" class="bg-white px-5 py-3.5 sm:px-6 sm:py-4 rounded-3xl border border-slate-200/80 shadow-sm space-y-2">
-        <!-- Search Mode Switcher (Filter Controls vs Conversational Chat Search) -->
-        <div class="flex flex-wrap items-center justify-between gap-2 pb-1 border-b border-slate-100">
-          <div class="inline-flex items-center gap-1 bg-slate-100/90 p-1 rounded-xl border border-slate-200/70" role="tablist" aria-label="Search Mode">
-            <button type="button" id="btn-feed-mode-filters" onclick="switchSearchMode('feed', 'filters')" role="tab" aria-selected="true" class="chat-mode-btn px-3 py-1 rounded-lg font-extrabold text-xs bg-white text-slate-900 shadow-xs transition inline-flex items-center gap-1.5">
-              <span>🎛️ Filter Controls</span>
-            </button>
-            <button type="button" id="btn-feed-mode-chat" onclick="switchSearchMode('feed', 'chat')" role="tab" aria-selected="false" class="chat-mode-btn px-3 py-1 rounded-lg font-extrabold text-xs text-slate-600 hover:text-indigo-700 transition inline-flex items-center gap-1.5">
-              <span>💬 Ask in Chat</span>
-            </button>
+        <!-- Search Mode Switcher (Search Controls vs Conversational Chat Search) -->
+        <div class="flex flex-wrap items-center justify-between gap-2 pb-1.5 border-b border-indigo-100/90">
+          <div class="flex flex-wrap items-center gap-2.5">
+            <span class="text-xs sm:text-sm font-black text-indigo-950 tracking-tight inline-flex items-center gap-1.5">
+              <span>🔎</span>
+              <span>Search &amp; Discover</span>
+            </span>
+            <div class="inline-flex items-center gap-1 bg-indigo-100/80 p-1 rounded-xl border border-indigo-200/80" role="tablist" aria-label="Search Mode">
+              <button type="button" id="btn-feed-mode-filters" onclick="switchSearchMode('feed', 'filters')" role="tab" aria-selected="true" class="chat-mode-btn px-3 py-1 rounded-lg font-extrabold text-xs bg-white text-indigo-950 shadow-xs transition inline-flex items-center gap-1.5">
+                <span>🔍 Search Controls</span>
+              </button>
+              <button type="button" id="btn-feed-mode-chat" onclick="switchSearchMode('feed', 'chat')" role="tab" aria-selected="false" class="chat-mode-btn px-3 py-1 rounded-lg font-extrabold text-xs text-slate-600 hover:text-indigo-700 transition inline-flex items-center gap-1.5">
+                <span>💬 Ask in Chat</span>
+              </button>
+            </div>
           </div>
           <div class="flex items-center gap-2">
-            <span id="feed-mode-helper-label" class="text-[11px] font-semibold text-slate-500 hidden sm:inline">Prefer asking in plain English? Switch to <button type="button" onclick="switchSearchMode('feed', 'chat')" class="chat-chip-btn text-indigo-600 hover:text-indigo-800 font-extrabold underline underline-offset-2">Ask in Chat</button></span>
+            <span id="feed-mode-helper-label" class="text-[11px] font-semibold text-slate-600 hidden sm:inline">Prefer asking in plain English? Switch to <button type="button" onclick="switchSearchMode('feed', 'chat')" class="chat-chip-btn text-indigo-700 hover:text-indigo-900 font-extrabold underline underline-offset-2">Ask in Chat</button></span>
             <select id="feed-chat-scope-select" aria-label="Chat Search Scope" class="hidden chat-scope-select px-2.5 py-1 rounded-lg border border-slate-200 bg-slate-50 font-bold text-xs text-slate-700 cursor-pointer focus:border-indigo-600">
               <option value="all">🌐 Search All Spaces</option>
               <option value="my_spaces">⭐ My Joined Spaces Only</option>
@@ -484,72 +502,76 @@
           </div>
         </div>
 
-        <div id="feed-classic-controls-pane" class="space-y-2">
-        <!-- Filter & Search Bar -->
-        <div class="flex flex-col lg:flex-row gap-2">
-          <!-- Keyword Search -->
-          <div class="relative flex-1 min-w-0">
-            <span class="absolute inset-y-0 left-0 pl-4 flex items-center pointer-events-none text-slate-400 text-lg" aria-hidden="true">🔍</span>
-            <input type="search" id="feed-search-input" placeholder="Search Kudos, Posts, Events, Resources, Audience, Geography, Contact, or Username..." class="w-full pl-11 pr-11 py-3 rounded-xl border border-slate-300 font-medium text-sm bg-slate-50 focus:bg-white focus:border-indigo-600 transition">
-            <button id="feed-search-clear-btn" type="button" onclick="clearFeedSearchInput()" class="hidden absolute inset-y-0 right-0 pr-3.5 flex items-center text-slate-400 hover:text-slate-700 font-bold text-sm transition" title="Clear search" aria-label="Clear search">✕</button>
-          </div>
-
-          <!-- Category Filter Dropdown -->
-          <select id="feed-category-select" onchange="filterByCategory(this.value)" class="px-3 py-3 lg:w-40 shrink-0 rounded-xl border border-slate-300 font-bold text-sm bg-white focus:border-indigo-600 cursor-pointer touch-target">
-            <option value="">All Categories</option>
-            <option value="Education &amp; Tutoring">🏷️ Education &amp; Tutoring</option>
-            <option value="Health &amp; Wellness">🏷️ Health &amp; Wellness</option>
-            <option value="Food &amp; Mutual Aid">🏷️ Food &amp; Mutual Aid</option>
-            <option value="Senior Support">🏷️ Senior Support</option>
-            <option value="Youth &amp; Mentorship">🏷️ Youth &amp; Mentorship</option>
-            <option value="Housing &amp; Shelter">🏷️ Housing &amp; Shelter</option>
-            <option value="Career &amp; Job Skills">🏷️ Career &amp; Job Skills</option>
-            <option value="Environment &amp; Sustainability">🏷️ Environment &amp; Sustainability</option>
-            <option value="Arts, Culture &amp; Recreation">🏷️ Arts, Culture &amp; Recreation</option>
-            <option value="Legal &amp; Financial Aid">🏷️ Legal &amp; Financial Aid</option>
-            <option value="Disability &amp; Accessibility">🏷️ Disability &amp; Accessibility</option>
-            <option value="General Community">🏷️ General Community</option>
-          </select>
-
-          <!-- Group Filter Dropdown -->
-          <select id="feed-group-select" onchange="filterByGroup(this.value)" class="px-3 py-3 lg:w-[228px] shrink-0 rounded-xl border border-slate-300 font-bold text-sm bg-white focus:border-indigo-600 cursor-pointer touch-target">
-            <option value="">All Spaces</option>
-          </select>
-
-          <!-- Item Type Filter -->
-          <select id="feed-type-select" onchange="filterByType(this.value)" class="px-3 py-3 shrink-0 rounded-xl border border-slate-300 font-bold text-sm bg-white focus:border-indigo-600 cursor-pointer touch-target">
-            <option value="">All Kudos and Posts</option>
-            <option value="KUDOS">Kudos Only</option>
-            <option value="POST">Posts Only</option>
-          </select>
-
-          <!-- Toggle Type Sub-Filters Button (Hidden; compact Type row is always shown) -->
-          <button type="button" id="btn-toggle-theme-pills" onclick="toggleThemePillsBar()" class="hidden px-4 py-3 rounded-xl border border-slate-300 font-bold text-sm bg-white hover:bg-slate-50 text-slate-700 transition items-center justify-center space-x-1.5 shrink-0 touch-target" title="Toggle Type Filters" aria-label="Toggle Type Filters" aria-expanded="true">
-            <span id="theme-pills-active-indicator" class="hidden w-2 h-2 rounded-full bg-amber-500"></span>
-            <span id="theme-pills-toggle-icon" class="text-xs text-slate-500 font-black">▲</span>
-          </button>
+        <div id="feed-classic-controls-pane" class="space-y-2.5 pt-0.5">
+        <!-- Prominent Full-Width Keyword Search Bar -->
+        <div class="prominent-search-shell relative flex items-center w-full rounded-2xl">
+          <span class="ml-2.5 w-9 h-9 rounded-xl bg-indigo-600 text-white flex items-center justify-center pointer-events-none text-base shadow-xs shrink-0" aria-hidden="true">🔍</span>
+          <input type="search" id="feed-search-input" placeholder="Search Kudos, Posts, Events, Resources, Audience, Geography, Contact, or Username..." class="w-full pl-3 pr-28 sm:pr-32 py-3.5 rounded-2xl border-0 font-semibold text-base text-slate-900 placeholder:text-slate-500 bg-transparent focus:outline-none">
+          <button id="feed-search-clear-btn" type="button" onclick="clearFeedSearchInput()" class="hidden search-clear-btn absolute right-24 sm:right-28 top-1/2 -translate-y-1/2 px-2 py-1 rounded-lg text-slate-400 hover:text-slate-700 hover:bg-slate-100 font-bold text-sm transition" title="Clear search" aria-label="Clear search">✕</button>
+          <button type="button" id="btn-feed-search-submit" onclick="triggerFeedSearchNow()" class="search-action-btn mr-2 px-4 sm:px-5 py-2 rounded-xl bg-gradient-to-r from-indigo-600 to-violet-600 hover:from-indigo-700 hover:to-violet-700 text-white font-extrabold text-sm shadow-sm transition shrink-0">Search</button>
         </div>
 
-        <!-- Type Filter Pills Bar -->
-        <div id="theme-pills-bar" class="pt-0" role="group" aria-label="Filter by Type">
-          <!-- Line 1: Primary Topics (Hidden per user preference; Type filter retained) -->
-          <div id="feed-topic-pills-row" class="hidden overflow-x-auto whitespace-nowrap scrollbar-none py-1.5 items-center gap-2">
-            <span class="text-xs font-black uppercase tracking-wider text-slate-500 pr-1 shrink-0">Topic:</span>
-            <button onclick="filterByTheme('')" class="theme-pill shrink-0 px-3.5 py-1.5 rounded-xl font-bold text-sm bg-slate-900 text-white transition touch-target shadow-sm">All</button>
-            <button onclick="filterByTheme('Inspiring Stories')" class="theme-pill shrink-0 px-3.5 py-1.5 rounded-xl font-bold text-sm bg-white hover:bg-slate-50 text-slate-700 transition touch-target shadow-xs">✨ Inspiring Stories</button>
-            <button onclick="filterByTheme('Wellbeing & Care')" class="theme-pill shrink-0 px-3.5 py-1.5 rounded-xl font-bold text-sm bg-white hover:bg-slate-50 text-slate-700 transition touch-target shadow-xs">🌱 Wellbeing & Care</button>
-            <button onclick="filterByTheme('Skills & Learning')" class="theme-pill shrink-0 px-3.5 py-1.5 rounded-xl font-bold text-sm bg-white hover:bg-slate-50 text-slate-700 transition touch-target shadow-xs">💡 Skills & Learning</button>
-            <button onclick="filterByTheme('Community & Action')" class="theme-pill shrink-0 px-3.5 py-1.5 rounded-xl font-bold text-sm bg-white hover:bg-slate-50 text-slate-700 transition touch-target shadow-xs">🤝 Community & Action</button>
+        <!-- Secondary Filters & Type Pills Row -->
+        <div class="flex flex-col xl:flex-row xl:items-center xl:justify-between gap-2 pt-0.5">
+          <div class="flex flex-col sm:flex-row flex-wrap items-stretch sm:items-center gap-2">
+            <span class="text-xs font-black uppercase tracking-wider text-indigo-900/75 shrink-0 hidden sm:inline pr-0.5">Filter:</span>
+            <!-- Category Filter Dropdown -->
+            <select id="feed-category-select" onchange="filterByCategory(this.value)" class="px-3 py-3 lg:w-40 shrink-0 rounded-xl border border-slate-300 font-bold text-sm bg-white focus:border-indigo-600 cursor-pointer touch-target">
+              <option value="">All Categories</option>
+              <option value="Education &amp; Tutoring">🏷️ Education &amp; Tutoring</option>
+              <option value="Health &amp; Wellness">🏷️ Health &amp; Wellness</option>
+              <option value="Food &amp; Mutual Aid">🏷️ Food &amp; Mutual Aid</option>
+              <option value="Senior Support">🏷️ Senior Support</option>
+              <option value="Youth &amp; Mentorship">🏷️ Youth &amp; Mentorship</option>
+              <option value="Housing &amp; Shelter">🏷️ Housing &amp; Shelter</option>
+              <option value="Career &amp; Job Skills">🏷️ Career &amp; Job Skills</option>
+              <option value="Environment &amp; Sustainability">🏷️ Environment &amp; Sustainability</option>
+              <option value="Arts, Culture &amp; Recreation">🏷️ Arts, Culture &amp; Recreation</option>
+              <option value="Legal &amp; Financial Aid">🏷️ Legal &amp; Financial Aid</option>
+              <option value="Disability &amp; Accessibility">🏷️ Disability &amp; Accessibility</option>
+              <option value="General Community">🏷️ General Community</option>
+            </select>
+
+            <!-- Group Filter Dropdown -->
+            <select id="feed-group-select" onchange="filterByGroup(this.value)" class="px-3 py-3 lg:w-[228px] shrink-0 rounded-xl border border-slate-300 font-bold text-sm bg-white focus:border-indigo-600 cursor-pointer touch-target">
+              <option value="">All Spaces</option>
+            </select>
+
+            <!-- Item Type Filter -->
+            <select id="feed-type-select" onchange="filterByType(this.value)" class="px-3 py-3 shrink-0 rounded-xl border border-slate-300 font-bold text-sm bg-white focus:border-indigo-600 cursor-pointer touch-target">
+              <option value="">All Kudos and Posts</option>
+              <option value="KUDOS">Kudos Only</option>
+              <option value="POST">Posts Only</option>
+            </select>
+
+            <!-- Toggle Type Sub-Filters Button (Hidden; compact Type row is always shown) -->
+            <button type="button" id="btn-toggle-theme-pills" onclick="toggleThemePillsBar()" class="hidden px-4 py-3 rounded-xl border border-slate-300 font-bold text-sm bg-white hover:bg-slate-50 text-slate-700 transition items-center justify-center space-x-1.5 shrink-0 touch-target" title="Toggle Type Filters" aria-label="Toggle Type Filters" aria-expanded="true">
+              <span id="theme-pills-active-indicator" class="hidden w-2 h-2 rounded-full bg-amber-500"></span>
+              <span id="theme-pills-toggle-icon" class="text-xs text-slate-500 font-black">▲</span>
+            </button>
           </div>
 
-          <!-- Filter by Type -->
-          <div id="feed-type-pills-row" class="overflow-x-auto whitespace-nowrap scrollbar-none py-0 flex items-center gap-2" data-scroll-row="overflow-x-auto whitespace-nowrap scrollbar-none py-1.5 flex items-center gap-2">
-            <span class="text-xs font-black uppercase tracking-wider text-amber-800 shrink-0 flex items-center gap-1 pr-1">
-              <span>Type:</span>
-            </span>
-            <button type="button" onclick="filterByFormat('GENERAL')" class="format-pill shrink-0 px-3 py-1 rounded-xl font-bold text-xs bg-white hover:bg-amber-100/70 text-slate-700 transition shadow-xs border border-amber-200/60">📝 General Posts</button>
-            <button type="button" onclick="filterByFormat('EVENT')" class="format-pill shrink-0 px-3 py-1 rounded-xl font-bold text-xs bg-white hover:bg-amber-100/70 text-slate-700 transition shadow-xs border border-amber-200/60">📅 Community Events</button>
-            <button type="button" onclick="filterByFormat('RESOURCE')" class="format-pill shrink-0 px-3 py-1 rounded-xl font-bold text-xs bg-white hover:bg-amber-100/70 text-slate-700 transition shadow-xs border border-amber-200/60">📚 Community Resources</button>
+          <!-- Type Filter Pills Bar -->
+          <div id="theme-pills-bar" class="pt-0" role="group" aria-label="Filter by Type">
+            <!-- Line 1: Primary Topics (Hidden per user preference; Type filter retained) -->
+            <div id="feed-topic-pills-row" class="hidden overflow-x-auto whitespace-nowrap scrollbar-none py-1.5 items-center gap-2">
+              <span class="text-xs font-black uppercase tracking-wider text-slate-500 pr-1 shrink-0">Topic:</span>
+              <button onclick="filterByTheme('')" class="theme-pill shrink-0 px-3.5 py-1.5 rounded-xl font-bold text-sm bg-slate-900 text-white transition touch-target shadow-sm">All</button>
+              <button onclick="filterByTheme('Inspiring Stories')" class="theme-pill shrink-0 px-3.5 py-1.5 rounded-xl font-bold text-sm bg-white hover:bg-slate-50 text-slate-700 transition touch-target shadow-xs">✨ Inspiring Stories</button>
+              <button onclick="filterByTheme('Wellbeing & Care')" class="theme-pill shrink-0 px-3.5 py-1.5 rounded-xl font-bold text-sm bg-white hover:bg-slate-50 text-slate-700 transition touch-target shadow-xs">🌱 Wellbeing & Care</button>
+              <button onclick="filterByTheme('Skills & Learning')" class="theme-pill shrink-0 px-3.5 py-1.5 rounded-xl font-bold text-sm bg-white hover:bg-slate-50 text-slate-700 transition touch-target shadow-xs">💡 Skills & Learning</button>
+              <button onclick="filterByTheme('Community & Action')" class="theme-pill shrink-0 px-3.5 py-1.5 rounded-xl font-bold text-sm bg-white hover:bg-slate-50 text-slate-700 transition touch-target shadow-xs">🤝 Community & Action</button>
+            </div>
+
+            <!-- Filter by Type -->
+            <div id="feed-type-pills-row" class="overflow-x-auto whitespace-nowrap scrollbar-none py-0 flex items-center gap-2" data-scroll-row="overflow-x-auto whitespace-nowrap scrollbar-none py-1.5 flex items-center gap-2">
+              <span class="text-xs font-black uppercase tracking-wider text-amber-800 shrink-0 flex items-center gap-1 pr-1">
+                <span>Type:</span>
+              </span>
+              <button type="button" onclick="filterByFormat('GENERAL')" class="format-pill shrink-0 px-3 py-1 rounded-xl font-bold text-xs bg-white hover:bg-amber-100/70 text-slate-700 transition shadow-xs border border-amber-200/60">📝 General Posts</button>
+              <button type="button" onclick="filterByFormat('EVENT')" class="format-pill shrink-0 px-3 py-1 rounded-xl font-bold text-xs bg-white hover:bg-amber-100/70 text-slate-700 transition shadow-xs border border-amber-200/60">📅 Community Events</button>
+              <button type="button" onclick="filterByFormat('RESOURCE')" class="format-pill shrink-0 px-3 py-1 rounded-xl font-bold text-xs bg-white hover:bg-amber-100/70 text-slate-700 transition shadow-xs border border-amber-200/60">📚 Community Resources</button>
+            </div>
           </div>
         </div>
         </div>
@@ -577,10 +599,10 @@
 
           <form onsubmit="submitChatSearch(event, 'feed')" class="flex items-center gap-2">
             <div class="relative flex-1 min-w-0">
-              <span class="absolute inset-y-0 left-0 pl-3.5 flex items-center pointer-events-none text-indigo-500 text-base" aria-hidden="true">💬</span>
-              <input type="text" id="feed-chat-input" maxlength="500" placeholder="Ask a question (e.g. 'Any mental health resources?', 'Upcoming events?', 'Who is the contact for that?')..." class="w-full pl-10 pr-4 py-2.5 rounded-xl border border-slate-300 font-medium text-sm bg-white focus:border-indigo-600 transition">
+              <span class="absolute inset-y-0 left-0 pl-3.5 flex items-center pointer-events-none text-indigo-600 text-base" aria-hidden="true">💬</span>
+              <input type="text" id="feed-chat-input" maxlength="500" placeholder="Ask a question (e.g. 'Any mental health resources?', 'Upcoming events?', 'Who is the contact for that?')..." class="w-full pl-10 pr-4 py-3 rounded-xl border-2 border-indigo-400 font-semibold text-base text-slate-900 bg-white focus:border-indigo-600 shadow-xs transition">
             </div>
-            <button type="submit" id="btn-feed-chat-submit" class="chat-submit-btn px-4 py-2.5 rounded-xl font-extrabold text-sm bg-indigo-600 hover:bg-indigo-700 text-white shadow-sm transition shrink-0 inline-flex items-center gap-1.5">
+            <button type="submit" id="btn-feed-chat-submit" class="chat-submit-btn px-5 py-3 rounded-xl font-extrabold text-sm bg-gradient-to-r from-indigo-600 to-violet-600 hover:from-indigo-700 hover:to-violet-700 text-white shadow-sm transition shrink-0 inline-flex items-center gap-1.5">
               <span>Ask</span>
               <span>→</span>
             </button>
@@ -970,16 +992,16 @@
           <button type="button" onclick="presetLogin('arthur@gooddeeds.space')" class="px-2 py-2 bg-white hover:bg-amber-100 border border-amber-300 font-black text-xs rounded-xl truncate text-amber-900">👴 Arthur (74)</button>
         </div>
       </div>
-      <div class="space-y-4">
-        <button type="button" class="btn-passkey-login w-full py-3.5 px-4 bg-stone-900 hover:bg-black text-white font-extrabold text-base rounded-2xl shadow-sm flex items-center justify-center gap-3 transition touch-target">
-          <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 7a2 2 0 012 2m-2 4a5 5 0 11-10 0 5 5 0 0110 0zM19 12a7 7 0 11-14 0 7 7 0 0114 0z"/></svg>
+      <div class="space-y-2.5">
+        <button type="button" class="btn-passkey-login auth-sso-btn w-full py-2 px-3.5 bg-stone-900 hover:bg-black text-white font-bold text-sm rounded-xl shadow-xs flex items-center justify-center gap-2 transition">
+          <svg class="w-4 h-4 shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 7a2 2 0 012 2m-2 4a5 5 0 11-10 0 5 5 0 0110 0zM19 12a7 7 0 11-14 0 7 7 0 0114 0z"/></svg>
           <span>Sign in with Passkey (FaceID/TouchID)</span>
         </button>
-        <button id="btn-google-login" type="button" onclick="triggerGoogleSignIn()" class="w-full py-3.5 px-4 bg-white hover:bg-slate-50 text-slate-800 border-2 border-slate-200 font-extrabold text-base rounded-2xl shadow-sm flex items-center justify-center gap-3 transition touch-target">
-          <svg class="w-5 h-5" viewBox="0 0 24 24"><path fill="#4285F4" d="M22.56 12.25c0-.78-.07-1.53-.2-2.25H12v4.26h5.92c-.26 1.37-1.04 2.53-2.21 3.31v2.77h3.57c2.08-1.92 3.28-4.74 3.28-8.09z"/><path fill="#34A853" d="M12 23c2.97 0 5.46-.98 7.28-2.66l-3.57-2.77c-.98.66-2.23 1.06-3.71 1.06-2.86 0-5.29-1.93-6.16-4.53H2.18v2.84C3.99 20.53 7.7 23 12 23z"/><path fill="#FBBC05" d="M5.84 14.09c-.22-.66-.35-1.36-.35-2.09s.13-1.43.35-2.09V7.06H2.18C1.43 8.55 1 10.22 1 12s.43 3.45 1.18 4.94l2.85-2.22.81-.63z"/><path fill="#EA4335" d="M12 5.38c1.62 0 3.06.56 4.21 1.64l3.15-3.15C17.45 2.09 14.97 1 12 1 7.7 1 3.99 3.47 2.18 7.06l3.66 2.84c.87-2.6 3.3-4.52 6.16-4.52z"/></svg>
+        <button id="btn-google-login" type="button" onclick="triggerGoogleSignIn()" class="auth-sso-btn w-full py-2 px-3.5 bg-white hover:bg-slate-50 text-slate-800 border border-slate-300 font-bold text-sm rounded-xl shadow-xs flex items-center justify-center gap-2 transition">
+          <svg class="w-4 h-4 shrink-0" viewBox="0 0 24 24"><path fill="#4285F4" d="M22.56 12.25c0-.78-.07-1.53-.2-2.25H12v4.26h5.92c-.26 1.37-1.04 2.53-2.21 3.31v2.77h3.57c2.08-1.92 3.28-4.74 3.28-8.09z"/><path fill="#34A853" d="M12 23c2.97 0 5.46-.98 7.28-2.66l-3.57-2.77c-.98.66-2.23 1.06-3.71 1.06-2.86 0-5.29-1.93-6.16-4.53H2.18v2.84C3.99 20.53 7.7 23 12 23z"/><path fill="#FBBC05" d="M5.84 14.09c-.22-.66-.35-1.36-.35-2.09s.13-1.43.35-2.09V7.06H2.18C1.43 8.55 1 10.22 1 12s.43 3.45 1.18 4.94l2.85-2.22.81-.63z"/><path fill="#EA4335" d="M12 5.38c1.62 0 3.06.56 4.21 1.64l3.15-3.15C17.45 2.09 14.97 1 12 1 7.7 1 3.99 3.47 2.18 7.06l3.66 2.84c.87-2.6 3.3-4.52 6.16-4.52z"/></svg>
           <span>Continue with Google</span>
         </button>
-        <div class="relative flex py-2 items-center"><div class="flex-grow border-t border-slate-200"></div><span class="flex-shrink mx-4 text-slate-400 text-xs font-bold uppercase">or continue with email</span><div class="flex-grow border-t border-slate-200"></div></div>
+        <div class="relative flex py-1 items-center"><div class="flex-grow border-t border-slate-200"></div><span class="flex-shrink mx-4 text-slate-400 text-xs font-bold uppercase">or continue with email</span><div class="flex-grow border-t border-slate-200"></div></div>
       </div>
 
       <form onsubmit="handleLogin(event)" class="space-y-4">
@@ -1009,16 +1031,16 @@
         <h3 class="text-3xl font-black text-stone-900">Join Community</h3>
         <button type="button" onclick="closeModal('modal-signup')" class="w-10 h-10 rounded-full flex items-center justify-center text-stone-400 hover:text-stone-700 hover:bg-stone-100 text-2xl font-black transition touch-target" aria-label="Close modal" title="Close">✕</button>
       </div>
-      <div class="space-y-4">
-        <button type="button" class="btn-passkey-login w-full py-3.5 px-4 bg-stone-900 hover:bg-black text-white font-extrabold text-base rounded-2xl shadow-sm flex items-center justify-center gap-3 transition touch-target">
-          <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 7a2 2 0 012 2m-2 4a5 5 0 11-10 0 5 5 0 0110 0zM19 12a7 7 0 11-14 0 7 7 0 0114 0z"/></svg>
+      <div class="space-y-2.5">
+        <button type="button" class="btn-passkey-login auth-sso-btn w-full py-2 px-3.5 bg-stone-900 hover:bg-black text-white font-bold text-sm rounded-xl shadow-xs flex items-center justify-center gap-2 transition">
+          <svg class="w-4 h-4 shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 7a2 2 0 012 2m-2 4a5 5 0 11-10 0 5 5 0 0110 0zM19 12a7 7 0 11-14 0 7 7 0 0114 0z"/></svg>
           <span>Sign in with Passkey (FaceID/TouchID)</span>
         </button>
-        <button id="btn-google-signup" type="button" onclick="triggerGoogleSignIn()" class="w-full py-3.5 px-4 bg-white hover:bg-slate-50 text-slate-800 border-2 border-slate-200 font-extrabold text-base rounded-2xl shadow-sm flex items-center justify-center gap-3 transition touch-target">
-          <svg class="w-5 h-5" viewBox="0 0 24 24"><path fill="#4285F4" d="M22.56 12.25c0-.78-.07-1.53-.2-2.25H12v4.26h5.92c-.26 1.37-1.04 2.53-2.21 3.31v2.77h3.57c2.08-1.92 3.28-4.74 3.28-8.09z"/><path fill="#34A853" d="M12 23c2.97 0 5.46-.98 7.28-2.66l-3.57-2.77c-.98.66-2.23 1.06-3.71 1.06-2.86 0-5.29-1.93-6.16-4.53H2.18v2.84C3.99 20.53 7.7 23 12 23z"/><path fill="#FBBC05" d="M5.84 14.09c-.22-.66-.35-1.36-.35-2.09s.13-1.43.35-2.09V7.06H2.18C1.43 8.55 1 10.22 1 12s.43 3.45 1.18 4.94l2.85-2.22.81-.63z"/><path fill="#EA4335" d="M12 5.38c1.62 0 3.06.56 4.21 1.64l3.15-3.15C17.45 2.09 14.97 1 12 1 7.7 1 3.99 3.47 2.18 7.06l3.66 2.84c.87-2.6 3.3-4.52 6.16-4.52z"/></svg>
+        <button id="btn-google-signup" type="button" onclick="triggerGoogleSignIn()" class="auth-sso-btn w-full py-2 px-3.5 bg-white hover:bg-slate-50 text-slate-800 border border-slate-300 font-bold text-sm rounded-xl shadow-xs flex items-center justify-center gap-2 transition">
+          <svg class="w-4 h-4 shrink-0" viewBox="0 0 24 24"><path fill="#4285F4" d="M22.56 12.25c0-.78-.07-1.53-.2-2.25H12v4.26h5.92c-.26 1.37-1.04 2.53-2.21 3.31v2.77h3.57c2.08-1.92 3.28-4.74 3.28-8.09z"/><path fill="#34A853" d="M12 23c2.97 0 5.46-.98 7.28-2.66l-3.57-2.77c-.98.66-2.23 1.06-3.71 1.06-2.86 0-5.29-1.93-6.16-4.53H2.18v2.84C3.99 20.53 7.7 23 12 23z"/><path fill="#FBBC05" d="M5.84 14.09c-.22-.66-.35-1.36-.35-2.09s.13-1.43.35-2.09V7.06H2.18C1.43 8.55 1 10.22 1 12s.43 3.45 1.18 4.94l2.85-2.22.81-.63z"/><path fill="#EA4335" d="M12 5.38c1.62 0 3.06.56 4.21 1.64l3.15-3.15C17.45 2.09 14.97 1 12 1 7.7 1 3.99 3.47 2.18 7.06l3.66 2.84c.87-2.6 3.3-4.52 6.16-4.52z"/></svg>
           <span>Continue with Google</span>
         </button>
-        <div class="relative flex py-2 items-center"><div class="flex-grow border-t border-slate-200"></div><span class="flex-shrink mx-4 text-slate-400 text-xs font-bold uppercase">or continue with email</span><div class="flex-grow border-t border-slate-200"></div></div>
+        <div class="relative flex py-1 items-center"><div class="flex-grow border-t border-slate-200"></div><span class="flex-shrink mx-4 text-slate-400 text-xs font-bold uppercase">or continue with email</span><div class="flex-grow border-t border-slate-200"></div></div>
       </div>
 
       <form onsubmit="handleSignup(event)" class="space-y-4">

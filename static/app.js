@@ -298,6 +298,8 @@ let feedChatHistory = [];
 let landingChatHistory = [];
 let chatFilterActive = { feed: false, landing: false };
 let isChatSubmitting = { feed: false, landing: false };
+let feedSearchDebounceTimer = null;
+let landingSearchDebounceTimer = null;
 
 /* ================= INITIALIZATION & ROUTING ================= */
 
@@ -337,7 +339,6 @@ window.addEventListener("hashchange", async () => {
 });
 
 function setupEventListeners() {
-  let searchTimeout;
   const feedSearch = document.getElementById("feed-search-input");
   const feedSearchClearBtn = document.getElementById("feed-search-clear-btn");
 
@@ -353,8 +354,8 @@ function setupEventListeners() {
   if (feedSearch) {
     feedSearch.addEventListener("input", (e) => {
       updateSearchClearBtn();
-      clearTimeout(searchTimeout);
-      searchTimeout = setTimeout(() => {
+      clearTimeout(feedSearchDebounceTimer);
+      feedSearchDebounceTimer = setTimeout(() => {
         currentSearch = e.target.value.trim();
         if (!currentSearch || !currentSearch.toLowerCase().includes("author:")) {
           currentFilterUserId = null;
@@ -364,9 +365,14 @@ function setupEventListeners() {
         loadFeed();
       }, 300);
     });
+    feedSearch.addEventListener("keydown", (e) => {
+      if (e.key === "Enter") {
+        e.preventDefault();
+        triggerFeedSearchNow();
+      }
+    });
   }
 
-  let landingSearchTimeout;
   const landingSearch = document.getElementById("landing-search-input");
   const landingSearchClearBtn = document.getElementById("landing-search-clear-btn");
 
@@ -382,11 +388,17 @@ function setupEventListeners() {
   if (landingSearch) {
     landingSearch.addEventListener("input", (e) => {
       updateLandingSearchClearBtn();
-      clearTimeout(landingSearchTimeout);
-      landingSearchTimeout = setTimeout(() => {
+      clearTimeout(landingSearchDebounceTimer);
+      landingSearchDebounceTimer = setTimeout(() => {
         landingSearchFilter = e.target.value.trim();
         loadLandingPreview();
       }, 300);
+    });
+    landingSearch.addEventListener("keydown", (e) => {
+      if (e.key === "Enter") {
+        e.preventDefault();
+        triggerLandingSearchNow();
+      }
     });
   }
 
@@ -2083,6 +2095,47 @@ async function filterFeedByMyPosts(mode, targetUserId = null) {
     loadFeed();
   }
 }
+
+function triggerFeedSearchNow() {
+  clearTimeout(feedSearchDebounceTimer);
+  const sInput = document.getElementById("feed-search-input");
+  const clearBtn = document.getElementById("feed-search-clear-btn");
+  const val = sInput ? sInput.value.trim() : "";
+  if (clearBtn) {
+    if (val.length > 0) clearBtn.classList.remove("hidden");
+    else clearBtn.classList.add("hidden");
+  }
+  if (!val && !currentSearch && sInput) {
+    try { sInput.focus(); } catch (_) {}
+    return;
+  }
+  currentSearch = val;
+  if (!currentSearch || !currentSearch.toLowerCase().includes("author:")) {
+    currentFilterUserId = null;
+    currentMyPostsMode = "";
+    currentMyKudosMode = "";
+  }
+  loadFeed();
+}
+window.triggerFeedSearchNow = triggerFeedSearchNow;
+
+function triggerLandingSearchNow() {
+  clearTimeout(landingSearchDebounceTimer);
+  const sInput = document.getElementById("landing-search-input");
+  const clearBtn = document.getElementById("landing-search-clear-btn");
+  const val = sInput ? sInput.value.trim() : "";
+  if (clearBtn) {
+    if (val.length > 0) clearBtn.classList.remove("hidden");
+    else clearBtn.classList.add("hidden");
+  }
+  if (!val && !landingSearchFilter && sInput) {
+    try { sInput.focus(); } catch (_) {}
+    return;
+  }
+  landingSearchFilter = val;
+  loadLandingPreview();
+}
+window.triggerLandingSearchNow = triggerLandingSearchNow;
 
 function clearFeedSearchInput() {
   const sInput = document.getElementById("feed-search-input");
@@ -6544,7 +6597,7 @@ function switchSearchMode(context, mode) {
   const resetBtn = document.getElementById(`btn-${ctx}-chat-reset`);
   const scopeSel = ctx === "feed" ? document.getElementById("feed-chat-scope-select") : null;
 
-  const activeTabClass = "chat-mode-btn px-3 py-1 rounded-lg font-extrabold text-xs bg-white text-slate-900 shadow-xs transition inline-flex items-center gap-1.5";
+  const activeTabClass = "chat-mode-btn px-3 py-1 rounded-lg font-extrabold text-xs bg-white text-indigo-950 shadow-xs transition inline-flex items-center gap-1.5";
   const activeChatTabClass = "chat-mode-btn px-3 py-1 rounded-lg font-extrabold text-xs bg-indigo-600 text-white shadow-xs transition inline-flex items-center gap-1.5";
   const inactiveTabClass = "chat-mode-btn px-3 py-1 rounded-lg font-extrabold text-xs text-slate-600 hover:text-indigo-700 transition inline-flex items-center gap-1.5";
 
