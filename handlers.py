@@ -14,13 +14,17 @@ import secrets
 import datetime
 import sqlite3
 import smtplib
+import ssl
+import threading
 from email.mime.multipart import MIMEMultipart
 from email.mime.text import MIMEText
-from urllib.parse import parse_qs, urlparse
+from urllib.parse import parse_qs, urlencode, urlparse
+import urllib.error
 import urllib.request
 from database import get_db, hash_password, verify_password, get_user_stats, extract_resource_text, get_platform_stats
 from email_templates import (
     DEFAULT_EMAIL_PREFS,
+    load_dotenv_file,
     parse_user_email_prefs,
     is_email_pref_enabled,
     get_public_base_url,
@@ -43,6 +47,7 @@ from email_templates import (
     build_support_admin_alert_email,
     build_content_report_admin_alert_email,
     build_moderation_action_email,
+    build_test_diagnostic_email,
     get_all_template_previews,
 )
 
@@ -267,6 +272,341 @@ def issue_auth_email_token(conn, user_id: int, token_type: str, ttl_minutes: int
     return tok
 
 
+def _build_rfc8058_unsubscribe_headers(unsubscribe_url: str) -> dict:
+    """
+    Builds RFC 8058 One-Click List-Unsubscribe headers required by Gmail & Yahoo.
+    Converts browser hash routes (`/#/unsubscribe?...`) into direct machine-POSTable
+    API URLs (`/api/email/unsubscribe?...`) so mail client POSTs preserve query params.
+    """
+    if not unsubscribe_url:
+        return {}
+    machine_url = str(unsubscribe_url).strip()
+    if "/#/unsubscribe?" in machine_url:
+        machine_url = machine_url.replace("/#/unsubscribe?", "/api/email/unsubscribe?", 1)
+    return {
+        "List-Unsubscribe": f"<{machine_url}>",
+        "List-Unsubscribe-Post": "List-Unsubscribe=One-Click",
+    }
+
+
+def get_email_transport_config(headers=None) -> dict:
+    """
+    Resolves active email delivery transport from environment variables without
+    exposing credentials or API tokens.
+    """
+    explicit = (os.environ.get("EMAIL_PROVIDER") or "auto").strip().lower()
+    resend_key = (os.environ.get("RESEND_API_KEY") or "").strip()
+    brevo_key = (os.environ.get("BREVO_API_KEY") or "").strip()
+    postmark_token = (os.environ.get("POSTMARK_SERVER_TOKEN") or "").strip()
+    smtp_host = (os.environ.get("SMTP_HOST") or "").strip()
+    try:
+        smtp_port = int(os.environ.get("SMTP_PORT", 587))
+    except ValueError:
+        smtp_port = 587
+    smtp_user = (os.environ.get("SMTP_USER") or "").strip()
+    smtp_pass = (os.environ.get("SMTP_PASSWORD") or "").strip()
+    from_email = (os.environ.get("SMTP_FROM_EMAIL") or os.environ.get("EMAIL_FROM") or "notifications@gooddeeds.space").strip()
+    from_name = (os.environ.get("SMTP_FROM_NAME") or os.environ.get("EMAIL_FROM_NAME") or "GoodDeeds Community").strip()
+    async_enabled = (os.environ.get("EMAIL_ASYNC") or "").strip().lower() in ("1", "true", "yes", "on")
+
+    is_local_unauth_smtp = bool(
+        smtp_host
+        and (
+            smtp_host.lower() in ("127.0.0.1", "localhost", "::1")
+            or smtp_port in (25, 1025, 2525)
+            or (os.environ.get("SMTP_ALLOW_UNAUTH") or "").strip().lower() in ("1", "true", "yes")
+        )
+    )
+    smtp_ready = bool(smtp_host and ((smtp_user and smtp_pass) or is_local_unauth_smtp))
+
+    provider = "simulated"
+    live_configured = False
+    mode_label = "Simulated Outbox Only (Set RESEND_API_KEY or SMTP_HOST in .env for live inbox delivery)"
+
+    if explicit in ("simulated", "outbox", "none", "disabled"):
+        provider = "simulated"
+        live_configured = False
+    elif explicit == "resend" or (explicit == "auto" and resend_key):
+        provider = "resend"
+        live_configured = bool(resend_key)
+        mode_label = "Resend HTTPS REST API (Port 443)" if live_configured else "Resend Selected (Missing RESEND_API_KEY)"
+    elif explicit == "brevo" or (explicit == "auto" and brevo_key):
+        provider = "brevo"
+        live_configured = bool(brevo_key)
+        mode_label = "Brevo HTTPS REST API (Port 443)" if live_configured else "Brevo Selected (Missing BREVO_API_KEY)"
+    elif explicit == "postmark" or (explicit == "auto" and postmark_token):
+        provider = "postmark"
+        live_configured = bool(postmark_token)
+        mode_label = "Postmark HTTPS REST API (Port 443)" if live_configured else "Postmark Selected (Missing POSTMARK_SERVER_TOKEN)"
+    elif explicit == "smtp" or (explicit == "auto" and smtp_ready):
+        provider = "smtp"
+        live_configured = smtp_ready
+        mode_label = f"Live SMTP ({smtp_host}:{smtp_port})" if live_configured else "SMTP Selected (Missing SMTP_HOST / Credentials)"
+
+    return {
+        "provider": provider,
+        "live_configured": live_configured,
+        "mode_label": mode_label,
+        "from_email": from_email,
+        "from_name": from_name,
+        "public_base_url": get_public_base_url(headers),
+        "async_enabled": async_enabled,
+        "smtp_host": smtp_host,
+        "smtp_port": smtp_port,
+    }
+
+
+def _post_json_https_api(url: str, headers_dict: dict, payload_dict: dict, timeout: int = 12):
+    """Dispatches an HTTPS JSON POST to a transactional email API using Python stdlib."""
+    data = json.dumps(payload_dict).encode("utf-8")
+    req_headers = {
+        "Content-Type": "application/json",
+        "Accept": "application/json",
+        "User-Agent": "GoodDeedsSpace-Mailer/1.0",
+    }
+    req_headers.update(headers_dict or {})
+    req = urllib.request.Request(url, data=data, headers=req_headers, method="POST")
+    with urllib.request.urlopen(req, timeout=timeout) as resp:
+        raw = resp.read().decode("utf-8", errors="replace")
+        return resp.status, raw
+
+
+def _deliver_via_transport(
+    cfg: dict,
+    recipient_email: str,
+    subject: str,
+    text_body: str,
+    html_body: str = None,
+    reply_to: str = None,
+    unsubscribe_url: str = None,
+):
+    """
+    Executes network transmission via configured HTTPS API (Resend / Brevo / Postmark)
+    or SMTP (STARTTLS 587, SSL 465, or local unauthenticated debug sink).
+    Returns (delivery_status: str, error_detail: str).
+    """
+    provider = cfg["provider"]
+    from_email = cfg["from_email"]
+    from_name = cfg["from_name"]
+    unsub_headers = _build_rfc8058_unsubscribe_headers(unsubscribe_url)
+
+    if not cfg["live_configured"]:
+        if provider != "simulated":
+            err = f"CONFIG_ERROR: {cfg['mode_label']}"
+            return err[:100], cfg["mode_label"]
+        return "LOGGED_ONLY", ""
+
+    if provider in ("resend", "brevo", "postmark"):
+        try:
+            if provider == "resend":
+                payload = {
+                    "from": f"{from_name} <{from_email}>",
+                    "to": [recipient_email],
+                    "subject": subject,
+                    "text": text_body,
+                }
+                if html_body:
+                    payload["html"] = html_body
+                if reply_to:
+                    payload["reply_to"] = reply_to
+                if unsub_headers:
+                    payload["headers"] = unsub_headers
+                status_code, _ = _post_json_https_api(
+                    "https://api.resend.com/emails",
+                    {"Authorization": f"Bearer {(os.environ.get('RESEND_API_KEY') or '').strip()}"},
+                    payload,
+                )
+                if 200 <= status_code < 300:
+                    return "SENT_LIVE_RESEND", ""
+                return f"API_ERROR: HTTP {status_code}", f"Resend returned HTTP {status_code}"
+
+            if provider == "brevo":
+                payload = {
+                    "sender": {"name": from_name, "email": from_email},
+                    "to": [{"email": recipient_email}],
+                    "subject": subject,
+                    "textContent": text_body,
+                }
+                if html_body:
+                    payload["htmlContent"] = html_body
+                if reply_to:
+                    payload["replyTo"] = {"email": reply_to}
+                if unsub_headers:
+                    payload["headers"] = unsub_headers
+                status_code, _ = _post_json_https_api(
+                    "https://api.brevo.com/v3/smtp/email",
+                    {"api-key": (os.environ.get("BREVO_API_KEY") or "").strip()},
+                    payload,
+                )
+                if 200 <= status_code < 300:
+                    return "SENT_LIVE_BREVO", ""
+                return f"API_ERROR: HTTP {status_code}", f"Brevo returned HTTP {status_code}"
+
+            if provider == "postmark":
+                payload = {
+                    "From": f"{from_name} <{from_email}>",
+                    "To": recipient_email,
+                    "Subject": subject,
+                    "TextBody": text_body,
+                }
+                if html_body:
+                    payload["HtmlBody"] = html_body
+                if reply_to:
+                    payload["ReplyTo"] = reply_to
+                if unsub_headers:
+                    payload["Headers"] = [{"Name": k, "Value": v} for k, v in unsub_headers.items()]
+                status_code, _ = _post_json_https_api(
+                    "https://api.postmarkapp.com/email",
+                    {"X-Postmark-Server-Token": (os.environ.get("POSTMARK_SERVER_TOKEN") or "").strip()},
+                    payload,
+                )
+                if 200 <= status_code < 300:
+                    return "SENT_LIVE_POSTMARK", ""
+                return f"API_ERROR: HTTP {status_code}", f"Postmark returned HTTP {status_code}"
+        except urllib.error.HTTPError as http_err:
+            err_body = ""
+            try:
+                err_body = http_err.read().decode("utf-8", errors="replace").strip()
+            except Exception:
+                err_body = str(http_err)
+            detail = f"HTTP {http_err.code}: {err_body or http_err.reason}"
+            print(f"⚠️ {provider.upper()} API Delivery Failed ({detail}). Logged to audit outbox.")
+            return f"API_ERROR: HTTP {http_err.code}"[:80], detail[:300]
+        except Exception as e:
+            detail = str(e)
+            print(f"⚠️ {provider.upper()} API Network Error ({detail}). Logged to audit outbox.")
+            return f"API_ERROR: {detail[:60]}", detail[:300]
+
+    if provider == "smtp":
+        smtp_host = cfg["smtp_host"]
+        smtp_port = cfg["smtp_port"]
+        smtp_user = (os.environ.get("SMTP_USER") or "").strip()
+        smtp_pass = (os.environ.get("SMTP_PASSWORD") or "").strip()
+        use_ssl = smtp_port == 465 or (os.environ.get("SMTP_SSL") or "").strip().lower() in ("1", "true", "yes")
+        tls_env = (os.environ.get("SMTP_TLS") or "").strip().lower()
+
+        try:
+            msg = MIMEMultipart("alternative")
+            msg["Subject"] = subject
+            msg["From"] = f"{from_name} <{from_email}>"
+            msg["To"] = recipient_email
+            if reply_to:
+                msg["Reply-To"] = reply_to
+            for hk, hv in unsub_headers.items():
+                msg[hk] = hv
+
+            msg.attach(MIMEText(text_body, "plain", "utf-8"))
+            if html_body:
+                msg.attach(MIMEText(html_body, "html", "utf-8"))
+
+            if use_ssl:
+                ctx = ssl.create_default_context()
+                with smtplib.SMTP_SSL(smtp_host, smtp_port, timeout=10, context=ctx) as server:
+                    server.ehlo()
+                    if smtp_user and smtp_pass:
+                        server.login(smtp_user, smtp_pass)
+                    server.sendmail(from_email, [recipient_email], msg.as_string())
+            else:
+                with smtplib.SMTP(smtp_host, smtp_port, timeout=10) as server:
+                    server.ehlo()
+                    should_starttls = (
+                        tls_env in ("1", "true", "yes")
+                        or (tls_env not in ("0", "false", "no") and (smtp_port == 587 or server.has_extn("starttls")))
+                    )
+                    if should_starttls:
+                        server.starttls()
+                        server.ehlo()
+                    if smtp_user and smtp_pass:
+                        server.login(smtp_user, smtp_pass)
+                    server.sendmail(from_email, [recipient_email], msg.as_string())
+
+            return "SENT_LIVE_SMTP", ""
+        except Exception as e:
+            detail = str(e)
+            print(f"⚠️ SMTP Network Delivery Failed ({detail}). Falling back to audit outbox.")
+            return f"SMTP_ERROR: {detail[:50]}", detail[:300]
+
+    return "LOGGED_ONLY", ""
+
+
+def send_email_with_diagnostics(
+    recipient_email,
+    subject,
+    text_body,
+    html_body=None,
+    template_key="general",
+    reply_to=None,
+    unsubscribe_url=None,
+    force_sync=False,
+) -> dict:
+    """
+    Dispatches an email via the active HTTPS API / SMTP transport (or simulated mode),
+    persists a full audit record in `email_outbox`, and returns structured diagnostics.
+    """
+    cfg = get_email_transport_config()
+
+    if cfg["live_configured"] and cfg["async_enabled"] and not force_sync:
+        conn = get_db()
+        cursor = conn.cursor()
+        cursor.execute(
+            """
+            INSERT INTO email_outbox (recipient_email, subject, body, html_body, template_key, reply_to, status)
+            VALUES (?, ?, ?, ?, ?, ?, ?)
+            """,
+            (recipient_email, subject, text_body, html_body, template_key or "general", reply_to, "QUEUED_ASYNC"),
+        )
+        outbox_id = cursor.lastrowid
+        conn.commit()
+        conn.close()
+
+        def _bg_worker():
+            final_status, _ = _deliver_via_transport(
+                cfg, recipient_email, subject, text_body, html_body, reply_to, unsubscribe_url
+            )
+            try:
+                bg_conn = get_db()
+                bg_conn.execute("UPDATE email_outbox SET status = ? WHERE id = ?", (final_status, outbox_id))
+                bg_conn.commit()
+                bg_conn.close()
+            except Exception as bg_err:
+                print(f"⚠️ Async outbox status update failed: {bg_err}")
+
+        t = threading.Thread(target=_bg_worker, daemon=True)
+        t.start()
+        return {
+            "sent_live": True,
+            "status": "QUEUED_ASYNC",
+            "provider": cfg["provider"],
+            "mode_label": cfg["mode_label"],
+            "error_detail": "",
+            "outbox_id": outbox_id,
+        }
+
+    delivery_status, error_detail = _deliver_via_transport(
+        cfg, recipient_email, subject, text_body, html_body, reply_to, unsubscribe_url
+    )
+    conn = get_db()
+    cursor = conn.cursor()
+    cursor.execute(
+        """
+        INSERT INTO email_outbox (recipient_email, subject, body, html_body, template_key, reply_to, status)
+        VALUES (?, ?, ?, ?, ?, ?, ?)
+        """,
+        (recipient_email, subject, text_body, html_body, template_key or "general", reply_to, delivery_status),
+    )
+    outbox_id = cursor.lastrowid
+    conn.commit()
+    conn.close()
+    return {
+        "sent_live": delivery_status.startswith("SENT_LIVE_"),
+        "status": delivery_status,
+        "provider": cfg["provider"],
+        "mode_label": cfg["mode_label"],
+        "error_detail": error_detail,
+        "outbox_id": outbox_id,
+    }
+
+
 def send_real_or_simulated_email(
     recipient_email,
     subject,
@@ -277,55 +617,19 @@ def send_real_or_simulated_email(
     unsubscribe_url=None,
 ):
     """
-    Attempts real SMTP email delivery if SMTP_HOST environment variable is set.
-    
-    Always records the transmission (plain text + branded HTML + metadata) in the SQLite
-    email_outbox table for verification and audit purposes (accessible via /api/outbox).
+    Attempts real email delivery via HTTPS API (Resend, Brevo, Postmark) or SMTP
+    when configured, and always logs the multipart email to `email_outbox`.
     """
-    smtp_host = os.environ.get("SMTP_HOST")
-    smtp_port = int(os.environ.get("SMTP_PORT", 587))
-    smtp_user = os.environ.get("SMTP_USER")
-    smtp_pass = os.environ.get("SMTP_PASSWORD")
-    from_email = os.environ.get("SMTP_FROM_EMAIL", "notifications@gooddeeds.space")
-    from_name = os.environ.get("SMTP_FROM_NAME", "GoodDeeds Community")
-
-    delivery_status = "LOGGED_ONLY"
-
-    if smtp_host and smtp_user and smtp_pass:
-        try:
-            msg = MIMEMultipart("alternative")
-            msg["Subject"] = subject
-            msg["From"] = f"{from_name} <{from_email}>"
-            msg["To"] = recipient_email
-            if reply_to:
-                msg["Reply-To"] = reply_to
-            if unsubscribe_url:
-                msg["List-Unsubscribe"] = f"<{unsubscribe_url}>"
-
-            msg.attach(MIMEText(text_body, "plain", "utf-8"))
-            if html_body:
-                msg.attach(MIMEText(html_body, "html", "utf-8"))
-
-            with smtplib.SMTP(smtp_host, smtp_port, timeout=10) as server:
-                server.ehlo()
-                server.starttls()
-                server.login(smtp_user, smtp_pass)
-                server.sendmail(from_email, [recipient_email], msg.as_string())
-
-            delivery_status = "SENT_LIVE_SMTP"
-        except Exception as e:
-            delivery_status = f"SMTP_ERROR: {str(e)[:50]}"
-            print(f"⚠️ SMTP Network Delivery Failed ({e}). Falling back to audit outbox.")
-
-    conn = get_db()
-    cursor = conn.cursor()
-    cursor.execute("""
-        INSERT INTO email_outbox (recipient_email, subject, body, html_body, template_key, reply_to, status)
-        VALUES (?, ?, ?, ?, ?, ?, ?)
-    """, (recipient_email, subject, text_body, html_body, template_key or "general", reply_to, delivery_status))
-    conn.commit()
-    conn.close()
-    return delivery_status == "SENT_LIVE_SMTP"
+    diag = send_email_with_diagnostics(
+        recipient_email=recipient_email,
+        subject=subject,
+        text_body=text_body,
+        html_body=html_body,
+        template_key=template_key,
+        reply_to=reply_to,
+        unsubscribe_url=unsubscribe_url,
+    )
+    return bool(diag["sent_live"])
 
 
 def dispatch_email_template(recipient_email: str, tpl: dict, reply_to: str = None, unsubscribe_url: str = None):
@@ -1154,18 +1458,21 @@ def handle_api_request(method, path, headers, body_bytes):
             if "*" not in allowed_hosts and host_only not in allowed_hosts and not is_trusted_suffix:
                 return error_response("Bad Request: Invalid or untrusted Host header.", 400)
 
-            origin_hdr = (headers.get("Origin") or headers.get("origin") or "").strip() if hasattr(headers, "get") else ""
-            referer_hdr = (headers.get("Referer") or headers.get("referer") or "").strip() if hasattr(headers, "get") else ""
-            if origin_hdr and origin_hdr != "null":
-                origin_host = urlparse(origin_hdr).netloc
-                if origin_host != host_hdr:
-                    return error_response("Forbidden: CSRF Origin mismatch.", 403)
-            elif referer_hdr:
-                referer_host = urlparse(referer_hdr).netloc
-                if referer_host != host_hdr:
-                    return error_response("Forbidden: CSRF Referer mismatch.", 403)
-            else:
-                return error_response("Forbidden: CSRF check failed (missing Origin or Referer header).", 403)
+            # RFC 8058 One-Click Unsubscribe POSTs arrive server-to-server from Gmail/Yahoo
+            # without Origin/Referer headers and authenticate via an opaque unsubscribe_token.
+            if path_only != "/api/email/unsubscribe":
+                origin_hdr = (headers.get("Origin") or headers.get("origin") or "").strip() if hasattr(headers, "get") else ""
+                referer_hdr = (headers.get("Referer") or headers.get("referer") or "").strip() if hasattr(headers, "get") else ""
+                if origin_hdr and origin_hdr != "null":
+                    origin_host = urlparse(origin_hdr).netloc
+                    if origin_host != host_hdr:
+                        return error_response("Forbidden: CSRF Origin mismatch.", 403)
+                elif referer_hdr:
+                    referer_host = urlparse(referer_hdr).netloc
+                    if referer_host != host_hdr:
+                        return error_response("Forbidden: CSRF Referer mismatch.", 403)
+                else:
+                    return error_response("Forbidden: CSRF check failed (missing Origin or Referer header).", 403)
 
     # ================== PLATFORM STATS ENDPOINTS ==================
     if path_only in ("/api/stats", "/api/landing_stats", "/stats", "/landing_stats") and method == "GET":
@@ -1881,9 +2188,15 @@ def handle_api_request(method, path, headers, body_bytes):
         conn.close()
         return json_response({"success": True, "email_prefs": merged})
 
+    if path_only == "/api/email/unsubscribe" and method == "GET":
+        tok = str((query.get("token") or [""])[0] or "").strip()
+        category = str((query.get("category") or ["all"])[0] or "all").strip().lower()
+        target_qs = urlencode({"token": tok, "category": category})
+        return 302, {"Location": f"{base_url}/#/unsubscribe?{target_qs}"}, ""
+
     if path_only == "/api/email/unsubscribe" and method == "POST":
-        tok = str(body.get("token") or "").strip()
-        category = str(body.get("category") or "all").strip().lower()
+        tok = str(body.get("token") or (query.get("token") or [""])[0] or "").strip()
+        category = str(body.get("category") or (query.get("category") or ["all"])[0] or "all").strip().lower()
         if not tok:
             return error_response("Unsubscribe token is required.", 400)
         conn = get_db()
@@ -1912,6 +2225,85 @@ def handle_api_request(method, path, headers, body_bytes):
             "category": category,
             "email_prefs": prefs,
             "message": f"Unsubscribed from {'all optional community emails' if category == 'all' else category.replace('_', ' ') + ' emails'}.",
+        })
+
+    if path_only == "/api/email/status" and method == "GET":
+        return json_response({
+            "success": True,
+            "transport": get_email_transport_config(headers),
+        })
+
+    if path_only == "/api/email/test" and method == "POST":
+        if not user:
+            return error_response("Login required", 401)
+        if user.get("is_site_admin") != 1:
+            return error_response("Site Admin privileges required to send live test emails.", 403)
+
+        raw_recipient = str(body.get("recipient_email") or user["email"] or "").strip()
+        valid_addrs, _ = parse_bulk_email_addresses(raw_recipient)
+        if not valid_addrs:
+            return error_response("Please provide a valid recipient email address.", 400)
+        target_email = valid_addrs[0]
+        requested_tpl_key = str(body.get("template_key") or "live_diagnostic").strip()
+
+        cfg = get_email_transport_config(headers)
+        now_utc = datetime.datetime.now(datetime.timezone.utc).strftime("%Y-%m-%d %H:%M:%S UTC")
+
+        selected_tpl = None
+        if requested_tpl_key and requested_tpl_key != "live_diagnostic":
+            for candidate in get_all_template_previews(base_url):
+                if candidate["template_key"] == requested_tpl_key:
+                    selected_tpl = dict(candidate)
+                    if not selected_tpl["subject"].startswith("[TEST]"):
+                        selected_tpl["subject"] = f"[TEST] {selected_tpl['subject']}"
+                    break
+
+        if not selected_tpl:
+            selected_tpl = build_test_diagnostic_email(
+                admin_username=user["username"],
+                recipient_email=target_email,
+                provider_label=cfg["mode_label"],
+                from_email=f"{cfg['from_name']} <{cfg['from_email']}>",
+                base_url=base_url,
+                sent_at_utc=now_utc,
+            )
+
+        conn_tok = get_db()
+        unsub_tok = ensure_user_unsubscribe_token(conn_tok, user["id"])
+        conn_tok.commit()
+        conn_tok.close()
+        unsub_url = build_unsubscribe_url(base_url, unsub_tok, "all") if selected_tpl.get("category") != "transactional" else None
+
+        diag = send_email_with_diagnostics(
+            recipient_email=target_email,
+            subject=selected_tpl["subject"],
+            text_body=selected_tpl["text_body"],
+            html_body=selected_tpl.get("html_body"),
+            template_key=selected_tpl.get("template_key", "live_diagnostic"),
+            reply_to=user["email"],
+            unsubscribe_url=unsub_url,
+            force_sync=True,
+        )
+
+        if diag["sent_live"]:
+            msg = f"Delivered live to {target_email} via {diag['mode_label']}!"
+        elif diag["status"] == "LOGGED_ONLY":
+            msg = f"Logged test email for {target_email} in Simulated Outbox mode. Set RESEND_API_KEY or SMTP_HOST in .env for live inbox delivery."
+        else:
+            msg = f"Live delivery failed ({diag['status']}). Recorded in Outbox log for inspection."
+
+        return json_response({
+            "success": True,
+            "sent_live": diag["sent_live"],
+            "status": diag["status"],
+            "provider": diag["provider"],
+            "mode_label": diag["mode_label"],
+            "from_email": cfg["from_email"],
+            "recipient_email": target_email,
+            "template_key": selected_tpl.get("template_key", "live_diagnostic"),
+            "outbox_id": diag["outbox_id"],
+            "error_detail": diag["error_detail"],
+            "message": msg,
         })
 
     if path_only == "/api/email/send_digest" and method == "POST":
@@ -4142,10 +4534,15 @@ def handle_api_request(method, path, headers, body_bytes):
     if path_only in ("/api/outbox", "/api/emails", "/api/notifications") and method == "GET":
         conn = get_db()
         cursor = conn.cursor()
-        cursor.execute("SELECT * FROM email_outbox ORDER BY sent_at DESC")
+        cursor.execute("SELECT * FROM email_outbox ORDER BY sent_at DESC, id DESC")
         rows = [dict(r) for r in cursor.fetchall()]
         conn.close()
-        return json_response({"emails": rows, "outbox": rows, "notifications": rows})
+        return json_response({
+            "emails": rows,
+            "outbox": rows,
+            "notifications": rows,
+            "transport": get_email_transport_config(headers),
+        })
 
     # ================== CUSTOMER SERVICE PORTAL ==================
     if path_only in ("/api/support", "/api/customer_service", "/api/inquiry", "/api/inquiries") and method == "POST":

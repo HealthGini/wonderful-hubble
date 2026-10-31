@@ -6,3 +6,7 @@ __pycache__/
 _worker_notes/
 scratch_*.js
 test_*.js
+.env
+.env.*
+!.env.example
+

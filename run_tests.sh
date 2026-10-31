@@ -4,8 +4,8 @@
 # Get the directory where this script is located
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 
-# Run the test suite
-python3 "${SCRIPT_DIR}/tests/test_suite.py"
+# Run the test suite (isolated from any local `.env` live email credentials)
+GOODDEEDS_SKIP_DOTENV=1 EMAIL_PROVIDER=simulated python3 "${SCRIPT_DIR}/tests/test_suite.py"
 exit_code=$?
 
 if [ $exit_code -eq 0 ]; then

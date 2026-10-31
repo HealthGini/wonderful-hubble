@@ -16,6 +16,45 @@ import os
 from urllib.parse import urlencode
 
 
+def load_dotenv_file(dotenv_path: str = None, override: bool = False) -> dict:
+    """
+    Loads KEY=VALUE pairs from a git-ignored `.env` file into `os.environ`.
+
+    Existing environment variables take precedence unless `override=True`,
+    ensuring explicit shell exports and test suites remain deterministic.
+    """
+    if not dotenv_path:
+        dotenv_path = os.path.join(os.path.dirname(os.path.abspath(__file__)), ".env")
+    loaded = {}
+    if not os.path.isfile(dotenv_path):
+        return loaded
+    try:
+        with open(dotenv_path, "r", encoding="utf-8") as f:
+            for raw_line in f:
+                line = raw_line.strip()
+                if not line or line.startswith("#"):
+                    continue
+                if line.startswith("export "):
+                    line = line[7:].strip()
+                if "=" not in line:
+                    continue
+                key, val = line.split("=", 1)
+                key = key.strip()
+                val = val.strip()
+                if not key:
+                    continue
+                if len(val) >= 2 and ((val[0] == '"' and val[-1] == '"') or (val[0] == "'" and val[-1] == "'")):
+                    val = val[1:-1]
+                elif " #" in val:
+                    val = val.split(" #", 1)[0].strip()
+                loaded[key] = val
+                if override or key not in os.environ:
+                    os.environ[key] = val
+    except Exception as exc:
+        print(f"⚠️ Warning: Could not parse .env file at {dotenv_path}: {exc}")
+    return loaded
+
+
 DEFAULT_EMAIL_PREFS = {
     "kudos": True,
     "comments": True,
@@ -57,11 +96,12 @@ def get_public_base_url(headers=None) -> str:
     """
     Resolves the canonical public base URL for clickable links inside emails.
     Priority:
-      1. PUBLIC_BASE_URL environment variable (e.g. 'https://gooddeeds.space')
+      1. PUBLIC_BASE_URL / APP_BASE_URL environment variable (e.g. 'https://gooddeeds.space')
       2. Origin or X-Forwarded-Proto + Host request headers
-      3. 'http://localhost:8080' local development fallback
+      3. RENDER_EXTERNAL_URL (auto-injected by Render on production/staging services)
+      4. 'http://localhost:8080' local development fallback
     """
-    env_url = (os.environ.get("PUBLIC_BASE_URL") or "").strip().rstrip("/")
+    env_url = (os.environ.get("PUBLIC_BASE_URL") or os.environ.get("APP_BASE_URL") or "").strip().rstrip("/")
     if env_url:
         return env_url
     if headers and hasattr(headers, "get"):
@@ -74,6 +114,9 @@ def get_public_base_url(headers=None) -> str:
             if proto not in ("http", "https"):
                 proto = "http" if ("localhost" in host or host.startswith("127.")) else "https"
             return f"{proto}://{host}".rstrip("/")
+    render_url = (os.environ.get("RENDER_EXTERNAL_URL") or "").strip().rstrip("/")
+    if render_url:
+        return render_url
     return "http://localhost:8080"
 
 
@@ -1263,6 +1306,55 @@ def build_org_subscription_onboarding_email(
     )
     return {
         "template_key": "org_onboarding",
+        "category": "transactional",
+        "subject": subject,
+        "text_body": text_body,
+        "html_body": html_body,
+    }
+
+
+def build_test_diagnostic_email(
+    admin_username: str,
+    recipient_email: str,
+    provider_label: str,
+    from_email: str,
+    base_url: str = "http://localhost:8080",
+    sent_at_utc: str = "",
+) -> dict:
+    """Builds a branded Site Admin diagnostic email verifying live email delivery end-to-end."""
+    clean_base = (base_url or "http://localhost:8080").rstrip("/")
+    ts_str = sent_at_utc or "Just now (UTC)"
+    subject = "✅ [TEST] GoodDeeds.space Live Email Delivery Verification"
+    bullets = [
+        f"Active Transport: {provider_label}",
+        f"Sender Identity (From): {from_email}",
+        f"Recipient (To): {recipient_email}",
+        f"Public Base URL: {clean_base}",
+        f"Triggered By Site Admin: @{admin_username} at {ts_str}",
+    ]
+    text_body = (
+        f"Hello @{admin_username},\n\n"
+        f"Your GoodDeeds.space email pipeline test completed!\n\n"
+        f"Delivery Diagnostics:\n"
+        + "\n".join(f"  • {b}" for b in bullets)
+        + f"\n\nInspect Outbox logs & all 22 branded email templates:\n{clean_base}/#/outbox\n"
+    )
+    html_body = render_branded_email(
+        badge_text="Live Delivery Test",
+        accent_theme="teal",
+        heading="Your Email Integration Is Working!",
+        greeting=f"Hello @{admin_username},",
+        intro_paragraphs=[
+            "This test email was dispatched from the GoodDeeds.space Site Admin Outbox Inspector to verify end-to-end multipart HTML + plain-text rendering and transport configuration.",
+        ],
+        bullet_items=bullets,
+        cta_label="Open Email Outbox & Templates ↗",
+        cta_url=f"{clean_base}/#/outbox",
+        secondary_note="Tip: Verify SPF, DKIM, and DMARC DNS records on gooddeeds.space before sending high-volume Space broadcasts.",
+        base_url=clean_base,
+    )
+    return {
+        "template_key": "live_diagnostic",
         "category": "transactional",
         "subject": subject,
         "text_body": text_body,

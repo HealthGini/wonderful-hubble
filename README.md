@@ -3,7 +3,7 @@
 GoodDeeds.space is a community-focused web application designed to promote goodness, build meaningful connections, and facilitate mutual aid. With a warm, accessible, and senior-friendly design philosophy, it connects volunteers, organizers, and neighbors to support each other.
 
 ## 📊 Verification & Test Status
-- **156/156** Automated Unit, Integration & UI Regression Tests Passing 100% OK (`./run_tests.sh`).
+- **158/158** Automated Unit, Integration & UI Regression Tests Passing 100% OK (`./run_tests.sh`).
 - Zero external framework bloat: Pure Python standard-library HTTP server + SQLite backend with a responsive Tailwind CSS Single-Page Application (SPA).
 
 ---
@@ -38,7 +38,7 @@ The application is built on the Python 3.13 standard library and uses SQLite for
 ├── handlers.py         # Core API request handlers, conversational search, auth, email, and moderation
 ├── server.py           # Threaded HTTP server routing API and serving static files
 ├── run.sh              # Shell script to start the server
-├── run_tests.sh        # Shell script to run the automated test suite (156 tests)
+├── run_tests.sh        # Shell script to run the automated test suite (158 tests)
 ├── static/             # Frontend assets
 │   ├── index.html      # Single Page Application (SPA) entry point
 │   ├── app.js          # Frontend application logic (vanilla JS)
@@ -77,20 +77,25 @@ python3 database.py
 ```
 This will create `gooddeeds.db` and seed it with sample users, Spaces, posts, reactions, comments, and invitations.
 
-### Configuration (Environment Variables)
-You can configure the server using the following environment variables:
+### Configuration (Environment Variables & `.env`)
+Copy `.env.example` to `.env` (git-ignored) and `server.py` will load it automatically on startup (`cp .env.example .env`):
 
 | Variable | Description | Default |
 | :--- | :--- | :--- |
 | `PORT` | Port number the HTTP server listens on | `8080` |
 | `DB_PATH` | Path to the SQLite database file | `gooddeeds.db` (next to script) |
-| `APP_BASE_URL` | Public base URL used for deep links in verification, password reset, digest, and unsubscribe emails | `http://localhost:8080` |
+| `PUBLIC_BASE_URL` | Canonical public URL used for CTA buttons, verification, password resets, and 1-click unsubscribe links | `http://localhost:8080` |
+| `EMAIL_PROVIDER` | Email transport selector (`auto`, `resend`, `brevo`, `postmark`, `smtp`, or `simulated`) | `auto` |
+| `RESEND_API_KEY` | Resend HTTPS REST API key (`https://api.resend.com/emails` over port `443`) | *None* |
+| `BREVO_API_KEY` | Brevo HTTPS REST API key (`https://api.brevo.com/v3/smtp/email` over port `443`) | *None* |
+| `POSTMARK_SERVER_TOKEN` | Postmark HTTPS REST API server token (`https://api.postmarkapp.com/email`) | *None* |
+| `EMAIL_ASYNC` | Dispatch live emails in a non-blocking background worker thread (`true`/`false`) | `false` |
 | `GEMINI_API_KEY` | Optional Gemini API key enabling grounded `gemini-2.5-flash` RAG synthesis in `/api/chat_search` (falls back automatically to built-in `local_nlu` when unset) | *None* |
 | `SUPPORT_ALERT_EMAIL` | Destination email for customer support inquiry alerts | `support@gooddeeds.space` |
-| `SMTP_HOST` | Hostname of the live SMTP server (optional) | *None* |
-| `SMTP_PORT` | Port of the live SMTP server | `587` |
+| `SMTP_HOST` | Hostname of the live SMTP server (e.g., `smtp.gmail.com`, `email-smtp.us-east-1.amazonaws.com`, or `127.0.0.1` for local sink) | *None* |
+| `SMTP_PORT` | Port of the live SMTP server (`587` STARTTLS, `465` SSL, or `1025` local debug sink) | `587` |
 | `SMTP_USER` | SMTP username for authentication | *None* |
-| `SMTP_PASSWORD`| SMTP password for authentication | *None* |
+| `SMTP_PASSWORD`| SMTP password / App Password for authentication | *None* |
 | `SMTP_FROM_EMAIL`| Sender email address | `notifications@gooddeeds.space`|
 | `SMTP_FROM_NAME`| Sender display name | `GoodDeeds Community` |
 
@@ -427,14 +432,19 @@ Generates and sends a personalized Weekly Community Digest email summarizing rec
 #### `GET /api/email/templates`
 Returns rendered HTML and plain-text previews for all **22 GoodDeeds.space email scenarios** powering the `/#/outbox?tab=templates` gallery.
 
+#### `GET /api/email/status` & `POST /api/email/test` (Site Admin)
+*   `GET /api/email/status`: Returns active email transport diagnostics (`provider`, `live_configured`, `mode_label`, `from_email`, `public_base_url`) without exposing API keys or SMTP passwords.
+*   `POST /api/email/test`: Site Admin endpoint (`{"recipient_email": "you@example.com", "template_key": "live_diagnostic"}` or any of the 22 scenario keys) that synchronously dispatches a live test email over Resend / Brevo / Postmark HTTPS API or SMTP, records the transmission in `email_outbox`, and returns structured delivery status (`SENT_LIVE_RESEND`, `SENT_LIVE_SMTP`, `LOGGED_ONLY`, or detailed provider error diagnostics).
+
 ---
 
-## Simulated Audit Logs, Template Gallery & Support
+## Simulated Audit Logs, Live Email Testing & Support
 
-### Email Outbox & 22-Scenario Template Gallery (`/#/outbox`)
-All outgoing multipart emails (HTML + plain text, template key, category, and optional `Reply-To`) are logged to `email_outbox` for instant local verification alongside optional live SMTP delivery.
-*   **APIs**: `GET /api/outbox` and `GET /api/email/templates`
-*   **UI Access**: Navigate to `/#/outbox` to inspect sent/triggered emails with live HTML iframe previews, or switch to **📚 All Email Templates Gallery (22 Scenarios)** (`/#/outbox?tab=templates`) to preview every transactional, community, Space Chat, governance, moderation, and digest template.
+### Email Outbox, Live Test Sender & 22-Scenario Template Gallery (`/#/outbox`)
+All outgoing multipart emails (HTML + plain text, template key, category, RFC 8058 `List-Unsubscribe`, and optional `Reply-To`) are logged to `email_outbox` alongside live HTTPS API or SMTP delivery.
+*   **APIs**: `GET /api/outbox`, `GET /api/email/status`, `POST /api/email/test`, and `GET /api/email/templates`
+*   **UI Access**: Navigate to `/#/outbox` to inspect active transport status, send live test emails as a Site Admin (`🚀 Send Live Test Email`), inspect triggered emails with live HTML iframe previews, or switch to **📚 All Email Templates Gallery (22 Scenarios)** (`/#/outbox?tab=templates`).
+*   **Zero-Account Local SMTP Sink**: Run `python3 scripts/local_smtp_sink.py` in a second terminal with `SMTP_HOST=127.0.0.1 SMTP_PORT=1025 SMTP_TLS=false` to verify real TCP SMTP wire delivery locally without external credentials.
 
 ### Customer Support Portal
 Users can submit inquiries which log to `customer_service_inquiries`.
@@ -446,7 +456,7 @@ Users can submit inquiries which log to `customer_service_inquiries`.
 
 ## Running the Testing Suite
 
-The testing suite verifies all 156 unit, API integration, and UI regression tests using isolated temporary databases.
+The testing suite verifies all 158 unit, API integration, and UI regression tests using isolated temporary databases.
 
 ### Running with the Helper Script
 Ensure the script is executable, then run it:

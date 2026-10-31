@@ -305,6 +305,8 @@ let landingSearchDebounceTimer = null;
 let pendingPasswordResetToken = "";
 let currentOutboxMode = "logs";
 let emailTemplatesCache = [];
+let adminTestEmailPanelOpen = false;
+let lastEmailTransportStatus = null;
 window._outboxHtmlCache = {};
 
 // Full-Page Post Composer & Kudos Rich Editor State (declared before startup to prevent TDZ errors)
@@ -845,6 +847,7 @@ function updateAuthUI(user) {
     if (user && feedSearchMode === "chat") chatScopeSel.classList.remove("hidden");
     else chatScopeSel.classList.add("hidden");
   }
+  syncOutboxAdminControls();
 }
 
 async function handleLogin(e) {
@@ -4855,8 +4858,145 @@ async function handleProfileUpdate(e) {
 
 /* ================= EMAIL OUTBOX INSPECTOR & TEMPLATE GALLERY ================= */
 
+function syncOutboxAdminControls() {
+  const isSiteAdmin = Boolean(currentUser && Number(currentUser.is_site_admin) === 1);
+  const toggleBtn = document.getElementById("btn-toggle-test-email-panel");
+  const panel = document.getElementById("outbox-admin-test-panel");
+  const recipInput = document.getElementById("test-email-recipient");
+
+  if (toggleBtn) {
+    if (isSiteAdmin) toggleBtn.classList.remove("hidden");
+    else toggleBtn.classList.add("hidden");
+  }
+  if (panel) {
+    if (isSiteAdmin && adminTestEmailPanelOpen) panel.classList.remove("hidden");
+    else panel.classList.add("hidden");
+  }
+  if (isSiteAdmin && recipInput && !recipInput.value.trim() && currentUser.email) {
+    recipInput.value = currentUser.email;
+  }
+}
+
+function toggleAdminTestEmailPanel(forceState) {
+  if (!(currentUser && Number(currentUser.is_site_admin) === 1)) {
+    showToast("🛡️ Log in as a Site Admin to send live test emails.");
+    return;
+  }
+  adminTestEmailPanelOpen = typeof forceState === "boolean" ? forceState : !adminTestEmailPanelOpen;
+  syncOutboxAdminControls();
+  if (adminTestEmailPanelOpen) {
+    const recipInput = document.getElementById("test-email-recipient");
+    if (recipInput) recipInput.focus();
+  }
+}
+
+function renderOutboxTransportStatusBar(transport) {
+  const bar = document.getElementById("outbox-transport-status-bar");
+  if (!bar || !transport) return;
+  lastEmailTransportStatus = transport;
+
+  const isLive = Boolean(transport.live_configured);
+  const dotHtml = isLive
+    ? `<span class="inline-flex items-center gap-1.5 px-3 py-1 rounded-full bg-emerald-100 text-emerald-900 border border-emerald-300 font-black text-xs">🟢 LIVE DELIVERY ACTIVE</span>`
+    : `<span class="inline-flex items-center gap-1.5 px-3 py-1 rounded-full bg-amber-100 text-amber-900 border border-amber-300 font-black text-xs">🟡 SIMULATED OUTBOX MODE</span>`;
+
+  const asyncPill = isLive && transport.async_enabled
+    ? `<span class="px-2.5 py-0.5 rounded-full bg-teal-50 text-teal-800 border border-teal-200 text-xs font-bold">⚡ Async Queue</span>`
+    : "";
+
+  bar.innerHTML = `
+    <div class="flex flex-wrap items-center gap-2.5">
+      ${dotHtml}
+      <span class="font-bold text-stone-800">${escapeHtml(transport.mode_label || "")}</span>
+      ${asyncPill}
+    </div>
+    <div class="flex flex-wrap items-center gap-3 text-xs font-bold text-stone-600">
+      <span>From: <code class="px-1.5 py-0.5 bg-stone-100 rounded text-stone-800">${escapeHtml(transport.from_name || "GoodDeeds")} &lt;${escapeHtml(transport.from_email || "")}&gt;</code></span>
+      <span>•</span>
+      <span>Base URL: <code class="px-1.5 py-0.5 bg-stone-100 rounded text-stone-800">${escapeHtml(transport.public_base_url || "")}</code></span>
+    </div>
+  `;
+}
+
+async function handleSendAdminTestEmail(e) {
+  if (e) e.preventDefault();
+  const recipInput = document.getElementById("test-email-recipient");
+  const tplSelect = document.getElementById("test-email-template-select");
+  const sendBtn = document.getElementById("btn-send-live-test-email");
+  const resultBanner = document.getElementById("test-email-result-banner");
+
+  const recipientEmail = recipInput ? recipInput.value.trim() : "";
+  const templateKey = tplSelect ? tplSelect.value : "live_diagnostic";
+  if (!recipientEmail) {
+    showToast("❌ Please enter a recipient email address.");
+    return;
+  }
+
+  const origLabel = sendBtn ? sendBtn.textContent : "🚀 Send Test Email Now";
+  if (sendBtn) {
+    sendBtn.disabled = true;
+    sendBtn.textContent = "⏳ Dispatching...";
+  }
+  if (resultBanner) {
+    resultBanner.className = "p-4 rounded-2xl border border-stone-200 bg-white text-stone-700 text-sm font-bold";
+    resultBanner.textContent = `Sending test email (${templateKey}) to ${recipientEmail}...`;
+    resultBanner.classList.remove("hidden");
+  }
+
+  try {
+    const res = await apiFetch("/email/test", {
+      method: "POST",
+      body: JSON.stringify({
+        recipient_email: recipientEmail,
+        template_key: templateKey,
+      }),
+    });
+
+    if (resultBanner) {
+      if (res.sent_live) {
+        resultBanner.className = "p-4 rounded-2xl border-2 border-emerald-300 bg-emerald-50 text-emerald-950 text-sm space-y-1";
+        resultBanner.innerHTML = `
+          <div class="font-black">✅ ${escapeHtml(res.message || "Live test email delivered!")}</div>
+          <div class="text-xs font-bold text-emerald-800">Status: <code>${escapeHtml(res.status || "")}</code> • Template: <code>${escapeHtml(res.template_key || "")}</code> • Outbox ID: #${escapeHtml(String(res.outbox_id || ""))}</div>
+        `;
+      } else if (res.status === "LOGGED_ONLY") {
+        resultBanner.className = "p-4 rounded-2xl border-2 border-amber-300 bg-amber-50 text-amber-950 text-sm space-y-1";
+        resultBanner.innerHTML = `
+          <div class="font-black">📋 ${escapeHtml(res.message || "Recorded in Simulated Outbox.")}</div>
+          <div class="text-xs font-bold text-amber-900">Status: <code>LOGGED_ONLY</code> • Preview the rendered HTML card right below in Outbox Logs!</div>
+        `;
+      } else {
+        resultBanner.className = "p-4 rounded-2xl border-2 border-rose-300 bg-rose-50 text-rose-950 text-sm space-y-1";
+        resultBanner.innerHTML = `
+          <div class="font-black">⚠️ ${escapeHtml(res.message || "Provider returned an error.")}</div>
+          ${res.error_detail ? `<div class="text-xs font-mono bg-white/80 p-2 rounded-lg border border-rose-200 text-rose-900 break-words">${escapeHtml(res.error_detail)}</div>` : ""}
+        `;
+      }
+      resultBanner.classList.remove("hidden");
+    }
+
+    showToast(res.sent_live ? "✅ Live test email delivered!" : (res.status === "LOGGED_ONLY" ? "📋 Test email logged to Outbox!" : "⚠️ Delivery error — see banner details"));
+    if (currentOutboxMode === "logs") {
+      await loadOutbox();
+    }
+  } catch (err) {
+    if (resultBanner) {
+      resultBanner.className = "p-4 rounded-2xl border-2 border-rose-300 bg-rose-50 text-rose-950 text-sm font-bold";
+      resultBanner.textContent = "❌ " + err.message;
+      resultBanner.classList.remove("hidden");
+    }
+    showToast("❌ " + err.message);
+  } finally {
+    if (sendBtn) {
+      sendBtn.disabled = false;
+      sendBtn.textContent = origLabel;
+    }
+  }
+}
+
 function switchOutboxMode(mode = "logs") {
   currentOutboxMode = mode === "templates" ? "templates" : "logs";
+  syncOutboxAdminControls();
   const logsBtn = document.getElementById("btn-outbox-mode-logs");
   const tplBtn = document.getElementById("btn-outbox-mode-templates");
   const logsBox = document.getElementById("outbox-list");
@@ -4879,6 +5019,11 @@ function switchOutboxMode(mode = "logs") {
     } else {
       logsBox.classList.add("hidden");
       tplBox.classList.remove("hidden");
+      if (!lastEmailTransportStatus) {
+        apiFetch("/email/status").then(d => {
+          if (d && d.transport) renderOutboxTransportStatusBar(d.transport);
+        }).catch(() => {});
+      }
       loadEmailTemplatesGallery();
     }
   }
@@ -4922,7 +5067,7 @@ function hydrateOutboxIframes(container) {
   });
 }
 
-function renderEmailPreviewCard({ cardKey, recipient, sentMeta, templateKey, replyTo, subject, textBody, htmlBody, headerTitle, extraFooterHtml }) {
+function renderEmailPreviewCard({ cardKey, recipient, sentMeta, statusBadgeHtml, templateKey, replyTo, subject, textBody, htmlBody, headerTitle, extraFooterHtml }) {
   const hasHtml = Boolean(htmlBody && String(htmlBody).trim());
   if (hasHtml) {
     window._outboxHtmlCache[cardKey] = String(htmlBody);
@@ -4954,6 +5099,7 @@ function renderEmailPreviewCard({ cardKey, recipient, sentMeta, templateKey, rep
         </div>
         <div class="flex flex-wrap items-center gap-3">
           ${sentMeta ? `<div class="text-xs font-bold text-amber-800">${escapeHtml(sentMeta)}</div>` : ""}
+          ${statusBadgeHtml || ""}
           ${toggleControls}
         </div>
       </div>
@@ -4969,12 +5115,30 @@ function renderEmailPreviewCard({ cardKey, recipient, sentMeta, templateKey, rep
   `;
 }
 
+function formatOutboxDeliveryStatusBadge(rawStatus) {
+  const st = String(rawStatus || "LOGGED_ONLY");
+  if (st.startsWith("SENT_LIVE_")) {
+    return `<span class="px-2.5 py-0.5 rounded-full text-xs font-black bg-emerald-100 text-emerald-900 border border-emerald-300 font-sans">✅ ${escapeHtml(st)}</span>`;
+  }
+  if (st.includes("ERROR")) {
+    return `<span class="px-2.5 py-0.5 rounded-full text-xs font-black bg-rose-100 text-rose-900 border border-rose-300 font-sans">⚠️ ${escapeHtml(st)}</span>`;
+  }
+  if (st === "QUEUED_ASYNC") {
+    return `<span class="px-2.5 py-0.5 rounded-full text-xs font-black bg-teal-100 text-teal-900 border border-teal-300 font-sans">⏳ ${escapeHtml(st)}</span>`;
+  }
+  return `<span class="px-2.5 py-0.5 rounded-full text-xs font-black bg-amber-100 text-amber-900 border border-amber-300 font-sans">📋 ${escapeHtml(st)}</span>`;
+}
+
 async function loadOutbox() {
+  syncOutboxAdminControls();
   const container = document.getElementById("outbox-list");
   if (!container) return;
   container.innerHTML = `<p class="text-amber-800 font-bold text-center py-8 text-lg">Loading real-time audit logs...</p>`;
   try {
     const data = await apiFetch("/outbox");
+    if (data.transport) {
+      renderOutboxTransportStatusBar(data.transport);
+    }
     const emails = data.emails || [];
 
     if (emails.length === 0) {
@@ -4998,7 +5162,8 @@ async function loadOutbox() {
       return renderEmailPreviewCard({
         cardKey: `log_${em.id || idx}`,
         recipient: em.recipient_email,
-        sentMeta: `⏱️ ${em.sent_at || ""} [${em.status || "LOGGED_ONLY"}]`,
+        sentMeta: em.sent_at ? `⏱️ ${em.sent_at}` : "",
+        statusBadgeHtml: formatOutboxDeliveryStatusBadge(em.status),
         templateKey: em.template_key || "general",
         replyTo: em.reply_to || "",
         subject: em.subject || "",
@@ -5054,6 +5219,8 @@ window.switchOutboxMode = switchOutboxMode;
 window.refreshOutboxView = refreshOutboxView;
 window.toggleEmailPreviewTab = toggleEmailPreviewTab;
 window.loadEmailTemplatesGallery = loadEmailTemplatesGallery;
+window.toggleAdminTestEmailPanel = toggleAdminTestEmailPanel;
+window.handleSendAdminTestEmail = handleSendAdminTestEmail;
 
 /* ================= CUSTOMER SERVICE PORTAL ================= */
 

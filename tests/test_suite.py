@@ -2,6 +2,10 @@ import unittest
 import os
 import sys
 
+# Ensure automated test runs never load live `.env` credentials or send real external emails
+os.environ["GOODDEEDS_SKIP_DOTENV"] = "1"
+os.environ.setdefault("EMAIL_PROVIDER", "simulated")
+
 # Add workspace root to sys.path
 TESTS_DIR = os.path.dirname(os.path.abspath(__file__))
 WORKSPACE = os.path.dirname(TESTS_DIR)

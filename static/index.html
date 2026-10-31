@@ -847,7 +847,7 @@
     </section>
 
     <!-- ================== VIEW 7: EMAIL OUTBOX INSPECTOR ================== -->
-    <section id="view-outbox" class="hidden space-y-8">
+    <section id="view-outbox" class="hidden space-y-6">
       <div class="bg-amber-50 p-8 rounded-3xl border-2 border-amber-300 flex flex-col md:flex-row justify-between items-start md:items-center gap-6">
         <div class="space-y-2">
           <span class="px-3 py-1 bg-amber-500 text-white font-black text-xs rounded-full uppercase tracking-wider">Verification Audit Log &amp; Template Showcase</span>
@@ -855,10 +855,88 @@
           <p class="text-amber-900 font-medium text-base sm:text-lg">Inspect real-time HTML &amp; plain-text emails triggered across Onboarding, Verification, Password Reset, Invitations, Kudos, Comments, Space Governance, Moderation, Weekly Digests, and Support.</p>
         </div>
         <div class="flex flex-wrap items-center gap-3">
+          <button type="button" id="btn-toggle-test-email-panel" onclick="toggleAdminTestEmailPanel()" class="hidden px-5 py-3 bg-teal-700 hover:bg-teal-800 text-white font-black text-sm sm:text-base rounded-xl shadow touch-target transition">
+            🚀 Send Live Test Email
+          </button>
           <button type="button" onclick="refreshOutboxView()" class="px-5 py-3 bg-amber-600 hover:bg-amber-700 text-white font-black text-sm sm:text-base rounded-xl shadow touch-target">
             🔄 Refresh
           </button>
         </div>
+      </div>
+
+      <!-- Live Transport Status Banner -->
+      <div id="outbox-transport-status-bar" class="bg-white p-4 sm:px-6 rounded-2xl border border-stone-200 shadow-xs flex flex-wrap items-center justify-between gap-3 text-sm">
+        <div class="flex items-center gap-2.5 font-bold text-stone-700">
+          <span>📡 Checking email delivery transport...</span>
+        </div>
+      </div>
+
+      <!-- Site Admin Live Test Email Sender Panel -->
+      <div id="outbox-admin-test-panel" class="hidden bg-gradient-to-br from-teal-50/90 via-white to-emerald-50/60 p-6 sm:p-7 rounded-3xl border-2 border-teal-200 shadow-sm space-y-5">
+        <div class="flex flex-wrap items-start justify-between gap-3">
+          <div class="space-y-1">
+            <div class="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-teal-700 text-white text-xs font-black uppercase tracking-wider">
+              <span>🛡️ Site Admin Tool</span>
+              <span>•</span>
+              <span>End-to-End Delivery Verification</span>
+            </div>
+            <h2 class="text-xl sm:text-2xl font-black text-stone-900">Send Live Test Email</h2>
+            <p class="text-sm text-stone-600 font-medium">Dispatch a live diagnostic card or any of the 22 platform templates via your active HTTPS API (<code class="px-1.5 py-0.5 bg-stone-100 rounded text-xs">RESEND_API_KEY</code>) or SMTP (<code class="px-1.5 py-0.5 bg-stone-100 rounded text-xs">SMTP_HOST</code>) configuration.</p>
+          </div>
+          <button type="button" onclick="toggleAdminTestEmailPanel(false)" class="text-xs font-bold text-stone-500 hover:text-stone-800 px-3 py-1.5 rounded-lg bg-white border border-stone-200">
+            Hide Panel
+          </button>
+        </div>
+
+        <form id="form-admin-test-email" onsubmit="handleSendAdminTestEmail(event)" class="grid grid-cols-1 md:grid-cols-12 gap-4 items-end">
+          <div class="md:col-span-5 space-y-1.5">
+            <label for="test-email-recipient" class="block text-xs font-black uppercase tracking-wider text-stone-700">Recipient Email Address</label>
+            <input id="test-email-recipient" type="email" required placeholder="you@example.com" class="w-full px-4 py-3 rounded-xl border-2 border-stone-200 focus:border-teal-600 focus:outline-none font-medium text-stone-900 bg-white">
+          </div>
+          <div class="md:col-span-4 space-y-1.5">
+            <label for="test-email-template-select" class="block text-xs font-black uppercase tracking-wider text-stone-700">Template Scenario</label>
+            <select id="test-email-template-select" class="w-full px-4 py-3 rounded-xl border-2 border-stone-200 focus:border-teal-600 focus:outline-none font-bold text-stone-800 bg-white">
+              <option value="live_diagnostic">🧪 Live Delivery Diagnostic Card (Default)</option>
+              <optgroup label="1. Account &amp; Security">
+                <option value="welcome">Welcome &amp; Onboarding</option>
+                <option value="email_verification">Email Address Verification</option>
+                <option value="password_reset">Forgot Password / Reset Link</option>
+                <option value="security_alert">Security Alert (Password / Passkey)</option>
+              </optgroup>
+              <optgroup label="2. Invitations &amp; Growth">
+                <option value="site_invitation">Platform Invitation (Invite Friends)</option>
+                <option value="space_invitation">Community Space Invitation</option>
+                <option value="invite_accepted">Invite Accepted (to Inviter)</option>
+              </optgroup>
+              <optgroup label="3. Community Activity &amp; Space Chat">
+                <option value="kudos_received">New Public Kudos Received</option>
+                <option value="comment_received">New Comment on Your Post / Kudos</option>
+                <option value="space_announcement">Space Event / Resource Announcement</option>
+                <option value="space_chat_mention">Space Chat Direct @Mention</option>
+                <option value="space_chat_broadcast">Space Chat Member Broadcast</option>
+                <option value="space_chat_activity">Space Chat Opt-In Activity</option>
+                <option value="weekly_digest">Weekly Joined Spaces Digest</option>
+              </optgroup>
+              <optgroup label="4. Governance, Safety &amp; Tiers">
+                <option value="space_role_updated">Promoted to Space Admin</option>
+                <option value="space_member_removed">Removed from Space Notice</option>
+                <option value="support_confirmation">Support Inquiry Confirmation</option>
+                <option value="support_admin_alert">Support Ticket Alert</option>
+                <option value="content_report_alert">Flagged Content Alert</option>
+                <option value="moderation_action">Moderation Action Notice</option>
+                <option value="supporter_receipt">Supporter Contribution Receipt</option>
+                <option value="org_onboarding">Organization Onboarding</option>
+              </optgroup>
+            </select>
+          </div>
+          <div class="md:col-span-3">
+            <button type="submit" id="btn-send-live-test-email" class="w-full px-5 py-3 bg-teal-700 hover:bg-teal-800 text-white font-black text-sm sm:text-base rounded-xl shadow transition touch-target">
+              🚀 Send Test Email Now
+            </button>
+          </div>
+        </form>
+
+        <div id="test-email-result-banner" class="hidden p-4 rounded-2xl border text-sm font-medium"></div>
       </div>
 
       <div id="outbox-mode-tabs" class="flex flex-wrap items-center gap-3 bg-white p-3 rounded-2xl border border-stone-200 shadow-xs">

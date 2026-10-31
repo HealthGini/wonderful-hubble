@@ -10,6 +10,12 @@ import sys
 import json
 import mimetypes
 from http.server import ThreadingHTTPServer, BaseHTTPRequestHandler
+from email_templates import load_dotenv_file
+
+# Auto-load git-ignored `.env` before reading PORT or initializing handlers
+if os.environ.get("GOODDEEDS_SKIP_DOTENV") != "1":
+    load_dotenv_file()
+
 from database import init_db
 from handlers import handle_api_request
 
@@ -153,6 +159,12 @@ def run():
     """
     print("Initializing SQLite database & demo seed data...")
     init_db()
+    if (os.environ.get("SEED_SHOWCASE_DATA") or "").strip().lower() in ("1", "true", "yes"):
+        try:
+            from scripts.seed_demo_showcase import seed_showcase
+            seed_showcase()
+        except Exception as exc:
+            print(f"⚠️ Warning: SEED_SHOWCASE_DATA skipped ({exc})")
     server_address = ("0.0.0.0", PORT)
     httpd = ThreadingHTTPServer(server_address, GoodDeedsServerHandler)
     print(f"☀️ gooddeeds.space backend server running cleanly on http://0.0.0.0:{PORT}")

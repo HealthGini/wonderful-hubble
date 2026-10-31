@@ -1,34 +1,50 @@
+# ==============================================================================
+# Render Production Blueprint for GoodDeeds.space + Resend Transactional Email
+# Deploy via Render Dashboard -> New + -> Blueprint -> select this repository.
+# ==============================================================================
 services:
   - type: web
     name: gooddeeds-space
     runtime: python
-    plan: free
+    # Production Starter plan ($7/mo) enables 24/7 zero-sleep uptime + Persistent Disk
+    # so SQLite WAL data survives every deploy and restart.
+    # (For an ephemeral $0 preview, change `plan: free` and remove the `disk:` block.)
+    plan: starter
     branch: main
     buildCommand: pip install -r requirements.txt
     startCommand: python3 server.py
     healthCheckPath: /api/stats
+    disk:
+      name: gooddeeds-data
+      mountPath: /var/data
+      sizeGB: 1
     envVars:
-      # Render injects PORT automatically; server.py should read it via
-      # os.environ.get("PORT", 8080). No need to set this manually.
+      # Render injects PORT and RENDER_EXTERNAL_URL automatically.
+      - key: DB_PATH
+        value: /var/data/gooddeeds.db
+      - key: ALLOWED_HOSTS
+        value: localhost,127.0.0.1,gooddeeds.space,www.gooddeeds.space
+      - key: EMAIL_PROVIDER
+        value: resend
+      # Render prompts you securely for RESEND_API_KEY during Blueprint setup (never stored in Git):
+      - key: RESEND_API_KEY
+        sync: false
+      - key: SMTP_FROM_NAME
+        value: GoodDeeds.space
+      # Once gooddeeds.space DNS is verified in Resend, set to notifications@gooddeeds.space
+      # (use onboarding@resend.dev if testing before domain DNS is verified):
+      - key: SMTP_FROM_EMAIL
+        value: notifications@gooddeeds.space
       - key: SUPPORT_ALERT_EMAIL
         value: support@gooddeeds.space
-      # Optional: uncomment and fill these in to send real emails instead of
-      # the simulated outbox. Leave unset for a pure testing prototype.
-      # - key: SMTP_HOST
-      #   sync: false
-      # - key: SMTP_PORT
-      #   value: "587"
-      # - key: SMTP_USER
-      #   sync: false
-      # - key: SMTP_PASSWORD
-      #   sync: false
-    # NOTE: Render's free-tier filesystem is ephemeral. The SQLite file
-    # (gooddeeds.db) will reset on every redeploy or free-tier sleep/wake
-    # cycle. That's fine for short testing windows since init_db() reseeds
-    # data automatically. For persistence across sessions, upgrade to a paid
-    # plan and add a disk block here, e.g.:
-    # disk:
-    #   name: gooddeeds-data
-    #   mountPath: /var/data
-    # ...and point the app's DB path at /var/data/gooddeeds.db.
+      # Dispatches emails in a background thread so HTTP responses stay <15ms:
+      - key: EMAIL_ASYNC
+        value: "true"
+      # Populates rich showcase Spaces, Kudos & Posts idempotently on first boot:
+      - key: SEED_SHOWCASE_DATA
+        value: "true"
+      # Optional: set PUBLIC_BASE_URL=https://gooddeeds.space once custom domain DNS is live
+      # (until set, GoodDeeds.space automatically uses RENDER_EXTERNAL_URL / request Host):
+      - key: PUBLIC_BASE_URL
+        value: ""
     autoDeploy: true

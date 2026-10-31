@@ -4238,6 +4238,303 @@ class TestRegressionCoverage(GoodDeedsTestCase):
         self.assertEqual(st_ks, 200)
         self.assertIn(kudos_id, [it["id"] for it in res_ks["feed"]])
 
+    def test_live_email_transports_admin_test_endpoint_and_local_smtp_sink(self):
+        """
+        Verifies Live Email Sending Integration (Option 1 + Option 4 + Local Testing):
+        1. `.env` auto-loader (`load_dotenv_file`), `.env.example`, and `.gitignore` protection.
+        2. HTTPS REST API transports (`resend`, `brevo`, `postmark`) with RFC 8058
+           `List-Unsubscribe` + `List-Unsubscribe-Post: List-Unsubscribe=One-Click` headers.
+        3. Site Admin `POST /api/email/test` & `GET /api/email/status` RBAC (`401` anonymous,
+           `403` non-admin, `200` Site Admin) for both `live_diagnostic` and platform templates.
+        4. Real end-to-end TCP SMTP delivery via `scripts/local_smtp_sink.py` (`SENT_LIVE_SMTP`).
+        5. RFC 8058 server-to-server `POST /api/email/unsubscribe?token=...` without `Origin`.
+        6. Frontend Outbox Admin Live Test Email panel & TDZ-safe state declarations.
+        """
+        import tempfile
+        import threading
+        from unittest.mock import patch
+        import email_templates
+        import handlers
+        from scripts.local_smtp_sink import LocalSMTPSinkHandler, ReusableThreadingTCPServer
+
+        base_dir = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+
+        # 1. Verify .gitignore protects .env while keeping .env.example tracked
+        with open(os.path.join(base_dir, ".gitignore"), "r", encoding="utf-8") as fg:
+            gi_txt = fg.read()
+        self.assertIn(".env", gi_txt)
+        self.assertIn("!.env.example", gi_txt)
+        self.assertTrue(os.path.isfile(os.path.join(base_dir, ".env.example")))
+
+        with tempfile.NamedTemporaryFile("w", suffix=".env", delete=False, encoding="utf-8") as tf:
+            tf.write("# comment\nTEST_DOTENV_SAMPLE_VAR=\"hello_gooddeeds\"\nexport TEST_DOTENV_SECOND=42\n")
+            tmp_env_path = tf.name
+        try:
+            os.environ.pop("TEST_DOTENV_SAMPLE_VAR", None)
+            os.environ.pop("TEST_DOTENV_SECOND", None)
+            loaded = email_templates.load_dotenv_file(tmp_env_path)
+            self.assertEqual(loaded["TEST_DOTENV_SAMPLE_VAR"], "hello_gooddeeds")
+            self.assertEqual(os.environ.get("TEST_DOTENV_SAMPLE_VAR"), "hello_gooddeeds")
+            self.assertEqual(os.environ.get("TEST_DOTENV_SECOND"), "42")
+        finally:
+            os.environ.pop("TEST_DOTENV_SAMPLE_VAR", None)
+            os.environ.pop("TEST_DOTENV_SECOND", None)
+            if os.path.exists(tmp_env_path):
+                os.unlink(tmp_env_path)
+
+        # 2. Verify RBAC on POST /api/email/test & safe diagnostics on GET /api/email/status
+        st_anon, _, _ = self.make_request("POST", "/api/email/test", body={"recipient_email": "check@example.com"})
+        self.assertEqual(st_anon, 401)
+
+        arthur_tok = self.get_token("arthur@gooddeeds.space")
+        arthur_hdr = self.get_auth_headers(arthur_tok)
+        st_non_admin, _, body_non_admin = self.make_request(
+            "POST", "/api/email/test", headers=arthur_hdr, body={"recipient_email": "check@example.com"}
+        )
+        self.assertEqual(st_non_admin, 403)
+        self.assertIn("Site Admin", body_non_admin.get("error", ""))
+
+        maya_tok = self.get_token("maya@gooddeeds.space")
+        maya_hdr = self.get_auth_headers(maya_tok)
+
+        # 3. Verify HTTPS REST API transport (Resend, Brevo, Postmark) via Admin Test Endpoint
+        captured_http = []
+
+        class _DummyResp:
+            status = 200
+            def __enter__(self):
+                return self
+            def __exit__(self, *args):
+                return False
+            def read(self):
+                return b'{"id":"msg_test_123"}'
+
+        def _fake_urlopen(req, timeout=12):
+            captured_http.append({
+                "url": req.full_url,
+                "headers": {k.lower(): v for k, v in req.header_items()},
+                "payload": json.loads(req.data.decode("utf-8")),
+            })
+            return _DummyResp()
+
+        with patch.dict(
+            os.environ,
+            {
+                "EMAIL_PROVIDER": "resend",
+                "RESEND_API_KEY": "re_secret_unit_test_key",
+                "SMTP_FROM_EMAIL": "notifications@gooddeeds.space",
+                "SMTP_FROM_NAME": "GoodDeeds.space",
+                "PUBLIC_BASE_URL": "https://gooddeeds.space",
+            },
+            clear=False,
+        ):
+            st_stat, _, res_stat = self.make_request("GET", "/api/email/status", headers=maya_hdr)
+            self.assertEqual(st_stat, 200)
+            self.assertEqual(res_stat["transport"]["provider"], "resend")
+            self.assertTrue(res_stat["transport"]["live_configured"])
+            # Ensure raw secret key is NEVER leaked in status payload
+            self.assertNotIn("re_secret_unit_test_key", json.dumps(res_stat))
+
+            with patch("urllib.request.urlopen", side_effect=_fake_urlopen):
+                st_t1, _, res_t1 = self.make_request(
+                    "POST",
+                    "/api/email/test",
+                    headers=maya_hdr,
+                    body={"recipient_email": "inbox-check@example.com", "template_key": "kudos_received"},
+                )
+                self.assertEqual(st_t1, 200)
+                self.assertTrue(res_t1["sent_live"])
+                self.assertEqual(res_t1["status"], "SENT_LIVE_RESEND")
+                self.assertEqual(res_t1["provider"], "resend")
+
+            self.assertEqual(len(captured_http), 1)
+            sent_req = captured_http[0]
+            self.assertEqual(sent_req["url"], "https://api.resend.com/emails")
+            self.assertEqual(sent_req["headers"].get("authorization"), "Bearer re_secret_unit_test_key")
+            self.assertEqual(sent_req["payload"]["to"], ["inbox-check@example.com"])
+            self.assertTrue(sent_req["payload"]["subject"].startswith("[TEST]"))
+            self.assertIn("<!DOCTYPE html>", sent_req["payload"]["html"])
+            # RFC 8058 One-Click Unsubscribe headers present & converted to /api/email/unsubscribe
+            self.assertIn("/api/email/unsubscribe?", sent_req["payload"]["headers"]["List-Unsubscribe"])
+            self.assertEqual(sent_req["payload"]["headers"]["List-Unsubscribe-Post"], "List-Unsubscribe=One-Click")
+
+        # Verify Brevo & Postmark providers as well
+        for prov_name, env_key, expected_url, expected_status in (
+            ("brevo", "BREVO_API_KEY", "https://api.brevo.com/v3/smtp/email", "SENT_LIVE_BREVO"),
+            ("postmark", "POSTMARK_SERVER_TOKEN", "https://api.postmarkapp.com/email", "SENT_LIVE_POSTMARK"),
+        ):
+            captured_http.clear()
+            with patch.dict(os.environ, {"EMAIL_PROVIDER": prov_name, env_key: "tok_test_999"}, clear=False):
+                with patch("urllib.request.urlopen", side_effect=_fake_urlopen):
+                    diag_p = handlers.send_email_with_diagnostics(
+                        recipient_email="member@example.com",
+                        subject="Provider Check",
+                        text_body="Plain body",
+                        html_body="<html><body>HTML body</body></html>",
+                        force_sync=True,
+                    )
+                    self.assertEqual(diag_p["status"], expected_status)
+                    self.assertEqual(captured_http[0]["url"], expected_url)
+
+        # 4. Real TCP Local SMTP Sink end-to-end wire verification
+        import email
+        from email import policy as email_policy
+        received_parsed_messages = []
+
+        class _CapturingSinkHandler(LocalSMTPSinkHandler):
+            @staticmethod
+            def _print_captured_email(mail_from, rcpt_tos, raw_msg):
+                parsed_msg = email.message_from_bytes(raw_msg, policy=email_policy.default)
+                html_part = parsed_msg.get_body(preferencelist=("html",))
+                html_decoded = html_part.get_content() if html_part else ""
+                received_parsed_messages.append((mail_from, list(rcpt_tos), parsed_msg.get("Subject", ""), html_decoded))
+
+        with ReusableThreadingTCPServer(("127.0.0.1", 0), _CapturingSinkHandler) as smtp_srv:
+            ephemeral_port = smtp_srv.server_address[1]
+            srv_thread = threading.Thread(target=smtp_srv.serve_forever, daemon=True)
+            srv_thread.start()
+            try:
+                with patch.dict(
+                    os.environ,
+                    {
+                        "EMAIL_PROVIDER": "smtp",
+                        "SMTP_HOST": "127.0.0.1",
+                        "SMTP_PORT": str(ephemeral_port),
+                        "SMTP_TLS": "false",
+                        "RESEND_API_KEY": "",
+                    },
+                    clear=False,
+                ):
+                    st_smtp, _, res_smtp = self.make_request(
+                        "POST",
+                        "/api/email/test",
+                        headers=maya_hdr,
+                        body={"recipient_email": "local-dev@example.com", "template_key": "live_diagnostic"},
+                    )
+                    self.assertEqual(st_smtp, 200)
+                    self.assertTrue(res_smtp["sent_live"])
+                    self.assertEqual(res_smtp["status"], "SENT_LIVE_SMTP")
+            finally:
+                smtp_srv.shutdown()
+
+        self.assertEqual(len(received_parsed_messages), 1)
+        _, rcpts, decoded_subj, decoded_html = received_parsed_messages[0]
+        self.assertTrue(any("local-dev@example.com" in r for r in rcpts))
+        self.assertIn("Live Email Delivery Verification", decoded_subj)
+        self.assertIn("Your Email Integration Is Working!", decoded_html)
+
+        # 5. RFC 8058 server-to-server One-Click Unsubscribe POST without Origin/Referer header
+        conn = handlers.get_db()
+        arthur_unsub_tok = handlers.ensure_user_unsubscribe_token(conn, 4)
+        conn.commit()
+        conn.close()
+        rfc_status, _, rfc_raw = handlers.handle_api_request(
+            "POST",
+            f"/api/email/unsubscribe?token={arthur_unsub_tok}&category=digest",
+            {"Host": "localhost:8080", "Content-Type": "application/x-www-form-urlencoded"},
+            b"List-Unsubscribe=One-Click",
+        )
+        self.assertEqual(rfc_status, 200)
+        rfc_data = json.loads(rfc_raw)
+        self.assertTrue(rfc_data["success"])
+        self.assertFalse(rfc_data["email_prefs"]["digest"])
+
+        # 6. Frontend Outbox Admin Test Panel & TDZ state checks
+        with open(os.path.join(base_dir, "static", "index.html"), "r", encoding="utf-8") as fh:
+            html = fh.read()
+        with open(os.path.join(base_dir, "static", "app.js"), "r", encoding="utf-8") as fj:
+            js = fj.read()
+
+        for elem_id in (
+            'id="btn-toggle-test-email-panel"',
+            'id="outbox-transport-status-bar"',
+            'id="outbox-admin-test-panel"',
+            'id="test-email-recipient"',
+            'id="test-email-template-select"',
+            'id="btn-send-live-test-email"',
+            'id="test-email-result-banner"',
+        ):
+            self.assertIn(elem_id, html)
+
+        init_idx = js.find("async function initApp()")
+        for decl in (
+            "let adminTestEmailPanelOpen = false;",
+            "let lastEmailTransportStatus = null;",
+        ):
+            d_idx = js.find(decl)
+            self.assertNotEqual(d_idx, -1)
+            self.assertLess(d_idx, init_idx)
+
+        self.assertIn("window.toggleAdminTestEmailPanel = toggleAdminTestEmailPanel", js)
+        self.assertIn("window.handleSendAdminTestEmail = handleSendAdminTestEmail", js)
+
+    def test_seed_demo_showcase_idempotency_and_deep_attachment_search(self):
+        """
+        Verifies scripts/seed_demo_showcase.py populates rich synthetic Kudos, Posts,
+        Spaces, downloadable Base64 attachments (indexed for deep search), and Chat Board
+        messages idempotently without creating duplicates on repeated runs.
+        """
+        from scripts.seed_demo_showcase import seed_showcase
+        import handlers
+
+        seed_showcase()
+        conn = handlers.get_db()
+        first_counts = (
+            conn.execute("SELECT COUNT(*) FROM users").fetchone()[0],
+            conn.execute("SELECT COUNT(*) FROM groups").fetchone()[0],
+            conn.execute("SELECT COUNT(*) FROM feed_items").fetchone()[0],
+            conn.execute("SELECT COUNT(*) FROM group_messages").fetchone()[0],
+        )
+        conn.close()
+
+        # Run a second time to verify strict idempotency
+        seed_showcase()
+        conn = handlers.get_db()
+        second_counts = (
+            conn.execute("SELECT COUNT(*) FROM users").fetchone()[0],
+            conn.execute("SELECT COUNT(*) FROM groups").fetchone()[0],
+            conn.execute("SELECT COUNT(*) FROM feed_items").fetchone()[0],
+            conn.execute("SELECT COUNT(*) FROM group_messages").fetchone()[0],
+        )
+        conn.close()
+        self.assertEqual(first_counts, second_counts)
+        self.assertGreaterEqual(first_counts[0], 8)
+        self.assertGreaterEqual(first_counts[1], 8)
+        self.assertGreaterEqual(first_counts[2], 20)
+
+        # Verify deep Base64 attachment text indexing (`vagal nerve` only inside attached .txt)
+        st_s, _, res_s = self.make_request("GET", "/api/feed?search=vagal%20nerve")
+        self.assertEqual(st_s, 200)
+        self.assertGreaterEqual(len(res_s.get("feed", [])), 1)
+
+        # Verify Render + Resend production blueprint & RENDER_EXTERNAL_URL fallback
+        from unittest.mock import patch
+        import email_templates
+
+        base_dir = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+        with open(os.path.join(base_dir, "render.yaml"), "r", encoding="utf-8") as fr:
+            render_yaml = fr.read()
+        self.assertIn("mountPath: /var/data", render_yaml)
+        self.assertIn("value: /var/data/gooddeeds.db", render_yaml)
+        self.assertIn("value: resend", render_yaml)
+        self.assertIn("key: RESEND_API_KEY", render_yaml)
+        self.assertIn("sync: false", render_yaml)
+        self.assertNotIn("re_", render_yaml)  # Never hardcode API keys in render.yaml
+
+        with open(os.path.join(base_dir, "requirements.txt"), "r", encoding="utf-8") as fq:
+            req_txt = fq.read()
+        self.assertIn("fido2>=2.0.0,<3.0.0", req_txt)
+
+        with patch.dict(
+            os.environ,
+            {"PUBLIC_BASE_URL": "", "APP_BASE_URL": "", "RENDER_EXTERNAL_URL": "https://gooddeeds-space.onrender.com/"},
+            clear=False,
+        ):
+            self.assertEqual(email_templates.get_public_base_url(), "https://gooddeeds-space.onrender.com")
+
+
+
+
 
 
 
