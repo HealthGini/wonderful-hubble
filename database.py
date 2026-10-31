@@ -195,6 +195,9 @@ def init_db():
         is_banned INTEGER DEFAULT 0,
         oauth_provider TEXT NULL,
         oauth_id TEXT NULL,
+        email_verified INTEGER DEFAULT 0,
+        email_prefs TEXT NULL,
+        unsubscribe_token TEXT NULL,
         created_at DATETIME DEFAULT CURRENT_TIMESTAMP
     )
     """)
@@ -212,6 +215,18 @@ def init_db():
         pass
     try:
         cursor.execute("ALTER TABLE users ADD COLUMN oauth_id TEXT")
+    except Exception:
+        pass
+    try:
+        cursor.execute("ALTER TABLE users ADD COLUMN email_verified INTEGER DEFAULT 0")
+    except Exception:
+        pass
+    try:
+        cursor.execute("ALTER TABLE users ADD COLUMN email_prefs TEXT")
+    except Exception:
+        pass
+    try:
+        cursor.execute("ALTER TABLE users ADD COLUMN unsubscribe_token TEXT")
     except Exception:
         pass
 
@@ -278,11 +293,16 @@ def init_db():
         group_id INTEGER NOT NULL,
         user_id INTEGER NOT NULL,
         message TEXT NOT NULL,
+        is_broadcast INTEGER DEFAULT 0,
         created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
         FOREIGN KEY (group_id) REFERENCES groups(id) ON DELETE CASCADE,
         FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
     )
     """)
+    try:
+        cursor.execute("ALTER TABLE group_messages ADD COLUMN is_broadcast INTEGER DEFAULT 0")
+    except Exception:
+        pass
 
     cursor.execute("""
     CREATE TABLE IF NOT EXISTS feed_items (
@@ -390,8 +410,35 @@ def init_db():
         recipient_email TEXT NOT NULL,
         subject TEXT NOT NULL,
         body TEXT NOT NULL,
+        html_body TEXT,
+        template_key TEXT DEFAULT 'general',
+        reply_to TEXT,
         sent_at DATETIME DEFAULT CURRENT_TIMESTAMP,
         status TEXT DEFAULT 'SENT'
+    )
+    """)
+    try:
+        cursor.execute("ALTER TABLE email_outbox ADD COLUMN html_body TEXT")
+    except Exception:
+        pass
+    try:
+        cursor.execute("ALTER TABLE email_outbox ADD COLUMN template_key TEXT DEFAULT 'general'")
+    except Exception:
+        pass
+    try:
+        cursor.execute("ALTER TABLE email_outbox ADD COLUMN reply_to TEXT")
+    except Exception:
+        pass
+
+    cursor.execute("""
+    CREATE TABLE IF NOT EXISTS auth_email_tokens (
+        token TEXT PRIMARY KEY,
+        user_id INTEGER NOT NULL,
+        token_type TEXT NOT NULL,
+        expires_at DATETIME NOT NULL,
+        used INTEGER DEFAULT 0,
+        created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+        FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
     )
     """)
 
@@ -617,6 +664,7 @@ def init_db():
             cleaned_c = re.sub(r'^📅\s*Event Date:[^\n]*\n+', '', str(r["content"] or "")).strip()
             if cleaned_c and cleaned_c != r["content"]:
                 cursor.execute("UPDATE feed_items SET content = ? WHERE id = ?", (cleaned_c, r["id"]))
+        cursor.execute("UPDATE users SET email_verified = 1 WHERE email IN ('maya@gooddeeds.space', 'marcus@gooddeeds.space', 'elena@gooddeeds.space', 'arthur@gooddeeds.space') AND COALESCE(email_verified, 0) = 0")
     except Exception:
         pass
 

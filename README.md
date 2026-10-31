@@ -3,7 +3,7 @@
 GoodDeeds.space is a community-focused web application designed to promote goodness, build meaningful connections, and facilitate mutual aid. With a warm, accessible, and senior-friendly design philosophy, it connects volunteers, organizers, and neighbors to support each other.
 
 ## 📊 Verification & Test Status
-- **149/149** Automated Unit, Integration & UI Regression Tests Passing 100% OK (`./run_tests.sh`).
+- **156/156** Automated Unit, Integration & UI Regression Tests Passing 100% OK (`./run_tests.sh`).
 - Zero external framework bloat: Pure Python standard-library HTTP server + SQLite backend with a responsive Tailwind CSS Single-Page Application (SPA).
 
 ---
@@ -16,15 +16,15 @@ The core mission of GoodDeeds.space is to encourage small acts of kindness that 
 *   **Low Barrier to Entry**: Simple workflows for posting help requests, sharing inspiring stories, and giving thanks (Kudos).
 
 ### Core Capabilities
-- **Unified Social Feed & Multi-Tag Posts**: A merged stream of **Kudos** (appreciation) and **Posts** sorted using a "smart sort" algorithm. Posts support multi-select types (**General Posts**, **Community Events**, **Community Resources** — e.g., `GENERAL,RESOURCE` or `EVENT,RESOURCE`) with a non-intrusive smart nudge when links or files are attached.
+- **Unified Social Feed, Full-Page Post Composer & Multi-Tag Posts**: A merged stream of **Kudos** (appreciation) and **Posts** sorted using a "smart sort" algorithm. Creating a post opens a spacious, context-aware **Full-Page Composer (`/#/create-post`)** with a 2-step preview & verification flow, multi-select post types (**General Posts**, **Community Events**, **Community Resources** — e.g., `GENERAL,RESOURCE` or `EVENT,RESOURCE`), and a non-intrusive smart nudge when links or files are attached.
 - **Conversational Chat Search (`💬 Ask in Chat` ↔ `🔍 Search Controls`)**: Prominent top-bar search & discovery hub on both the Home/Landing page and Community Feed allowing users to search with full-width keyword/filter controls or ask questions in plain English. Powered by a **hybrid search engine**: built-in zero-config local NLU (`local_nlu`) with domain synonyms, extracted PDF/attachment text indexing, and multi-turn pronoun follow-ups, plus automatic upgrade to grounded Gemini RAG (`gemini_rag`) when `GEMINI_API_KEY` is configured.
-- **Rich Text Formatting, Hyperlinks & Collapsible Long Posts**: Built-in formatting toolbar (bold, italic, underline, headings, bulleted/numbered lists, blockquotes, link insertion, and live `Write / Preview` tabs), safe auto-linkification of URLs and emails, and automatic `"Click here to see the full text ↓"` / `"Show less ↑"` collapsible previews for long posts.
-- **Spaces**: Dedicated sub-communities with separated **📝 Posts**, **📅 Events**, **📚 Resources**, and **💬 Chat Board** tabs, an optional toggleable Events Calendar (hidden by default for clean focus), Space Admin editing, and bulk/single email invitations.
-- **Real-Time In-App Notifications**: Bell dropdown with live unread badges, 15-second background polling, and instant toast alerts for new Kudos, Comments, and Space Invitations.
-- **Multi-Modal Authentication**: Support for WebAuthn Passkeys (`fido2`), Google OAuth 2.0, and standard Email/Username + Password sessions.
+- **Rich Text Formatting on Both Kudos & Posts**: Built-in formatting toolbar (bold, italic, underline, headings, bulleted/numbered lists, blockquotes, inline `🔗 Add Link` insertion, keyboard shortcuts `Ctrl+B/I/U/K`, and live `✏️ Write` / `👁️ Preview` tabs) available when writing **both Public Kudos and Community Posts**, plus safe auto-linkification of URLs/emails and collapsible `"Click here to see the full text ↓"` previews for long posts.
+- **Spaces & Hybrid Chat Board Notifications**: Dedicated sub-communities with separated **📝 Posts**, **📅 Events**, **📚 Resources**, and **💬 Chat Board** tabs, an optional toggleable Events Calendar (hidden by default for clean focus), Space Admin editing, and a **Hybrid Space Chat Email System** (`@username` direct mention emails, an open `📢 Also email all Space members` broadcast toggle for joined Space members with anti-spam rate limiting, and opt-in 6-hour-cooldown passive chat alerts).
+- **Branded Multipart Email System (22 Scenarios) & Preferences**: Responsive HTML + plain-text email templates covering **22 lifecycle, community, governance, safety, and digest scenarios**, complete with per-category **Email Notification Preferences**, **1-click Unsubscribe** (`RFC 8058` `List-Unsubscribe`), and an interactive **Outbox & Template Gallery (`/#/outbox`)**.
+- **Real-Time In-App Notifications**: Bell dropdown with live unread badges, 15-second background polling, and instant toast alerts for new Kudos, Comments, Chat Mentions/Broadcasts, and Space Invitations.
+- **Multi-Modal Authentication & Account Recovery**: Support for WebAuthn Passkeys (`fido2`), Google OAuth 2.0, Email/Username + Password sessions, Email Verification, and self-service Forgot/Reset Password flows.
 - **Three-Tiered Moderation & Safety System**: Direct Admin Controls, Community Content Reporting & Admin Moderation Queue (`/#/moderation`), and Automated Server-Side Safety Guardrails.
 - **Google Analytics (GA4)**: Integrated SPA pageview and custom event tracking (`gtag.js` + `window.dataLayer`).
-- **Simulated & Real Communications**: Integrated email notifications for Kudos, Space invitations, and platform invitations, with a built-in outbox viewer for testing.
 
 ---
 
@@ -33,11 +33,12 @@ The core mission of GoodDeeds.space is to encourage small acts of kindness that 
 The application is built on the Python 3.13 standard library and uses SQLite for data persistence.
 
 ```
-├── database.py         # Database schema, initialization, and demo data seeding
-├── handlers.py         # Core API request handlers, conversational search, auth, and moderation
+├── database.py         # Database schema, migrations, initialization, and demo data seeding
+├── email_templates.py  # Branded HTML + plain-text email builders (22 scenarios) & preference helpers
+├── handlers.py         # Core API request handlers, conversational search, auth, email, and moderation
 ├── server.py           # Threaded HTTP server routing API and serving static files
 ├── run.sh              # Shell script to start the server
-├── run_tests.sh        # Shell script to run the automated test suite (149 tests)
+├── run_tests.sh        # Shell script to run the automated test suite (156 tests)
 ├── static/             # Frontend assets
 │   ├── index.html      # Single Page Application (SPA) entry point
 │   ├── app.js          # Frontend application logic (vanilla JS)
@@ -51,14 +52,15 @@ The application is built on the Python 3.13 standard library and uses SQLite for
     ├── test_groups.py  # Space management, chat, and resources tests
     ├── test_invitations.py # Space invitations flow tests
     ├── test_spotlight.py # Spotlight and rotation tests
-    ├── test_regression_coverage.py # Comprehensive UI, NLU chat search & security regression tests
+    ├── test_regression_coverage.py # Comprehensive UI, NLU chat search, email & security regression tests
     └── test_suite.py   # Test suite runner and discoverer
 ```
 
 ### Component Roles
 *   **`server.py`**: Listens on a specified port (default 8080). Routes requests starting with `/api/` to `handlers.handle_api_request` and serves static files from the `static/` directory for other requests.
-*   **`database.py`**: Manages the SQLite database (`gooddeeds.db`). Defines the schema (15+ tables including `group_bans` and `content_reports`) and populates realistic demo data on the first run.
-*   **`handlers.py`**: Parses incoming HTTP requests, performs authentication checks, executes database queries, runs hybrid conversational search (`run_conversational_search`), enforces automated safety guardrails (`check_content_moderation`), handles simulated/real email delivery, and returns JSON responses.
+*   **`database.py`**: Manages the SQLite database (`gooddeeds.db`). Defines the schema (including `auth_tokens`, `group_bans`, `content_reports`, and `email_outbox`) and populates realistic demo data on the first run.
+*   **`email_templates.py`**: Renders XSS-safe, responsive branded HTML and plain-text multipart emails across all **22 platform scenarios**, manages per-user notification preference defaults (`DEFAULT_EMAIL_PREFS`), and powers the live Template Gallery.
+*   **`handlers.py`**: Parses incoming HTTP requests, performs authentication checks, executes database queries, runs hybrid conversational search (`run_conversational_search`), enforces automated safety guardrails (`check_content_moderation`), dispatches multipart SMTP / outbox emails (`send_email`), and returns JSON responses.
 *   **`static/`**: A pure HTML5/CSS3/Vanilla JS single-page application (SPA).
 
 ---
@@ -82,6 +84,7 @@ You can configure the server using the following environment variables:
 | :--- | :--- | :--- |
 | `PORT` | Port number the HTTP server listens on | `8080` |
 | `DB_PATH` | Path to the SQLite database file | `gooddeeds.db` (next to script) |
+| `APP_BASE_URL` | Public base URL used for deep links in verification, password reset, digest, and unsubscribe emails | `http://localhost:8080` |
 | `GEMINI_API_KEY` | Optional Gemini API key enabling grounded `gemini-2.5-flash` RAG synthesis in `/api/chat_search` (falls back automatically to built-in `local_nlu` when unset) | *None* |
 | `SUPPORT_ALERT_EMAIL` | Destination email for customer support inquiry alerts | `support@gooddeeds.space` |
 | `SMTP_HOST` | Hostname of the live SMTP server (optional) | *None* |
@@ -232,8 +235,14 @@ Terminates the current session. Requires authentication.
 *   **Response (200 OK)**: `{"success": true}`
 
 #### `GET /api/auth/me`
-Retrieves details of the currently authenticated user. Requires authentication.
+Retrieves details of the currently authenticated user (including `email_verified` and `email_prefs`). Requires authentication.
 *   **Response (200 OK)**: `{"user": { ... }}`
+
+#### `POST /api/auth/verify_email` & `POST /api/auth/resend_verification`
+Verifies a user's email address using a single-use token (`{"token": "..."}`), or resends a fresh verification link for the authenticated user.
+
+#### `POST /api/auth/forgot_password` & `POST /api/auth/reset_password`
+Initiates a privacy-preserving password reset email (`{"email": "..."}`) and completes password recovery with a time-limited token (`{"token": "...", "new_password": "..."}`), invalidating existing sessions and dispatching a security confirmation alert.
 
 ---
 
@@ -358,7 +367,10 @@ Kicks or bans a member from a Space (`{"user_id": 3, "ban": true, "reason": "...
 Adds curated resources to a Space. Requires Space Admin privileges.
 
 #### `POST /api/groups/<id>/chat` & `DELETE /api/groups/<id>/chat/<mid>`
-Posts or deletes a message on the Space's Chat Board.
+Posts or deletes a message on the Space's Chat Board. Supports hybrid email routing:
+*   Direct `@username` mentions send an immediate `space_chat_mention` email + in-app notification to the mentioned user.
+*   Joined Space members (and Site Admins) can pass `"broadcast_email": true` (`📢 Also email all Space members`) to send a `space_chat_broadcast` email to Space members (rate-limited to 3 broadcasts per 5 minutes per Space).
+*   Members who opt into `chat_activity` receive passive chat notifications throttled by a 6-hour per-Space cooldown.
 
 ---
 
@@ -401,24 +413,40 @@ Lists open community content reports and resolves them via `dismiss`, `delete_co
 
 ---
 
-## Simulated Audit Logs & Support
+### Email Preferences, Unsubscribe, Digest & Template Gallery Endpoints
 
-### Simulated Outbox (`/#/outbox`)
-Since SMTP servers might not be configured in local development, all emails sent by the system (kudos notifications, Space invitations, support confirmations) are logged to the `email_outbox` table.
-*   **API**: `GET /api/outbox`
-*   **UI Access**: Navigate to `/#/outbox` in the application to view the simulated outgoing mail log. This is useful for verifying invitations and notifications without live SMTP setup.
+#### `GET /api/email/preferences` & `PUT /api/email/preferences`
+Retrieves or updates the authenticated user's granular email notification preferences (`kudos`, `comments`, `invites`, `space_updates`, `chat_mentions`, `chat_activity`, `digest`). Security and transactional account emails remain active regardless of marketing/community toggles.
+
+#### `POST /api/email/unsubscribe`
+1-click token-based unsubscribe endpoint (`{"token": "...", "category": "digest|kudos|comments|invites|space_updates|chat_mentions|chat_activity|all"}`) powering email footer links and `RFC 8058` `List-Unsubscribe` headers without requiring an active login session.
+
+#### `POST /api/email/send_digest`
+Generates and sends a personalized Weekly Community Digest email summarizing recent Kudos, Posts, Upcoming Events, and Space Chat Board activity across the user's joined Spaces (Site Admins can pass `{"all_users": true}` to dispatch digests across eligible opted-in members).
+
+#### `GET /api/email/templates`
+Returns rendered HTML and plain-text previews for all **22 GoodDeeds.space email scenarios** powering the `/#/outbox?tab=templates` gallery.
+
+---
+
+## Simulated Audit Logs, Template Gallery & Support
+
+### Email Outbox & 22-Scenario Template Gallery (`/#/outbox`)
+All outgoing multipart emails (HTML + plain text, template key, category, and optional `Reply-To`) are logged to `email_outbox` for instant local verification alongside optional live SMTP delivery.
+*   **APIs**: `GET /api/outbox` and `GET /api/email/templates`
+*   **UI Access**: Navigate to `/#/outbox` to inspect sent/triggered emails with live HTML iframe previews, or switch to **📚 All Email Templates Gallery (22 Scenarios)** (`/#/outbox?tab=templates`) to preview every transactional, community, Space Chat, governance, moderation, and digest template.
 
 ### Customer Support Portal
 Users can submit inquiries which log to `customer_service_inquiries`.
 *   **Submit API**: `POST /api/support`
 *   **View API (Admin)**: `GET /api/support`
-*   On submission, a confirmation email is sent to the user, and an alert email is sent to `SUPPORT_ALERT_EMAIL` (defaulting to `support@gooddeeds.space`, both visible in the Simulated Outbox).
+*   On submission, a branded confirmation receipt is emailed to the user, and an admin ticket alert (with `Reply-To` set directly to the member's email address) is sent to `SUPPORT_ALERT_EMAIL` (defaulting to `support@gooddeeds.space`).
 
 ---
 
 ## Running the Testing Suite
 
-The testing suite verifies all 149 unit, API integration, and UI regression tests using isolated temporary databases.
+The testing suite verifies all 156 unit, API integration, and UI regression tests using isolated temporary databases.
 
 ### Running with the Helper Script
 Ensure the script is executable, then run it:
@@ -531,9 +559,22 @@ CREATE TABLE users (
     bio TEXT,
     is_site_admin TINYINT DEFAULT 0,
     is_banned TINYINT DEFAULT 0,
+    email_verified TINYINT DEFAULT 0,
+    email_prefs TEXT,
+    unsubscribe_token VARCHAR(255),
     oauth_provider VARCHAR(50),
     oauth_id VARCHAR(255),
     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
+
+CREATE TABLE auth_tokens (
+    token VARCHAR(255) PRIMARY KEY,
+    user_id INT NOT NULL,
+    token_type VARCHAR(50) NOT NULL,
+    expires_at DATETIME NOT NULL,
+    used TINYINT DEFAULT 0,
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
 
 CREATE TABLE sessions (
@@ -591,6 +632,7 @@ CREATE TABLE group_messages (
     group_id INT NOT NULL,
     user_id INT NOT NULL,
     message TEXT NOT NULL,
+    is_broadcast TINYINT DEFAULT 0,
     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
     FOREIGN KEY (group_id) REFERENCES groups(id) ON DELETE CASCADE,
     FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
@@ -663,6 +705,10 @@ CREATE TABLE email_outbox (
     recipient_email VARCHAR(255) NOT NULL,
     subject VARCHAR(255) NOT NULL,
     body TEXT NOT NULL,
+    html_body MEDIUMTEXT,
+    template_key VARCHAR(100),
+    category VARCHAR(100),
+    reply_to VARCHAR(255),
     sent_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
     status VARCHAR(50) DEFAULT 'SENT'
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
@@ -751,7 +797,7 @@ def migrate():
 
     # Tables in order of migration to respect foreign key constraints
     tables = [
-        "users", "groups", "sessions", "group_members", "group_bans", "group_resources",
+        "users", "groups", "sessions", "auth_tokens", "group_members", "group_bans", "group_resources",
         "group_messages", "feed_items", "item_groups", "reactions", "comments",
         "content_reports", "email_outbox", "customer_service_inquiries", "group_invitations"
     ]

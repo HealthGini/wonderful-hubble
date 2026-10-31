@@ -301,6 +301,18 @@ let isChatSubmitting = { feed: false, landing: false };
 let feedSearchDebounceTimer = null;
 let landingSearchDebounceTimer = null;
 
+// Email Workflows & Outbox Preview State (declared before startup to prevent TDZ errors)
+let pendingPasswordResetToken = "";
+let currentOutboxMode = "logs";
+let emailTemplatesCache = [];
+window._outboxHtmlCache = {};
+
+// Full-Page Post Composer & Kudos Rich Editor State (declared before startup to prevent TDZ errors)
+let postComposerReturnHash = "#/feed";
+let postComposerOriginGroupId = null;
+let pendingGroupTab = null;
+let _kudosSavedLinkSelection = { start: 0, end: 0 };
+
 /* ================= INITIALIZATION & ROUTING ================= */
 
 async function initApp() {
@@ -453,6 +465,7 @@ function setupEventListeners() {
   });
 
   initPostRichEditor();
+  initKudosRichEditor();
 }
 
 function trackAnalyticsPageView(pagePath) {
@@ -478,7 +491,10 @@ async function handleRoute() {
     try { await sessionPromise; } catch (_) {}
   }
   const hash = window.location.hash || "#/";
-  const path = hash.replace("#", "").split("?")[0];
+  const rawRoute = hash.replace(/^#/, "");
+  const qIdx = rawRoute.indexOf("?");
+  const path = qIdx === -1 ? rawRoute : rawRoute.slice(0, qIdx);
+  const hashParams = new URLSearchParams(qIdx === -1 ? "" : rawRoute.slice(qIdx + 1));
 
   trackAnalyticsPageView(path);
   hideAllViews();
@@ -530,7 +546,42 @@ async function handleRoute() {
     loadUserProfile(targetId);
   } else if (path === "/outbox") {
     showView("view-outbox");
-    loadOutbox();
+    const reqTab = hashParams.get("tab");
+    switchOutboxMode(reqTab === "templates" ? "templates" : currentOutboxMode);
+  } else if (path === "/reset-password") {
+    pendingPasswordResetToken = (hashParams.get("token") || "").trim();
+    if (currentUser) {
+      showView("view-feed");
+      loadFeed();
+    } else {
+      showView("view-landing");
+      loadLandingPreview();
+    }
+    if (pendingPasswordResetToken) {
+      openModal("modal-reset-password");
+    } else {
+      showToast("❌ Missing password reset token. Please request a fresh link.");
+      openModal("modal-forgot-password");
+    }
+  } else if (path === "/verify-email") {
+    const vTok = (hashParams.get("token") || "").trim();
+    await processEmailVerificationRoute(vTok);
+  } else if (path === "/unsubscribe") {
+    const uTok = (hashParams.get("token") || "").trim();
+    const uCat = (hashParams.get("category") || "all").trim();
+    await processUnsubscribeRoute(uTok, uCat);
+  } else if (path === "/create-post") {
+    if (!currentUser) {
+      showToast("Please log in to share posts.");
+      navigateTo("/");
+      openModal("modal-login");
+      return;
+    }
+    const qGroupId = hashParams.get("group_id");
+    postComposerOriginGroupId = (qGroupId && !isNaN(parseInt(qGroupId))) ? parseInt(qGroupId) : null;
+    const qSubtype = (hashParams.get("subtype") || "").trim().toUpperCase();
+    showView("view-create-post");
+    populatePostModal(qSubtype || null, postComposerOriginGroupId);
   } else if (path === "/moderation") {
     showView("view-moderation");
     loadModerationQueue();
@@ -556,7 +607,7 @@ function navigateTo(route) {
 }
 
 function hideAllViews() {
-  const views = ["view-landing", "view-feed", "view-single-item", "view-groups", "view-group-detail", "view-profile", "view-outbox", "view-moderation", "view-code", "view-spotlight"];
+  const views = ["view-landing", "view-feed", "view-single-item", "view-groups", "view-group-detail", "view-profile", "view-outbox", "view-moderation", "view-code", "view-spotlight", "view-create-post"];
   views.forEach(id => {
     const el = document.getElementById(id);
     if (el) el.classList.add("hidden");
@@ -590,15 +641,48 @@ function showView(viewId) {
   window.scrollTo({ top: 0, behavior: "smooth" });
 }
 
+function openCreatePostPage(options = {}) {
+  if (!currentUser) {
+    showToast("Please log in to share posts.");
+    openModal("modal-login");
+    return;
+  }
+  const curHash = window.location.hash || "#/feed";
+  if (!curHash.startsWith("#/create-post")) {
+    postComposerReturnHash = curHash;
+  }
+  let groupId = options.groupId !== undefined ? options.groupId : null;
+  if (!groupId && curHash.startsWith("#/group/")) {
+    const parsed = parseInt(curHash.replace("#/group/", "").split("/")[0].split("?")[0]);
+    if (!isNaN(parsed)) groupId = parsed;
+  }
+  const subtype = (options.subtype || window._pendingPostSubtype || "").trim().toUpperCase();
+  window._pendingPostSubtype = null;
+  const params = new URLSearchParams();
+  if (groupId) params.set("group_id", String(groupId));
+  if (subtype && subtype !== "GENERAL") params.set("subtype", subtype);
+  const qs = params.toString();
+  navigateTo(qs ? `/create-post?${qs}` : "/create-post");
+}
+window.openCreatePostPage = openCreatePostPage;
+
+function cancelCreatePost() {
+  const fallback = postComposerOriginGroupId ? `/group/${postComposerOriginGroupId}` : "/feed";
+  const target = (postComposerReturnHash && !postComposerReturnHash.startsWith("#/create-post"))
+    ? postComposerReturnHash
+    : fallback;
+  navigateTo(target);
+}
+window.cancelCreatePost = cancelCreatePost;
+
 function openModal(modalId) {
   if (modalId === "modal-kudos" && !currentUser) {
     showToast("Please log in to give Kudos.");
     openModal("modal-login");
     return;
   }
-  if (modalId === "modal-post" && !currentUser) {
-    showToast("Please log in to share posts.");
-    openModal("modal-login");
+  if (modalId === "modal-post") {
+    openCreatePostPage();
     return;
   }
   if (modalId === "modal-create-group" && !currentUser) {
@@ -615,8 +699,14 @@ function openModal(modalId) {
   const dlg = document.getElementById(modalId);
   if (dlg) {
     if (modalId === "modal-kudos") populateKudosModal();
-    if (modalId === "modal-post") populatePostModal();
     if (modalId === "modal-edit-profile") populateEditProfileModal();
+    if (modalId === "modal-forgot-password") {
+      const loginEmailEl = document.getElementById("login-email");
+      const forgotEmailEl = document.getElementById("forgot-pw-email");
+      if (loginEmailEl && forgotEmailEl && loginEmailEl.value.includes("@") && !forgotEmailEl.value) {
+        forgotEmailEl.value = loginEmailEl.value.trim();
+      }
+    }
     if (modalId === "modal-login" || modalId === "modal-signup") {
       adjustPasskeyButtonsSupport();
     }
@@ -625,6 +715,10 @@ function openModal(modalId) {
 }
 
 function closeModal(modalId) {
+  if (modalId === "modal-post") {
+    cancelCreatePost();
+    return;
+  }
   const dlg = document.getElementById(modalId);
   if (dlg) dlg.close();
 }
@@ -887,6 +981,113 @@ async function logout() {
   await loadQuickNavGroups();
   navigateTo("/");
 }
+
+async function handleForgotPassword(e) {
+  e.preventDefault();
+  const emailEl = document.getElementById("forgot-pw-email");
+  const email = emailEl ? emailEl.value.trim() : "";
+  if (!email) {
+    showToast("❌ Please enter your account email address.");
+    return;
+  }
+  try {
+    const data = await apiFetch("/auth/forgot_password", {
+      method: "POST",
+      body: JSON.stringify({ email })
+    });
+    if (emailEl) emailEl.value = "";
+    closeModal("modal-forgot-password");
+    showToast("📧 " + (data.message || "If an account exists, a password reset link has been sent."));
+  } catch (err) {
+    showToast("❌ " + err.message);
+  }
+}
+
+async function handleResetPassword(e) {
+  e.preventDefault();
+  const newPwEl = document.getElementById("reset-pw-new");
+  const confirmPwEl = document.getElementById("reset-pw-confirm");
+  const newPassword = newPwEl ? newPwEl.value : "";
+  const confirmPassword = confirmPwEl ? confirmPwEl.value : "";
+  if (newPassword.length < 6) {
+    showToast("❌ Password must be at least 6 characters long.");
+    return;
+  }
+  if (newPassword !== confirmPassword) {
+    showToast("❌ Passwords do not match.");
+    return;
+  }
+  if (!pendingPasswordResetToken) {
+    showToast("❌ Missing reset token. Please request a fresh password reset link.");
+    return;
+  }
+  try {
+    const data = await apiFetch("/auth/reset_password", {
+      method: "POST",
+      body: JSON.stringify({
+        token: pendingPasswordResetToken,
+        new_password: newPassword
+      })
+    });
+    pendingPasswordResetToken = "";
+    if (newPwEl) newPwEl.value = "";
+    if (confirmPwEl) confirmPwEl.value = "";
+    currentToken = null;
+    localStorage.removeItem("gd_token");
+    currentUser = null;
+    updateAuthUI(null);
+    closeModal("modal-reset-password");
+    navigateTo("/");
+    openModal("modal-login");
+    showToast("✅ " + (data.message || "Password updated! Please log in with your new password."));
+  } catch (err) {
+    showToast("❌ " + err.message);
+  }
+}
+
+async function processEmailVerificationRoute(token) {
+  if (!token) {
+    showToast("❌ Missing email verification token.");
+    navigateTo(currentUser ? "/feed" : "/");
+    return;
+  }
+  try {
+    const data = await apiFetch("/auth/verify_email", {
+      method: "POST",
+      body: JSON.stringify({ token })
+    });
+    if (currentToken) {
+      await checkSession();
+    }
+    showToast("✅ " + (data.message || "Email verified successfully!"));
+  } catch (err) {
+    showToast("❌ " + err.message);
+  }
+  navigateTo(currentUser ? "/feed" : "/");
+}
+
+async function processUnsubscribeRoute(token, category = "all") {
+  if (!token) {
+    showToast("❌ Invalid unsubscribe link.");
+    navigateTo(currentUser ? "/feed" : "/");
+    return;
+  }
+  try {
+    const data = await apiFetch("/email/unsubscribe", {
+      method: "POST",
+      body: JSON.stringify({ token, category })
+    });
+    if (currentUser && data.email_prefs) {
+      currentUser.email_prefs = data.email_prefs;
+    }
+    showToast("🔕 " + (data.message || "Email notification preferences updated."));
+  } catch (err) {
+    showToast("❌ " + err.message);
+  }
+  navigateTo(currentUser ? "/feed" : "/");
+}
+window.handleForgotPassword = handleForgotPassword;
+window.handleResetPassword = handleResetPassword;
 
 /* ================= QUICK NAVIGATION (JOINED SPACES Req #1) ================= */
 
@@ -1485,8 +1686,9 @@ function renderFeedCard(item, isProfileView = false, searchContext = null) {
       <div class="space-y-3">
         ${!isKudos && item.title && !isCompactSearch ? `<h2 class="text-2xl sm:text-3xl font-extrabold text-slate-900 tracking-tight"><a href="${itemLink}" class="hover:text-indigo-600 transition">${escapeHtml(item.title)}</a></h2>` : ""}
         ${isKudos ? `
-          <div class="bg-amber-100/40 border border-amber-300/80 rounded-2xl p-4 sm:p-5 text-slate-900 text-lg whitespace-pre-line font-semibold leading-relaxed shadow-xs break-words">
-            <span class="text-amber-500 font-serif text-2xl leading-none select-none mr-1">“</span>${linkifyEscapedHtml(escapeHtml(item.content))}<span class="text-amber-500 font-serif text-2xl leading-none select-none ml-1">”</span>
+          <div class="bg-amber-100/40 border border-amber-300/80 rounded-2xl p-4 sm:p-5 text-slate-900 text-lg font-semibold leading-relaxed shadow-xs break-words flex items-start gap-2.5">
+            <span class="text-amber-500 font-serif text-3xl leading-none select-none shrink-0 mt-0.5" aria-hidden="true">“</span>
+            <div id="kudos-body-content-${item.id}" class="post-rich-content kudos-rich-content flex-1 min-w-0">${renderFormattedPostContent(escapeHtml(item.content))}</div>
           </div>
         ` : `
           ${(item.event_date || rawEventTime) ? `
@@ -2268,6 +2470,15 @@ async function loadSingleItemView(id) {
 /* ================= CONTENT CREATION WIZARDS ================= */
 
 function getCurrentSpaceContextId() {
+  if (window.location.hash && window.location.hash.startsWith("#/create-post")) {
+    const qIdx = window.location.hash.indexOf("?");
+    if (qIdx !== -1) {
+      const params = new URLSearchParams(window.location.hash.slice(qIdx + 1));
+      const gid = parseInt(params.get("group_id") || "");
+      if (!isNaN(gid)) return gid;
+    }
+    return postComposerOriginGroupId || null;
+  }
   if (window.location.hash && window.location.hash.startsWith("#/group/")) {
     const raw = window.location.hash.replace("#/group/", "").split("/")[0].split("?")[0];
     const id = parseInt(raw);
@@ -2285,6 +2496,9 @@ function getCurrentSpaceContextId() {
 
 /* Give Kudos Modal Autocomplete (Req #4) */
 async function populateKudosModal() {
+  switchKudosEditorMode("write");
+  const kPopover = document.getElementById("kudos-insert-link-popover");
+  if (kPopover) kPopover.classList.add("hidden");
   const recipInput = document.getElementById("kudos-recipient-input");
   const recipIdHidden = document.getElementById("kudos-recipient-id");
   if (recipInput) recipInput.value = "";
@@ -2422,6 +2636,9 @@ async function handleGiveKudos(e) {
     document.getElementById("kudos-content").value = "";
     document.getElementById("kudos-recipient-input").value = "";
     document.getElementById("kudos-recipient-id").value = "";
+    switchKudosEditorMode("write");
+    const kPopover = document.getElementById("kudos-insert-link-popover");
+    if (kPopover) kPopover.classList.add("hidden");
     showToast("🌟 Public Kudos sent & email alert triggered!");
     if (window.location.hash.startsWith("#/group/")) {
       loadGroupDetail(activeGroupId);
@@ -2593,9 +2810,7 @@ function switchPostEditorMode(mode) {
 }
 window.switchPostEditorMode = switchPostEditorMode;
 
-function applyPostFormat(formatType) {
-  switchPostEditorMode("write");
-  const textarea = document.getElementById("post-input-content");
+function applyRichFormatToTextarea(textarea, formatType) {
   if (!textarea) return;
   const val = textarea.value;
   const start = textarea.selectionStart || 0;
@@ -2659,7 +2874,195 @@ function applyPostFormat(formatType) {
     prefixSelectedLines((ln) => /^\s*>\s?/.test(ln) ? ln.replace(/^\s*>\s?/, "") : `> ${ln}`, "Highlighted quote");
   }
 }
+
+function applyPostFormat(formatType) {
+  switchPostEditorMode("write");
+  const textarea = document.getElementById("post-input-content");
+  applyRichFormatToTextarea(textarea, formatType);
+}
 window.applyPostFormat = applyPostFormat;
+
+function switchKudosEditorMode(mode) {
+  const textarea = document.getElementById("kudos-content");
+  const preview = document.getElementById("kudos-editor-live-preview");
+  const toolbar = document.getElementById("kudos-format-toolbar");
+  const linkPopover = document.getElementById("kudos-insert-link-popover");
+  const writeBtn = document.getElementById("btn-kudos-editor-write");
+  const previewBtn = document.getElementById("btn-kudos-editor-preview");
+  if (!textarea || !preview) return;
+
+  if (mode === "preview") {
+    if (linkPopover) linkPopover.classList.add("hidden");
+    if (toolbar) toolbar.classList.add("hidden");
+    textarea.classList.add("hidden");
+    preview.classList.remove("hidden");
+    const raw = textarea.value.trim();
+    preview.innerHTML = raw
+      ? renderFormattedPostContent(escapeHtml(raw))
+      : `<p class="text-slate-400 italic text-sm font-normal">Nothing to preview yet — switch to Write to add your gratitude message.</p>`;
+    if (writeBtn) writeBtn.className = "rte-toolbar-btn px-2.5 py-1 rounded-md text-slate-600 hover:text-slate-900 transition";
+    if (previewBtn) previewBtn.className = "rte-toolbar-btn px-2.5 py-1 rounded-md bg-white text-amber-700 shadow-2xs transition";
+  } else {
+    preview.classList.add("hidden");
+    if (toolbar) toolbar.classList.remove("hidden");
+    textarea.classList.remove("hidden");
+    if (writeBtn) writeBtn.className = "rte-toolbar-btn px-2.5 py-1 rounded-md bg-white text-amber-700 shadow-2xs transition";
+    if (previewBtn) previewBtn.className = "rte-toolbar-btn px-2.5 py-1 rounded-md text-slate-600 hover:text-slate-900 transition";
+  }
+}
+window.switchKudosEditorMode = switchKudosEditorMode;
+
+function applyKudosFormat(formatType) {
+  switchKudosEditorMode("write");
+  const textarea = document.getElementById("kudos-content");
+  applyRichFormatToTextarea(textarea, formatType);
+}
+window.applyKudosFormat = applyKudosFormat;
+
+function openKudosLinkPopover() {
+  switchKudosEditorMode("write");
+  const textarea = document.getElementById("kudos-content");
+  const popover = document.getElementById("kudos-insert-link-popover");
+  const textInput = document.getElementById("kudos-link-text-input");
+  const urlInput = document.getElementById("kudos-link-url-input");
+  if (!textarea || !popover || !textInput || !urlInput) return;
+
+  const start = textarea.selectionStart || 0;
+  const end = textarea.selectionEnd || 0;
+  _kudosSavedLinkSelection = { start, end };
+  const selected = textarea.value.slice(start, end).trim();
+
+  if (/^(https?:\/\/|www\.)\S+$/i.test(selected)) {
+    textInput.value = "";
+    urlInput.value = selected.startsWith("www.") ? `https://${selected}` : selected;
+  } else {
+    textInput.value = selected;
+    urlInput.value = "";
+  }
+
+  popover.classList.remove("hidden");
+  if (textInput.value && !urlInput.value) {
+    urlInput.focus();
+  } else {
+    textInput.focus();
+  }
+}
+window.openKudosLinkPopover = openKudosLinkPopover;
+
+function closeKudosLinkPopover() {
+  const popover = document.getElementById("kudos-insert-link-popover");
+  if (popover) popover.classList.add("hidden");
+  const textarea = document.getElementById("kudos-content");
+  if (textarea && !textarea.classList.contains("hidden")) {
+    textarea.focus();
+  }
+}
+window.closeKudosLinkPopover = closeKudosLinkPopover;
+
+function confirmInsertKudosLink() {
+  const textarea = document.getElementById("kudos-content");
+  const textInput = document.getElementById("kudos-link-text-input");
+  const urlInput = document.getElementById("kudos-link-url-input");
+  if (!textarea || !urlInput) return;
+
+  let rawUrl = urlInput.value.trim();
+  if (!rawUrl) {
+    showToast("Please enter a destination URL (e.g. https://example.com).");
+    urlInput.focus();
+    return;
+  }
+  if (!/^(https?:\/\/|mailto:)/i.test(rawUrl)) {
+    if (/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(rawUrl)) {
+      rawUrl = "mailto:" + rawUrl;
+    } else if (/^[a-zA-Z0-9-]+(?:\.[a-zA-Z0-9-]+)+/.test(rawUrl)) {
+      rawUrl = "https://" + rawUrl;
+    }
+  }
+  const safeHref = sanitizeLinkHref(rawUrl);
+  if (!safeHref) {
+    showToast("Please enter a valid http://, https://, or email link.");
+    urlInput.focus();
+    return;
+  }
+  const cleanUrl = decodeEscapedEntities(safeHref);
+  const label = (textInput && textInput.value.trim()) ? textInput.value.trim() : cleanUrl;
+  const markdownLink = `[${label}](${cleanUrl})`;
+
+  const val = textarea.value;
+  const start = Math.min(_kudosSavedLinkSelection.start || 0, val.length);
+  const end = Math.min(Math.max(start, _kudosSavedLinkSelection.end || 0), val.length);
+  textarea.value = val.slice(0, start) + markdownLink + val.slice(end);
+
+  closeKudosLinkPopover();
+  const cursorPos = start + markdownLink.length;
+  textarea.focus();
+  textarea.setSelectionRange(cursorPos, cursorPos);
+}
+window.confirmInsertKudosLink = confirmInsertKudosLink;
+
+function initKudosRichEditor() {
+  const textarea = document.getElementById("kudos-content");
+  if (textarea && !textarea.dataset.richBound) {
+    textarea.dataset.richBound = "1";
+    textarea.addEventListener("keydown", (e) => {
+      if (e.ctrlKey || e.metaKey) {
+        const k = (e.key || "").toLowerCase();
+        if (k === "b") {
+          e.preventDefault();
+          applyKudosFormat("bold");
+        } else if (k === "i") {
+          e.preventDefault();
+          applyKudosFormat("italic");
+        } else if (k === "u") {
+          e.preventDefault();
+          applyKudosFormat("underline");
+        } else if (k === "k") {
+          e.preventDefault();
+          openKudosLinkPopover();
+        }
+      }
+    });
+
+    textarea.addEventListener("paste", (e) => {
+      const start = textarea.selectionStart || 0;
+      const end = textarea.selectionEnd || 0;
+      if (start >= end) return;
+      const selected = textarea.value.slice(start, end);
+      if (!selected.trim() || /\n/.test(selected) || /^(https?:\/\/|www\.)/i.test(selected.trim())) return;
+      const clipText = (e.clipboardData && e.clipboardData.getData("text")) ? e.clipboardData.getData("text").trim() : "";
+      if (/^(https?:\/\/|www\.[a-zA-Z0-9-]+(?:\.[a-zA-Z0-9-]+)+)[^\s]*$/i.test(clipText)) {
+        const safeHref = sanitizeLinkHref(clipText);
+        if (safeHref) {
+          e.preventDefault();
+          const cleanUrl = decodeEscapedEntities(safeHref);
+          const md = `[${selected}](${cleanUrl})`;
+          const val = textarea.value;
+          textarea.value = val.slice(0, start) + md + val.slice(end);
+          const pos = start + md.length;
+          textarea.setSelectionRange(pos, pos);
+        }
+      }
+    });
+  }
+
+  ["kudos-link-text-input", "kudos-link-url-input"].forEach((id) => {
+    const inp = document.getElementById(id);
+    if (inp && !inp.dataset.richBound) {
+      inp.dataset.richBound = "1";
+      inp.addEventListener("keydown", (e) => {
+        if (e.key === "Enter") {
+          e.preventDefault();
+          confirmInsertKudosLink();
+        } else if (e.key === "Escape") {
+          e.preventDefault();
+          e.stopPropagation();
+          closeKudosLinkPopover();
+        }
+      });
+    }
+  });
+}
+window.initKudosRichEditor = initKudosRichEditor;
 
 function openPostLinkPopover() {
   switchPostEditorMode("write");
@@ -2806,8 +3209,8 @@ function initPostRichEditor() {
 }
 window.initPostRichEditor = initPostRichEditor;
 
-async function populatePostModal(initialSubtype) {
-  switchPostEditorMode("write");
+async function populatePostModal(initialSubtype, explicitGroupId = null) {
+  backToPostStep1(false);
   const popover = document.getElementById("post-insert-link-popover");
   if (popover) popover.classList.add("hidden");
   const desiredSubtype = window._pendingPostSubtype || initialSubtype || "GENERAL";
@@ -2815,7 +3218,33 @@ async function populatePostModal(initialSubtype) {
   await populateGroupCheckboxes("post-groups-list", "post-group");
   togglePostSubtype(desiredSubtype);
   updatePostResourceNudge();
-  const currentSpaceId = getCurrentSpaceContextId();
+  const currentSpaceId = explicitGroupId || getCurrentSpaceContextId();
+
+  const backLabel = document.getElementById("btn-back-create-post-label");
+  const spaceBadge = document.getElementById("create-post-space-context-badge");
+  if (currentSpaceId) {
+    let spaceName = (typeof activeGroupData !== "undefined" && activeGroupData && Number(activeGroupData.id) === Number(currentSpaceId))
+      ? activeGroupData.name
+      : "";
+    if (!spaceName) {
+      const checkedInp = document.querySelector(`#post-groups-list input[value="${currentSpaceId}"]`);
+      if (checkedInp && checkedInp.parentElement) {
+        spaceName = checkedInp.parentElement.textContent.trim();
+      }
+    }
+    if (backLabel) backLabel.textContent = "← Back to Space";
+    if (spaceBadge) {
+      spaceBadge.textContent = spaceName ? `👥 Space: ${spaceName}` : `👥 Space #${currentSpaceId}`;
+      spaceBadge.classList.remove("hidden");
+    }
+  } else {
+    if (backLabel) backLabel.textContent = "← Back to Feed";
+    if (spaceBadge) {
+      spaceBadge.textContent = "";
+      spaceBadge.classList.add("hidden");
+    }
+  }
+
   if (currentSpaceId && typeof activeGroupData !== "undefined" && activeGroupData) {
     const spaceTheme = activeGroupData.theme || (activeGroupData.themes && activeGroupData.themes[0]);
     const themeSelect = document.getElementById("post-input-theme");
@@ -2836,8 +3265,7 @@ function openSpaceEventPostModal() {
     openModal("modal-login");
     return;
   }
-  window._pendingPostSubtype = "EVENT";
-  openModal("modal-post");
+  openCreatePostPage({ subtype: "EVENT" });
 }
 window.openSpaceEventPostModal = openSpaceEventPostModal;
 
@@ -2927,6 +3355,9 @@ async function reviewPostStep(e) {
 
   document.getElementById("post-step-1").classList.add("hidden");
   document.getElementById("post-step-2").classList.remove("hidden");
+  const stepBadge = document.getElementById("create-post-step-badge");
+  if (stepBadge) stepBadge.textContent = "Step 2 of 2 • Review & Publish";
+  window.scrollTo({ top: 0, behavior: "smooth" });
 
   const previewBox = document.getElementById("post-preview-card");
   const attachmentsPreviewHtml = attachments.length > 0 ? `
@@ -3018,23 +3449,31 @@ function handlePostFilesSelect(e) {
   updatePostResourceNudge();
 }
 
-function backToPostStep1() {
-  document.getElementById("post-step-1").classList.remove("hidden");
-  document.getElementById("post-step-2").classList.add("hidden");
+function backToPostStep1(shouldScroll = true) {
+  const s1 = document.getElementById("post-step-1");
+  const s2 = document.getElementById("post-step-2");
+  if (s1) s1.classList.remove("hidden");
+  if (s2) s2.classList.add("hidden");
+  const stepBadge = document.getElementById("create-post-step-badge");
+  if (stepBadge) stepBadge.textContent = "Step 1 of 2 • Compose";
   switchPostEditorMode("write");
+  if (shouldScroll) {
+    window.scrollTo({ top: 0, behavior: "smooth" });
+  }
 }
 
 async function confirmPublishPost() {
   if (!draftPost) return;
   try {
     const publishedSubtype = draftPost.post_subtype;
+    const originSpaceId = getCurrentSpaceContextId();
     await apiFetch("/posts", {
       method: "POST",
       body: JSON.stringify(draftPost)
     });
     syncDynamicCategoryOptions([draftPost]);
-    closeModal("modal-post");
     draftPost = null;
+    postComposerOriginGroupId = null;
     document.getElementById("post-input-title").value = "";
     document.getElementById("post-input-content").value = "";
     document.getElementById("post-input-url").value = "";
@@ -3056,9 +3495,12 @@ async function confirmPublishPost() {
     if (document.getElementById("post-target-geography")) document.getElementById("post-target-geography").value = "";
     if (document.getElementById("post-contact-info")) document.getElementById("post-contact-info").value = "";
     togglePostSubtype("GENERAL");
-    backToPostStep1();
+    backToPostStep1(false);
     showToast("✅ Post published permanently to community feed!");
-    if (window.location.hash.startsWith("#/group/")) {
+    if (originSpaceId) {
+      pendingGroupTab = String(publishedSubtype || "").split(",").map(s => s.trim()).includes("EVENT") ? "events" : "posts";
+      navigateTo(`/group/${originSpaceId}`);
+    } else if (window.location.hash.startsWith("#/group/")) {
       await loadGroupDetail(activeGroupId);
       if (String(publishedSubtype || "").split(",").map(s => s.trim()).includes("EVENT")) {
         switchGroupTab("events");
@@ -3409,7 +3851,9 @@ async function loadGroupDetail(gid) {
 
     if (typeof renderGroupCalendar === "function") renderGroupCalendar();
     if (typeof updateCalendarCollapseUI === "function") updateCalendarCollapseUI();
-    switchGroupTab("chat");
+    const initialTab = pendingGroupTab || "chat";
+    pendingGroupTab = null;
+    switchGroupTab(initialTab);
   } catch (err) {
     showToast("Space not found");
     navigateTo("/groups");
@@ -3588,6 +4032,25 @@ window.renderGroupEvents = renderGroupEvents;
 function renderGroupChatList() {
   const container = document.getElementById("group-chat-list");
   if (!container || !activeGroupData) return;
+
+  // Sync broadcast checkbox availability: enabled for all joined Space members (and Site Admins)
+  const bcastCb = document.getElementById("group-chat-broadcast-toggle");
+  const bcastLbl = document.getElementById("group-chat-broadcast-label");
+  if (bcastCb && bcastLbl) {
+    const canBroadcast = Boolean(currentUser && (activeGroupData.is_joined || currentUser.is_site_admin === 1));
+    bcastCb.disabled = !canBroadcast;
+    if (!canBroadcast) {
+      bcastCb.checked = false;
+      bcastLbl.classList.add("opacity-50", "cursor-not-allowed");
+      bcastLbl.title = currentUser
+        ? "Join this Space first to email Space members from the Chat Board"
+        : "Log in and join this Space to broadcast emails to members";
+    } else {
+      bcastLbl.classList.remove("opacity-50", "cursor-not-allowed");
+      bcastLbl.title = "Send an email notification of this message to all members of this Space";
+    }
+  }
+
   const msgs = activeGroupData.chat_messages || [];
   if (msgs.length === 0) {
     container.innerHTML = `<p class="text-slate-400 font-bold text-center py-8 text-base">No instant messages yet. Be the first to say hello above! ☀️</p>`;
@@ -3597,19 +4060,29 @@ function renderGroupChatList() {
   container.innerHTML = msgs.map(m => {
     const canDeleteMsg = currentUser && (currentUser.id === m.user_id || isGroupAdmin);
     const canReportMsg = currentUser && currentUser.id !== m.user_id;
+    const bcastBadge = Number(m.is_broadcast) === 1
+      ? `<span class="px-2 py-0.5 rounded-full text-[11px] font-extrabold bg-teal-50 text-teal-800 border border-teal-200">📢 Broadcasted</span>`
+      : "";
+    const formattedMsg = linkifyEscapedHtml(escapeHtml(m.message)).replace(
+      /(?<![A-Za-z0-9_])@([A-Za-z0-9_]{2,40})/g,
+      `<span class="font-bold text-indigo-700 bg-indigo-50 px-1 rounded">@$1</span>`
+    );
     return `
     <div class="bg-white p-5 sm:p-6 rounded-2xl border border-slate-200/80 shadow-sm flex items-start space-x-3.5">
       <img src="${escapeHtml(m.author_avatar)}" alt="${escapeHtml(m.author_name)}" class="w-10 h-10 rounded-full object-cover border border-slate-200 shrink-0">
       <div class="flex-1 min-w-0">
-        <div class="flex justify-between items-baseline mb-1">
-          <strong class="text-sm font-bold text-slate-900 truncate pr-2">${escapeHtml(m.author_name)}</strong>
+        <div class="flex justify-between items-baseline mb-1 gap-2">
+          <div class="flex items-center gap-2 min-w-0">
+            <strong class="text-sm font-bold text-slate-900 truncate">${escapeHtml(m.author_name)}</strong>
+            ${bcastBadge}
+          </div>
           <div class="flex items-center space-x-2 shrink-0">
             <span class="text-xs text-slate-400 font-medium">${escapeHtml(m.created_at)}</span>
             ${canReportMsg ? `<button type="button" onclick="openReportModal('CHAT', ${m.id})" class="text-xs text-slate-400 hover:text-amber-700 font-bold" title="Report chat message">🚩</button>` : ""}
             ${canDeleteMsg ? `<button type="button" onclick="deleteGroupChatMessage(${m.id})" class="text-xs text-slate-400 hover:text-red-600 font-bold" title="Delete chat message">🗑️</button>` : ""}
           </div>
         </div>
-        <p class="text-base text-slate-800 font-normal whitespace-pre-line leading-relaxed break-words">${linkifyEscapedHtml(escapeHtml(m.message))}</p>
+        <p class="text-base text-slate-800 font-normal whitespace-pre-line leading-relaxed break-words">${formattedMsg}</p>
       </div>
     </div>
   `;
@@ -3626,15 +4099,24 @@ async function sendGroupChat() {
   const message = input.value.trim();
   if (!message) return;
 
+  const bcastCb = document.getElementById("group-chat-broadcast-toggle");
+  const broadcast_email = Boolean(bcastCb && bcastCb.checked && !bcastCb.disabled);
+
   try {
     const data = await apiFetch(`/groups/${activeGroupId}/chat`, {
       method: "POST",
-      body: JSON.stringify({ message })
+      body: JSON.stringify({ message, broadcast_email })
     });
     input.value = "";
+    if (bcastCb) bcastCb.checked = false;
     if (!activeGroupData.chat_messages) activeGroupData.chat_messages = [];
     activeGroupData.chat_messages.unshift(data.message);
     renderGroupChatList();
+    if (broadcast_email) {
+      showToast(`📢 Message posted & emailed to ${data.emailed_count || 0} Space member(s)!`);
+    } else if (data.emailed_count > 0) {
+      showToast(`💬 Message posted & ${data.emailed_count} notification email(s) sent!`);
+    }
   } catch (err) {
     showToast("❌ " + err.message);
   }
@@ -4281,30 +4763,211 @@ function populateEditProfileModal() {
   if (!currentUser) return;
   document.getElementById("eprof-avatar").value = currentUser.avatar_url;
   document.getElementById("eprof-bio").value = currentUser.bio || "";
+  const pwEl = document.getElementById("eprof-pw");
+  if (pwEl) pwEl.value = "";
+
+  const emailDisp = document.getElementById("eprof-email-display");
+  const verBadge = document.getElementById("eprof-verified-badge");
+  const verBtn = document.getElementById("btn-send-verification-email");
+  if (emailDisp) emailDisp.textContent = currentUser.email || "";
+  const isVerified = Number(currentUser.email_verified) === 1;
+  if (verBadge) {
+    if (isVerified) {
+      verBadge.textContent = "✅ Verified";
+      verBadge.className = "px-2.5 py-0.5 rounded-full text-xs font-extrabold bg-emerald-100 text-emerald-800 border border-emerald-200";
+    } else {
+      verBadge.textContent = "⚠️ Unverified";
+      verBadge.className = "px-2.5 py-0.5 rounded-full text-xs font-extrabold bg-amber-100 text-amber-800 border border-amber-200";
+    }
+  }
+  if (verBtn) {
+    if (isVerified) verBtn.classList.add("hidden");
+    else verBtn.classList.remove("hidden");
+  }
+
+  const prefs = currentUser.email_prefs || {};
+  const prefFieldMap = {
+    "epref-kudos": ["kudos", true],
+    "epref-comments": ["comments", true],
+    "epref-invites": ["invites", true],
+    "epref-space-updates": ["space_updates", true],
+    "epref-chat-mentions": ["chat_mentions", true],
+    "epref-chat-activity": ["chat_activity", false],
+    "epref-digest": ["digest", true]
+  };
+  Object.entries(prefFieldMap).forEach(([elId, [key, defaultVal]]) => {
+    const cb = document.getElementById(elId);
+    if (cb) cb.checked = prefs[key] === undefined ? defaultVal : Boolean(prefs[key]);
+  });
 }
+
+async function requestEmailVerification() {
+  if (!currentUser) return;
+  try {
+    const data = await apiFetch("/auth/send_verification", { method: "POST", body: "{}" });
+    showToast("✉️ " + (data.message || "Verification link sent!"));
+  } catch (err) {
+    showToast("❌ " + err.message);
+  }
+}
+
+async function triggerSampleWeeklyDigest() {
+  if (!currentUser) return;
+  try {
+    const data = await apiFetch("/email/send_digest", { method: "POST", body: "{}" });
+    showToast("☀️ " + (data.message || "Weekly Community Digest sent!"));
+  } catch (err) {
+    showToast("❌ " + err.message);
+  }
+}
+window.requestEmailVerification = requestEmailVerification;
+window.triggerSampleWeeklyDigest = triggerSampleWeeklyDigest;
 
 async function handleProfileUpdate(e) {
   e.preventDefault();
   const avatar_url = document.getElementById("eprof-avatar").value.trim();
   const bio = document.getElementById("eprof-bio").value.trim();
   const password = document.getElementById("eprof-pw").value;
+  const email_prefs = {
+    kudos: document.getElementById("epref-kudos") ? document.getElementById("epref-kudos").checked : true,
+    comments: document.getElementById("epref-comments") ? document.getElementById("epref-comments").checked : true,
+    invites: document.getElementById("epref-invites") ? document.getElementById("epref-invites").checked : true,
+    space_updates: document.getElementById("epref-space-updates") ? document.getElementById("epref-space-updates").checked : true,
+    chat_mentions: document.getElementById("epref-chat-mentions") ? document.getElementById("epref-chat-mentions").checked : true,
+    chat_activity: document.getElementById("epref-chat-activity") ? document.getElementById("epref-chat-activity").checked : false,
+    digest: document.getElementById("epref-digest") ? document.getElementById("epref-digest").checked : true
+  };
 
   try {
     const data = await apiFetch("/users/profile", {
       method: "PUT",
-      body: JSON.stringify({ avatar_url, bio, password })
+      body: JSON.stringify({ avatar_url, bio, password, email_prefs })
     });
     currentUser = data.user;
     updateAuthUI(currentUser);
     closeModal("modal-edit-profile");
-    showToast("✏️ Profile updated successfully!");
+    showToast("✏️ Profile & email preferences saved!");
     loadUserProfile(currentUser.id);
   } catch (err) {
     showToast("❌ " + err.message);
   }
 }
 
-/* ================= EMAIL OUTBOX INSPECTOR ================= */
+/* ================= EMAIL OUTBOX INSPECTOR & TEMPLATE GALLERY ================= */
+
+function switchOutboxMode(mode = "logs") {
+  currentOutboxMode = mode === "templates" ? "templates" : "logs";
+  const logsBtn = document.getElementById("btn-outbox-mode-logs");
+  const tplBtn = document.getElementById("btn-outbox-mode-templates");
+  const logsBox = document.getElementById("outbox-list");
+  const tplBox = document.getElementById("outbox-templates-gallery");
+
+  if (logsBtn && tplBtn) {
+    if (currentOutboxMode === "logs") {
+      logsBtn.className = "px-5 py-2.5 rounded-xl font-black text-sm bg-amber-600 text-white shadow-xs transition";
+      tplBtn.className = "px-5 py-2.5 rounded-xl font-bold text-sm bg-stone-100 hover:bg-stone-200 text-stone-700 transition";
+    } else {
+      tplBtn.className = "px-5 py-2.5 rounded-xl font-black text-sm bg-amber-600 text-white shadow-xs transition";
+      logsBtn.className = "px-5 py-2.5 rounded-xl font-bold text-sm bg-stone-100 hover:bg-stone-200 text-stone-700 transition";
+    }
+  }
+  if (logsBox && tplBox) {
+    if (currentOutboxMode === "logs") {
+      logsBox.classList.remove("hidden");
+      tplBox.classList.add("hidden");
+      loadOutbox();
+    } else {
+      logsBox.classList.add("hidden");
+      tplBox.classList.remove("hidden");
+      loadEmailTemplatesGallery();
+    }
+  }
+}
+
+function refreshOutboxView() {
+  if (currentOutboxMode === "templates") {
+    loadEmailTemplatesGallery(true);
+  } else {
+    loadOutbox();
+  }
+}
+
+function toggleEmailPreviewTab(cardKey, tab) {
+  const htmlWrap = document.getElementById(`email-html-wrap-${cardKey}`);
+  const textWrap = document.getElementById(`email-text-wrap-${cardKey}`);
+  const htmlBtn = document.getElementById(`email-tab-html-${cardKey}`);
+  const textBtn = document.getElementById(`email-tab-text-${cardKey}`);
+  if (!htmlWrap || !textWrap) return;
+
+  if (tab === "html") {
+    htmlWrap.classList.remove("hidden");
+    textWrap.classList.add("hidden");
+    if (htmlBtn) htmlBtn.className = "px-3 py-1 rounded-lg text-xs font-black bg-amber-600 text-white transition";
+    if (textBtn) textBtn.className = "px-3 py-1 rounded-lg text-xs font-bold bg-stone-100 text-stone-600 hover:bg-stone-200 transition";
+  } else {
+    htmlWrap.classList.add("hidden");
+    textWrap.classList.remove("hidden");
+    if (textBtn) textBtn.className = "px-3 py-1 rounded-lg text-xs font-black bg-amber-600 text-white transition";
+    if (htmlBtn) htmlBtn.className = "px-3 py-1 rounded-lg text-xs font-bold bg-stone-100 text-stone-600 hover:bg-stone-200 transition";
+  }
+}
+
+function hydrateOutboxIframes(container) {
+  if (!container) return;
+  container.querySelectorAll("iframe[data-outbox-html-key]").forEach(ifr => {
+    const k = ifr.getAttribute("data-outbox-html-key");
+    if (k && window._outboxHtmlCache && window._outboxHtmlCache[k]) {
+      ifr.srcdoc = window._outboxHtmlCache[k];
+    }
+  });
+}
+
+function renderEmailPreviewCard({ cardKey, recipient, sentMeta, templateKey, replyTo, subject, textBody, htmlBody, headerTitle, extraFooterHtml }) {
+  const hasHtml = Boolean(htmlBody && String(htmlBody).trim());
+  if (hasHtml) {
+    window._outboxHtmlCache[cardKey] = String(htmlBody);
+  }
+  const tplBadge = templateKey
+    ? `<span class="px-2.5 py-0.5 rounded-full text-xs font-black bg-indigo-100 text-indigo-800 border border-indigo-200">${escapeHtml(templateKey)}</span>`
+    : "";
+  const replyBadge = replyTo
+    ? `<span class="text-xs font-bold text-stone-600">↩️ Reply-To: ${escapeHtml(replyTo)}</span>`
+    : "";
+  const topLeft = headerTitle
+    ? `<div class="font-sans font-black text-base text-stone-900">${escapeHtml(headerTitle)}</div>`
+    : `<div><strong class="text-amber-950">TO:</strong> <span class="text-teal-900 font-black text-base">${escapeHtml(recipient || "")}</span></div>`;
+
+  const toggleControls = hasHtml ? `
+    <div class="flex items-center gap-1.5 font-sans">
+      <button type="button" id="email-tab-html-${cardKey}" onclick="toggleEmailPreviewTab('${cardKey}', 'html')" class="px-3 py-1 rounded-lg text-xs font-black bg-amber-600 text-white transition">👁️ Branded HTML</button>
+      <button type="button" id="email-tab-text-${cardKey}" onclick="toggleEmailPreviewTab('${cardKey}', 'text')" class="px-3 py-1 rounded-lg text-xs font-bold bg-stone-100 text-stone-600 hover:bg-stone-200 transition">📄 Plain Text</button>
+    </div>
+  ` : "";
+
+  return `
+    <div class="bg-white p-6 sm:p-7 rounded-3xl border-2 border-amber-200 shadow-sm space-y-3 font-mono text-sm">
+      <div class="flex flex-wrap justify-between items-center gap-2 bg-amber-50/90 p-3.5 rounded-2xl border border-amber-200">
+        <div class="flex flex-wrap items-center gap-2.5">
+          ${topLeft}
+          ${tplBadge}
+          ${replyBadge}
+        </div>
+        <div class="flex flex-wrap items-center gap-3">
+          ${sentMeta ? `<div class="text-xs font-bold text-amber-800">${escapeHtml(sentMeta)}</div>` : ""}
+          ${toggleControls}
+        </div>
+      </div>
+      <div class="text-base sm:text-lg font-sans font-black text-stone-900 border-b border-stone-100 pb-2">SUBJECT: ${escapeHtml(subject || "")}</div>
+      ${hasHtml ? `
+        <div id="email-html-wrap-${cardKey}" class="rounded-2xl overflow-hidden border border-stone-200 bg-stone-50">
+          <iframe sandbox="" data-outbox-html-key="${cardKey}" title="${escapeHtml(subject || "Email HTML Preview")}" class="w-full h-[460px] bg-white border-0"></iframe>
+        </div>
+      ` : ""}
+      <div id="email-text-wrap-${cardKey}" class="${hasHtml ? "hidden " : ""}font-sans text-stone-800 text-base whitespace-pre-line leading-relaxed bg-stone-50 p-5 rounded-2xl border border-stone-200 font-medium">${escapeHtml(textBody || "")}</div>
+      ${extraFooterHtml || ""}
+    </div>
+  `;
+}
 
 async function loadOutbox() {
   const container = document.getElementById("outbox-list");
@@ -4315,36 +4978,82 @@ async function loadOutbox() {
     const emails = data.emails || [];
 
     if (emails.length === 0) {
-      container.innerHTML = `<p class="text-amber-800 font-bold text-center py-8 text-lg">No notification emails triggered yet.</p>`;
+      container.innerHTML = `<p class="text-amber-800 font-bold text-center py-8 text-lg">No notification emails triggered yet. Switch to the Template Gallery tab above to preview all 22 platform email templates!</p>`;
       return;
     }
 
-    container.innerHTML = emails.map(em => {
+    container.innerHTML = emails.map((em, idx) => {
       let ctaBtn = "";
       if (em.subject && em.subject.includes("invited to join")) {
-        const m = em.body.match(/group\/(\d+)/);
+        const m = String(em.body || "").match(/group\/(\d+)/);
         const gId = m ? m[1] : "1";
         ctaBtn = `
-          <div class="pt-4 border-t border-slate-200 mt-4 text-center font-sans">
-            <a href="/#/group/${gId}?invite=yes" class="inline-flex items-center space-x-2 px-8 py-4 bg-emerald-600 hover:bg-emerald-700 text-white font-black text-lg rounded-2xl shadow-xl transition touch-target hover:scale-105">
-              <span>💌</span><span>Accept Invitation & Become Member ↗</span>
+          <div class="pt-2 text-center font-sans">
+            <a href="/#/group/${gId}?invite=yes" class="inline-flex items-center space-x-2 px-6 py-3 bg-emerald-600 hover:bg-emerald-700 text-white font-black text-sm rounded-2xl shadow transition touch-target">
+              <span>💌</span><span>Accept Invitation &amp; Become Member ↗</span>
             </a>
           </div>
         `;
       }
-      return `
-      <div class="bg-white p-7 rounded-3xl border-2 border-amber-300 shadow-sm space-y-3 font-mono text-sm">
-        <div class="flex flex-wrap justify-between items-center bg-amber-100/70 p-4 rounded-2xl border border-amber-200">
-          <div><strong class="text-amber-950">TO:</strong> <span class="text-teal-900 font-black text-base">${em.recipient_email}</span></div>
-          <div class="text-xs font-bold text-amber-800">⏱️ ${em.sent_at} [${em.status}]</div>
-        </div>
-        <div class="text-lg font-sans font-black text-stone-900 border-b pb-2">SUBJECT: ${em.subject}</div>
-        <div class="font-sans text-stone-800 text-lg whitespace-pre-line leading-relaxed pt-1 bg-stone-50 p-6 rounded-2xl border border-stone-200 font-medium">${em.body}${ctaBtn}</div>
-      </div>
-      `;
+      return renderEmailPreviewCard({
+        cardKey: `log_${em.id || idx}`,
+        recipient: em.recipient_email,
+        sentMeta: `⏱️ ${em.sent_at || ""} [${em.status || "LOGGED_ONLY"}]`,
+        templateKey: em.template_key || "general",
+        replyTo: em.reply_to || "",
+        subject: em.subject || "",
+        textBody: em.body || "",
+        htmlBody: em.html_body || "",
+        extraFooterHtml: ctaBtn
+      });
     }).join("");
+    hydrateOutboxIframes(container);
   } catch (err) {}
 }
+
+async function loadEmailTemplatesGallery(forceReload = false) {
+  const container = document.getElementById("outbox-templates-gallery");
+  if (!container) return;
+  if (!emailTemplatesCache.length || forceReload) {
+    container.innerHTML = `<p class="text-amber-800 font-bold text-center py-8 text-lg">Loading all 22 branded email templates...</p>`;
+    try {
+      const data = await apiFetch("/email/templates");
+      emailTemplatesCache = data.templates || [];
+    } catch (err) {
+      container.innerHTML = `<p class="text-red-700 font-bold text-center py-8">Failed to load email templates: ${escapeHtml(err.message)}</p>`;
+      return;
+    }
+  }
+
+  const grouped = {};
+  emailTemplatesCache.forEach((tpl, idx) => {
+    const sec = tpl.section || "Platform Emails";
+    if (!grouped[sec]) grouped[sec] = [];
+    grouped[sec].push({ ...tpl, _idx: idx });
+  });
+
+  container.innerHTML = Object.entries(grouped).map(([secTitle, items]) => `
+    <div class="space-y-4">
+      <h2 class="text-xl sm:text-2xl font-black text-stone-900 border-b border-stone-200 pb-2">${escapeHtml(secTitle)}</h2>
+      <div class="space-y-6">
+        ${items.map(tpl => renderEmailPreviewCard({
+          cardKey: `tpl_${tpl._idx}`,
+          headerTitle: tpl.title,
+          sentMeta: tpl.category === "transactional" ? "🔒 Transactional (Always Sent)" : `⚙️ Preference: ${tpl.category}`,
+          templateKey: tpl.template_key,
+          subject: tpl.subject,
+          textBody: tpl.text_body,
+          htmlBody: tpl.html_body
+        })).join("")}
+      </div>
+    </div>
+  `).join("");
+  hydrateOutboxIframes(container);
+}
+window.switchOutboxMode = switchOutboxMode;
+window.refreshOutboxView = refreshOutboxView;
+window.toggleEmailPreviewTab = toggleEmailPreviewTab;
+window.loadEmailTemplatesGallery = loadEmailTemplatesGallery;
 
 /* ================= CUSTOMER SERVICE PORTAL ================= */
 

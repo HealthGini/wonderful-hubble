@@ -113,6 +113,12 @@ a.rich-link {
   transition: color 0.15s ease, text-decoration-color 0.15s ease;
 }
 
+.kudos-rich-content blockquote {
+  border-left-color: #f59e0b !important;
+  background-color: rgba(254, 243, 199, 0.65) !important;
+  color: #78350f !important;
+}
+
 /* Sleek High Contrast Focus States with Warm Amber Glow */
 *:focus-visible {
   outline: 2px solid #f59e0b !important;

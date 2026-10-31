@@ -10,6 +10,7 @@ import os
 import re
 import json
 import uuid
+import secrets
 import datetime
 import sqlite3
 import smtplib
@@ -18,6 +19,32 @@ from email.mime.text import MIMEText
 from urllib.parse import parse_qs, urlparse
 import urllib.request
 from database import get_db, hash_password, verify_password, get_user_stats, extract_resource_text, get_platform_stats
+from email_templates import (
+    DEFAULT_EMAIL_PREFS,
+    parse_user_email_prefs,
+    is_email_pref_enabled,
+    get_public_base_url,
+    build_unsubscribe_url,
+    build_welcome_email,
+    build_email_verification_email,
+    build_password_reset_email,
+    build_security_alert_email,
+    build_site_invitation_email,
+    build_space_invitation_email,
+    build_invite_accepted_email,
+    build_kudos_received_email,
+    build_comment_notification_email,
+    build_space_announcement_email,
+    build_space_chat_email,
+    build_weekly_digest_email,
+    build_space_role_updated_email,
+    build_space_member_removed_email,
+    build_support_confirmation_email,
+    build_support_admin_alert_email,
+    build_content_report_admin_alert_email,
+    build_moderation_action_email,
+    get_all_template_previews,
+)
 
 from fido2.server import Fido2Server
 from fido2.webauthn import (
@@ -167,7 +194,8 @@ def get_user_from_token(headers):
     conn = get_db()
     cursor = conn.cursor()
     cursor.execute("""
-        SELECT u.id, u.email, u.username, u.phone, u.avatar_url, u.bio, u.is_site_admin, u.is_banned, u.oauth_provider, u.oauth_id
+        SELECT u.id, u.email, u.username, u.phone, u.avatar_url, u.bio, u.is_site_admin, u.is_banned, u.oauth_provider, u.oauth_id,
+               COALESCE(u.email_verified, 0) as email_verified, u.email_prefs
         FROM sessions s
         JOIN users u ON s.user_id = u.id
         WHERE s.token = ?
@@ -177,7 +205,9 @@ def get_user_from_token(headers):
     if row:
         if row["is_banned"] == 1:
             return None
-        return dict(row)
+        udict = dict(row)
+        udict["email_prefs"] = parse_user_email_prefs(udict.get("email_prefs"))
+        return udict
     return None
 
 def json_response(data, status=200):
@@ -206,12 +236,51 @@ def create_in_app_notification(conn, user_id, actor_id, notif_type, target_id, m
     except Exception as e:
         print(f"⚠️ Failed to insert in-app notification: {e}")
 
-def send_real_or_simulated_email(recipient_email, subject, text_body, html_body=None):
+def ensure_user_unsubscribe_token(conn, user_id: int) -> str:
+    """Fetches or lazily creates an opaque unsubscribe token for a user."""
+    if not user_id:
+        return ""
+    cur = conn.cursor()
+    cur.execute("SELECT unsubscribe_token FROM users WHERE id = ?", (int(user_id),))
+    row = cur.fetchone()
+    if row and row["unsubscribe_token"]:
+        return str(row["unsubscribe_token"])
+    tok = secrets.token_urlsafe(24)
+    try:
+        cur.execute("UPDATE users SET unsubscribe_token = ? WHERE id = ?", (tok, int(user_id)))
+    except Exception:
+        return ""
+    return tok
+
+
+def issue_auth_email_token(conn, user_id: int, token_type: str, ttl_minutes: int = 60) -> str:
+    """Issues a fresh single-use token in auth_email_tokens and invalidates older unused tokens of the same type."""
+    cur = conn.cursor()
+    cur.execute("DELETE FROM auth_email_tokens WHERE user_id = ? AND token_type = ? AND used = 0", (int(user_id), token_type))
+    tok = secrets.token_urlsafe(32)
+    expires_dt = datetime.datetime.now(datetime.timezone.utc).replace(tzinfo=None) + datetime.timedelta(minutes=ttl_minutes)
+    expires_str = expires_dt.strftime("%Y-%m-%d %H:%M:%S")
+    cur.execute(
+        "INSERT INTO auth_email_tokens (token, user_id, token_type, expires_at, used) VALUES (?, ?, ?, ?, 0)",
+        (tok, int(user_id), token_type, expires_str),
+    )
+    return tok
+
+
+def send_real_or_simulated_email(
+    recipient_email,
+    subject,
+    text_body,
+    html_body=None,
+    template_key="general",
+    reply_to=None,
+    unsubscribe_url=None,
+):
     """
     Attempts real SMTP email delivery if SMTP_HOST environment variable is set.
     
-    Always records the transmission in the SQLite email_outbox table for verification
-    and audit purposes (accessible via /api/outbox).
+    Always records the transmission (plain text + branded HTML + metadata) in the SQLite
+    email_outbox table for verification and audit purposes (accessible via /api/outbox).
     """
     smtp_host = os.environ.get("SMTP_HOST")
     smtp_port = int(os.environ.get("SMTP_PORT", 587))
@@ -228,6 +297,10 @@ def send_real_or_simulated_email(recipient_email, subject, text_body, html_body=
             msg["Subject"] = subject
             msg["From"] = f"{from_name} <{from_email}>"
             msg["To"] = recipient_email
+            if reply_to:
+                msg["Reply-To"] = reply_to
+            if unsubscribe_url:
+                msg["List-Unsubscribe"] = f"<{unsubscribe_url}>"
 
             msg.attach(MIMEText(text_body, "plain", "utf-8"))
             if html_body:
@@ -247,12 +320,27 @@ def send_real_or_simulated_email(recipient_email, subject, text_body, html_body=
     conn = get_db()
     cursor = conn.cursor()
     cursor.execute("""
-        INSERT INTO email_outbox (recipient_email, subject, body, status)
-        VALUES (?, ?, ?, ?)
-    """, (recipient_email, subject, text_body, delivery_status))
+        INSERT INTO email_outbox (recipient_email, subject, body, html_body, template_key, reply_to, status)
+        VALUES (?, ?, ?, ?, ?, ?, ?)
+    """, (recipient_email, subject, text_body, html_body, template_key or "general", reply_to, delivery_status))
     conn.commit()
     conn.close()
     return delivery_status == "SENT_LIVE_SMTP"
+
+
+def dispatch_email_template(recipient_email: str, tpl: dict, reply_to: str = None, unsubscribe_url: str = None):
+    """Dispatches a rendered template dictionary via send_real_or_simulated_email."""
+    if not recipient_email or not tpl:
+        return False
+    return send_real_or_simulated_email(
+        recipient_email=recipient_email,
+        subject=tpl["subject"],
+        text_body=tpl["text_body"],
+        html_body=tpl.get("html_body"),
+        template_key=tpl.get("template_key", "general"),
+        reply_to=reply_to,
+        unsubscribe_url=unsubscribe_url,
+    )
 
 
 def parse_bulk_email_addresses(raw_emails):
@@ -1049,6 +1137,7 @@ def handle_api_request(method, path, headers, body_bytes):
             pass
 
     user = get_user_from_token(headers)
+    base_url = get_public_base_url(headers)
 
     # ================== HOST & CSRF / ORIGIN PROTECTION ==================
     if method in ("POST", "PUT", "DELETE"):
@@ -1213,6 +1302,10 @@ def handle_api_request(method, path, headers, body_bytes):
             return error_response(f"Database error: {e}", 500)
             
         conn.close()
+        dispatch_email_template(
+            user["email"],
+            build_security_alert_email(user["username"], f"New Passkey registered ({device_name})", base_url),
+        )
         return json_response({"success": True})
 
     # 3. WebAuthn Login Challenge
@@ -1361,10 +1454,12 @@ def handle_api_request(method, path, headers, body_bytes):
             cursor.execute("INSERT INTO sessions (token, user_id) VALUES (?, ?)", (token, target_user_id))
             
             cursor.execute("""
-                SELECT id, email, username, phone, avatar_url, bio, is_site_admin, oauth_provider, oauth_id
+                SELECT id, email, username, phone, avatar_url, bio, is_site_admin, oauth_provider, oauth_id,
+                       COALESCE(email_verified, 0) as email_verified, email_prefs
                 FROM users WHERE id = ?
             """, (target_user_id,))
             user_dict = dict(cursor.fetchone())
+            user_dict["email_prefs"] = parse_user_email_prefs(user_dict.get("email_prefs"))
             
             conn.commit()
         except Exception as e:
@@ -1405,8 +1500,11 @@ def handle_api_request(method, path, headers, body_bytes):
                 VALUES (?, ?, ?, ?, ?, ?)
             """, (email, username, pw_hash, phone, avatar_url, bio))
             user_id = cursor.lastrowid
+            ensure_user_unsubscribe_token(conn, user_id)
+            verify_tok = issue_auth_email_token(conn, user_id, "VERIFY_EMAIL", ttl_minutes=24 * 60)
             token = str(uuid.uuid4())
             cursor.execute("INSERT INTO sessions (token, user_id) VALUES (?, ?)", (token, user_id))
+            inviter_notifications = []
             try:
                 cursor.execute("""
                     SELECT id, sender_id FROM site_invitations
@@ -1418,23 +1516,50 @@ def handle_api_request(method, path, headers, body_bytes):
                         UPDATE site_invitations SET status = 'ACCEPTED'
                         WHERE LOWER(recipient_email) = LOWER(?) AND status = 'PENDING'
                     """, (email,))
+                    seen_senders = set()
                     for sinv in pending_site_invites:
-                        if sinv["sender_id"]:
+                        sid = sinv["sender_id"]
+                        if sid and sid not in seen_senders:
+                            seen_senders.add(sid)
                             create_in_app_notification(
                                 conn,
-                                sinv["sender_id"],
+                                sid,
                                 user_id,
                                 "SITE_INVITE_ACCEPTED",
                                 user_id,
                                 f"🎉 @{username} ({email}) accepted your invitation and joined GoodDeeds.space!",
                                 f"/#/user/{user_id}"
                             )
+                            cursor.execute("SELECT id, username, email, email_prefs FROM users WHERE id = ?", (sid,))
+                            inv_row = cursor.fetchone()
+                            if inv_row and is_email_pref_enabled(inv_row["email_prefs"], "invites"):
+                                inv_unsub = ensure_user_unsubscribe_token(conn, sid)
+                                inviter_notifications.append((
+                                    inv_row["email"],
+                                    inv_row["username"],
+                                    build_unsubscribe_url(base_url, inv_unsub, "invites"),
+                                ))
             except Exception:
                 pass
             conn.commit()
-            cursor.execute("SELECT id, email, username, phone, avatar_url, bio, is_site_admin, oauth_provider, oauth_id FROM users WHERE id = ?", (user_id,))
+            cursor.execute("""
+                SELECT id, email, username, phone, avatar_url, bio, is_site_admin, oauth_provider, oauth_id,
+                       COALESCE(email_verified, 0) as email_verified, email_prefs
+                FROM users WHERE id = ?
+            """, (user_id,))
             new_user = dict(cursor.fetchone())
+            new_user["email_prefs"] = parse_user_email_prefs(new_user.get("email_prefs"))
             conn.close()
+
+            verify_url = f"{base_url}/#/verify-email?token={verify_tok}"
+            dispatch_email_template(email, build_welcome_email(username, verify_url, base_url))
+            for inv_email, inv_uname, inv_unsub_url in inviter_notifications:
+                dispatch_email_template(
+                    inv_email,
+                    build_invite_accepted_email(inv_uname, username, user_id, inv_unsub_url, base_url),
+                    unsubscribe_url=inv_unsub_url,
+                )
+
             return json_response({"token": token, "user": new_user}, 201)
         except sqlite3.IntegrityError as e:
             conn.close()
@@ -1462,7 +1587,8 @@ def handle_api_request(method, path, headers, body_bytes):
         conn = get_db()
         cursor = conn.cursor()
         cursor.execute("""
-            SELECT id, email, username, password_hash, phone, avatar_url, bio, is_site_admin, is_banned, oauth_provider, oauth_id
+            SELECT id, email, username, password_hash, phone, avatar_url, bio, is_site_admin, is_banned, oauth_provider, oauth_id,
+                   COALESCE(email_verified, 0) as email_verified, email_prefs
             FROM users
             WHERE LOWER(email) = LOWER(?) OR LOWER(username) = LOWER(?)
         """, (email, email))
@@ -1474,6 +1600,7 @@ def handle_api_request(method, path, headers, body_bytes):
             conn.close()
             return error_response("Account suspended by site administration.", 403)
         user_dict = dict(row)
+        user_dict["email_prefs"] = parse_user_email_prefs(user_dict.get("email_prefs"))
         stored_pw_hash = user_dict.pop("password_hash", "")
         # Transparently upgrade legacy unsalted hashes to salted PBKDF2-HMAC-SHA256 on login
         if not str(stored_pw_hash).startswith("pbkdf2_sha256$"):
@@ -1522,6 +1649,7 @@ def handle_api_request(method, path, headers, body_bytes):
                 WHERE (oauth_provider = 'google' AND oauth_id = ?) OR LOWER(email) = LOWER(?)
             """, (oauth_id, email))
             existing_row = cursor.fetchone()
+            is_new_google_user = False
             if existing_row:
                 user_dict = dict(existing_row)
                 new_avatar = user_dict.get("avatar_url") or ""
@@ -1529,22 +1657,25 @@ def handle_api_request(method, path, headers, body_bytes):
                     new_avatar = avatar_url
                     cursor.execute("""
                         UPDATE users
-                        SET oauth_provider = 'google', oauth_id = ?, avatar_url = ?
+                        SET oauth_provider = 'google', oauth_id = ?, avatar_url = ?, email_verified = 1
                         WHERE id = ?
                     """, (oauth_id, new_avatar, user_dict["id"]))
                 else:
                     cursor.execute("""
                         UPDATE users
-                        SET oauth_provider = 'google', oauth_id = ?
+                        SET oauth_provider = 'google', oauth_id = ?, email_verified = 1
                         WHERE id = ?
                     """, (oauth_id, user_dict["id"]))
                 conn.commit()
                 cursor.execute("""
-                    SELECT id, email, username, phone, avatar_url, bio, is_site_admin, oauth_provider, oauth_id
+                    SELECT id, email, username, phone, avatar_url, bio, is_site_admin, oauth_provider, oauth_id,
+                           COALESCE(email_verified, 0) as email_verified, email_prefs
                     FROM users WHERE id = ?
                 """, (user_dict["id"],))
                 user_dict = dict(cursor.fetchone())
+                user_dict["email_prefs"] = parse_user_email_prefs(user_dict.get("email_prefs"))
             else:
+                is_new_google_user = True
                 base_username = re.sub(r"[^a-zA-Z0-9_]", "_", str(name)).strip("_")
                 if not base_username:
                     base_username = re.sub(r"[^a-zA-Z0-9_]", "_", email.split("@")[0]).strip("_") or "user"
@@ -1559,21 +1690,26 @@ def handle_api_request(method, path, headers, body_bytes):
 
                 bio = "Google Sign-In user"
                 cursor.execute("""
-                    INSERT INTO users (email, username, password_hash, avatar_url, bio, oauth_provider, oauth_id)
-                    VALUES (?, ?, 'OAUTH_GOOGLE', ?, ?, 'google', ?)
+                    INSERT INTO users (email, username, password_hash, avatar_url, bio, oauth_provider, oauth_id, email_verified)
+                    VALUES (?, ?, 'OAUTH_GOOGLE', ?, ?, 'google', ?, 1)
                 """, (email, username, avatar_url, bio, oauth_id))
                 user_id = cursor.lastrowid
+                ensure_user_unsubscribe_token(conn, user_id)
                 conn.commit()
                 cursor.execute("""
-                    SELECT id, email, username, phone, avatar_url, bio, is_site_admin, oauth_provider, oauth_id
+                    SELECT id, email, username, phone, avatar_url, bio, is_site_admin, oauth_provider, oauth_id,
+                           COALESCE(email_verified, 0) as email_verified, email_prefs
                     FROM users WHERE id = ?
                 """, (user_id,))
                 user_dict = dict(cursor.fetchone())
+                user_dict["email_prefs"] = parse_user_email_prefs(user_dict.get("email_prefs"))
 
             token = str(uuid.uuid4())
             cursor.execute("INSERT INTO sessions (token, user_id) VALUES (?, ?)", (token, user_dict["id"]))
             conn.commit()
             conn.close()
+            if is_new_google_user:
+                dispatch_email_template(email, build_welcome_email(user_dict["username"], "", base_url))
             return json_response({"success": True, "token": token, "user": user_dict})
         except Exception as e:
             conn.close()
@@ -1594,6 +1730,273 @@ def handle_api_request(method, path, headers, body_bytes):
             return error_response("Not authenticated", 401)
         return json_response({"user": user})
 
+    # ================== PASSWORD RESET, EMAIL VERIFICATION & PREFERENCES ==================
+    if path_only == "/api/auth/forgot_password" and method == "POST":
+        client_ip = get_client_ip(headers)
+        is_allowed, err_msg = check_auth_rate_limit("forgot_pw", client_ip, max_requests=5, window_seconds=60.0)
+        if not is_allowed:
+            return error_response(err_msg, 429)
+
+        email_in = str(body.get("email") or "").strip()
+        if not email_in:
+            return error_response("Please enter your account email address.", 400)
+
+        conn = get_db()
+        cursor = conn.cursor()
+        cursor.execute(
+            "SELECT id, username, email, is_banned FROM users WHERE LOWER(email) = LOWER(?)",
+            (email_in,),
+        )
+        u_row = cursor.fetchone()
+        reset_dispatch = None
+        if u_row and u_row["is_banned"] != 1:
+            tok = issue_auth_email_token(conn, u_row["id"], "PASSWORD_RESET", ttl_minutes=60)
+            conn.commit()
+            reset_url = f"{base_url}/#/reset-password?token={tok}"
+            reset_dispatch = (u_row["email"], u_row["username"], reset_url)
+        conn.close()
+
+        if reset_dispatch:
+            dispatch_email_template(
+                reset_dispatch[0],
+                build_password_reset_email(reset_dispatch[1], reset_dispatch[2], 60, base_url),
+            )
+
+        return json_response({
+            "success": True,
+            "message": "If an account exists for that email address, a password reset link has been sent.",
+        })
+
+    if path_only == "/api/auth/reset_password" and method == "POST":
+        tok = str(body.get("token") or "").strip()
+        new_password = str(body.get("new_password") or body.get("password") or "")
+        if not tok:
+            return error_response("Password reset token is required.", 400)
+        if len(new_password) < 6:
+            return error_response("New password must be at least 6 characters long.", 400)
+
+        now_utc_str = datetime.datetime.now(datetime.timezone.utc).replace(tzinfo=None).strftime("%Y-%m-%d %H:%M:%S")
+        conn = get_db()
+        cursor = conn.cursor()
+        cursor.execute("""
+            SELECT t.token, t.user_id, t.expires_at, t.used, u.username, u.email, u.is_banned
+            FROM auth_email_tokens t
+            JOIN users u ON t.user_id = u.id
+            WHERE t.token = ? AND t.token_type = 'PASSWORD_RESET'
+        """, (tok,))
+        t_row = cursor.fetchone()
+        if not t_row or t_row["used"] == 1 or str(t_row["expires_at"]) < now_utc_str:
+            conn.close()
+            return error_response("This password reset link is invalid or has expired. Please request a new one.", 400)
+        if t_row["is_banned"] == 1:
+            conn.close()
+            return error_response("Account suspended by site administration.", 403)
+
+        pw_hash = hash_password(new_password)
+        cursor.execute("UPDATE users SET password_hash = ? WHERE id = ?", (pw_hash, t_row["user_id"]))
+        cursor.execute("UPDATE auth_email_tokens SET used = 1 WHERE token = ?", (tok,))
+        cursor.execute("DELETE FROM sessions WHERE user_id = ?", (t_row["user_id"],))
+        conn.commit()
+        conn.close()
+
+        dispatch_email_template(
+            t_row["email"],
+            build_security_alert_email(t_row["username"], "Account password was reset", base_url),
+        )
+        return json_response({
+            "success": True,
+            "message": "Your password has been updated! You can now log in with your new password.",
+        })
+
+    if path_only == "/api/auth/send_verification" and method == "POST":
+        if not user:
+            return error_response("Login required", 401)
+        if user.get("email_verified") == 1:
+            return json_response({
+                "success": True,
+                "already_verified": True,
+                "message": "Your email address is already verified.",
+            })
+        conn = get_db()
+        tok = issue_auth_email_token(conn, user["id"], "VERIFY_EMAIL", ttl_minutes=24 * 60)
+        conn.commit()
+        conn.close()
+
+        verify_url = f"{base_url}/#/verify-email?token={tok}"
+        dispatch_email_template(
+            user["email"],
+            build_email_verification_email(user["username"], verify_url, base_url),
+        )
+        return json_response({
+            "success": True,
+            "message": f"Verification email sent to {user['email']}.",
+        })
+
+    if path_only == "/api/auth/verify_email" and method == "POST":
+        tok = str(body.get("token") or "").strip()
+        if not tok:
+            return error_response("Verification token is required.", 400)
+        now_utc_str = datetime.datetime.now(datetime.timezone.utc).replace(tzinfo=None).strftime("%Y-%m-%d %H:%M:%S")
+        conn = get_db()
+        cursor = conn.cursor()
+        cursor.execute("""
+            SELECT t.token, t.user_id, t.expires_at, t.used, u.username, u.email
+            FROM auth_email_tokens t
+            JOIN users u ON t.user_id = u.id
+            WHERE t.token = ? AND t.token_type = 'VERIFY_EMAIL'
+        """, (tok,))
+        t_row = cursor.fetchone()
+        if not t_row or t_row["used"] == 1 or str(t_row["expires_at"]) < now_utc_str:
+            conn.close()
+            return error_response("This verification link is invalid or has expired.", 400)
+
+        cursor.execute("UPDATE users SET email_verified = 1 WHERE id = ?", (t_row["user_id"],))
+        cursor.execute("UPDATE auth_email_tokens SET used = 1 WHERE token = ?", (tok,))
+        conn.commit()
+        conn.close()
+        return json_response({
+            "success": True,
+            "email": t_row["email"],
+            "username": t_row["username"],
+            "message": "Email verified successfully!",
+        })
+
+    if path_only == "/api/email/preferences" and method in ("GET", "PUT"):
+        if not user:
+            return error_response("Login required", 401)
+        if method == "GET":
+            return json_response({
+                "success": True,
+                "email_verified": user.get("email_verified", 0),
+                "email_prefs": user.get("email_prefs", dict(DEFAULT_EMAIL_PREFS)),
+            })
+        raw_in = body.get("email_prefs") if isinstance(body.get("email_prefs"), dict) else body
+        merged = dict(user.get("email_prefs") or DEFAULT_EMAIL_PREFS)
+        for k in DEFAULT_EMAIL_PREFS:
+            if k in raw_in:
+                merged[k] = bool(raw_in[k])
+        conn = get_db()
+        conn.execute("UPDATE users SET email_prefs = ? WHERE id = ?", (json.dumps(merged), user["id"]))
+        conn.commit()
+        conn.close()
+        return json_response({"success": True, "email_prefs": merged})
+
+    if path_only == "/api/email/unsubscribe" and method == "POST":
+        tok = str(body.get("token") or "").strip()
+        category = str(body.get("category") or "all").strip().lower()
+        if not tok:
+            return error_response("Unsubscribe token is required.", 400)
+        conn = get_db()
+        cursor = conn.cursor()
+        cursor.execute("SELECT id, username, email, email_prefs FROM users WHERE unsubscribe_token = ?", (tok,))
+        u_row = cursor.fetchone()
+        if not u_row:
+            conn.close()
+            return error_response("Invalid unsubscribe link.", 400)
+        prefs = parse_user_email_prefs(u_row["email_prefs"])
+        if category == "all":
+            for k in DEFAULT_EMAIL_PREFS:
+                prefs[k] = False
+        elif category in DEFAULT_EMAIL_PREFS:
+            prefs[category] = False
+        else:
+            for k in DEFAULT_EMAIL_PREFS:
+                prefs[k] = False
+            category = "all"
+        cursor.execute("UPDATE users SET email_prefs = ? WHERE id = ?", (json.dumps(prefs), u_row["id"]))
+        conn.commit()
+        conn.close()
+        return json_response({
+            "success": True,
+            "username": u_row["username"],
+            "category": category,
+            "email_prefs": prefs,
+            "message": f"Unsubscribed from {'all optional community emails' if category == 'all' else category.replace('_', ' ') + ' emails'}.",
+        })
+
+    if path_only == "/api/email/send_digest" and method == "POST":
+        if not user:
+            return error_response("Login required", 401)
+        conn = get_db()
+        cursor = conn.cursor()
+        cursor.execute("""
+            SELECT g.id, g.name
+            FROM group_members gm
+            JOIN groups g ON gm.group_id = g.id
+            WHERE gm.user_id = ?
+            ORDER BY g.name
+        """, (user["id"],))
+        joined_rows = cursor.fetchall()
+        joined_ids = [r["id"] for r in joined_rows]
+        joined_names = [r["name"] for r in joined_rows]
+
+        if joined_ids:
+            placeholders = ",".join("?" for _ in joined_ids)
+            cursor.execute(f"""
+                SELECT DISTINCT f.id, f.item_type, f.title, f.content, f.post_subtype, f.event_date, f.event_time,
+                       u.username as author_name
+                FROM feed_items f
+                JOIN users u ON f.author_id = u.id
+                LEFT JOIN item_groups ig ON f.id = ig.item_id
+                WHERE ig.group_id IN ({placeholders}) OR ig.group_id IS NULL
+                ORDER BY f.created_at DESC
+                LIMIT 5
+            """, joined_ids)
+        else:
+            cursor.execute("""
+                SELECT f.id, f.item_type, f.title, f.content, f.post_subtype, f.event_date, f.event_time,
+                       u.username as author_name
+                FROM feed_items f
+                JOIN users u ON f.author_id = u.id
+                ORDER BY f.created_at DESC
+                LIMIT 5
+            """)
+        feed_rows = cursor.fetchall()
+        highlights = []
+        for fr in feed_rows:
+            if fr["item_type"] == "KUDOS":
+                snip = (fr["content"] or "")[:90]
+                highlights.append(f"🌟 Kudos by @{fr['author_name']}: \"{snip}\"")
+            else:
+                st = (fr["post_subtype"] or "").upper()
+                prefix = "📅 Event" if "EVENT" in st else ("📚 Resource" if "RESOURCE" in st else "📝 Post")
+                when = f" ({fr['event_date']})" if fr["event_date"] else ""
+                highlights.append(f"{prefix}: {fr['title'] or (fr['content'] or '')[:70]}{when} — by @{fr['author_name']}")
+
+        if joined_ids:
+            placeholders_chat = ",".join("?" for _ in joined_ids)
+            cursor.execute(f"""
+                SELECT COUNT(*) as chat_cnt
+                FROM group_messages
+                WHERE group_id IN ({placeholders_chat})
+                  AND created_at >= datetime('now', '-7 days')
+            """, joined_ids)
+            chat_cnt_row = cursor.fetchone()
+            recent_chat_cnt = chat_cnt_row["chat_cnt"] if chat_cnt_row else 0
+            if recent_chat_cnt > 0:
+                highlights.append(f"💬 {recent_chat_cnt} active Chat Board message{'s' if recent_chat_cnt != 1 else ''} across your joined Spaces")
+
+        unsub_tok = ensure_user_unsubscribe_token(conn, user["id"])
+        conn.commit()
+        conn.close()
+
+        unsub_url = build_unsubscribe_url(base_url, unsub_tok, "digest")
+        dispatch_email_template(
+            user["email"],
+            build_weekly_digest_email(user["username"], joined_names, highlights, unsub_url, base_url),
+            unsubscribe_url=unsub_url,
+        )
+        return json_response({
+            "success": True,
+            "message": f"Weekly Community Digest sent to {user['email']}!",
+        })
+
+    if path_only == "/api/email/templates" and method == "GET":
+        return json_response({
+            "success": True,
+            "templates": get_all_template_previews(base_url),
+        })
+
     # ================== USER PROFILES & HISTORY ==================
     if path_only == "/api/users/profile" and method == "PUT":
         if not user:
@@ -1601,6 +2004,7 @@ def handle_api_request(method, path, headers, body_bytes):
         avatar_url = body.get("avatar_url", user["avatar_url"]).strip()
         bio = body.get("bio", user["bio"]).strip()
         password = body.get("password", "")
+        raw_prefs_update = body.get("email_prefs")
 
         conn = get_db()
         cursor = conn.cursor()
@@ -1609,10 +2013,26 @@ def handle_api_request(method, path, headers, body_bytes):
             cursor.execute("UPDATE users SET avatar_url = ?, bio = ?, password_hash = ? WHERE id = ?", (avatar_url, bio, pw_hash, user["id"]))
         else:
             cursor.execute("UPDATE users SET avatar_url = ?, bio = ? WHERE id = ?", (avatar_url, bio, user["id"]))
+        if isinstance(raw_prefs_update, dict):
+            merged_prefs = dict(user.get("email_prefs") or DEFAULT_EMAIL_PREFS)
+            for k in DEFAULT_EMAIL_PREFS:
+                if k in raw_prefs_update:
+                    merged_prefs[k] = bool(raw_prefs_update[k])
+            cursor.execute("UPDATE users SET email_prefs = ? WHERE id = ?", (json.dumps(merged_prefs), user["id"]))
         conn.commit()
-        cursor.execute("SELECT id, email, username, phone, avatar_url, bio, is_site_admin, oauth_provider, oauth_id FROM users WHERE id = ?", (user["id"],))
+        cursor.execute("""
+            SELECT id, email, username, phone, avatar_url, bio, is_site_admin, oauth_provider, oauth_id,
+                   COALESCE(email_verified, 0) as email_verified, email_prefs
+            FROM users WHERE id = ?
+        """, (user["id"],))
         updated_user = dict(cursor.fetchone())
+        updated_user["email_prefs"] = parse_user_email_prefs(updated_user.get("email_prefs"))
         conn.close()
+        if password:
+            dispatch_email_template(
+                user["email"],
+                build_security_alert_email(user["username"], "Account password updated", base_url),
+            )
         return json_response({"user": updated_user, "success": True})
 
     if path_only == "/api/users" and method == "GET":
@@ -2087,7 +2507,7 @@ def handle_api_request(method, path, headers, body_bytes):
 
         conn = get_db()
         cursor = conn.cursor()
-        cursor.execute("SELECT id, email, username FROM users WHERE id = ?", (recipient_id,))
+        cursor.execute("SELECT id, email, username, email_prefs FROM users WHERE id = ?", (recipient_id,))
         recip = cursor.fetchone()
         if not recip:
             conn.close()
@@ -2118,10 +2538,7 @@ def handle_api_request(method, path, headers, body_bytes):
             except Exception:
                 pass
 
-        subj = f"🌟 You received new Kudos from {user['username']}!"
         preview = content[:100] + ("..." if len(content) > 100 else "")
-        body_text = f"Hello {recip['username']},\n\n{user['username']} gave you public Kudos on gooddeeds.space:\n\n\"{preview}\"\n\nView and celebrate your full Kudos here: /#/kudos/{kudos_id}"
-
         create_in_app_notification(
             conn,
             recipient_id,
@@ -2132,10 +2549,19 @@ def handle_api_request(method, path, headers, body_bytes):
             f"/#/kudos/{kudos_id}"
         )
 
+        send_kudos_email = is_email_pref_enabled(recip["email_prefs"], "kudos")
+        recip_unsub_tok = ensure_user_unsubscribe_token(conn, recipient_id) if send_kudos_email else ""
+
         conn.commit()
         conn.close()
 
-        send_real_or_simulated_email(recip["email"], subj, body_text)
+        if send_kudos_email:
+            unsub_url = build_unsubscribe_url(base_url, recip_unsub_tok, "kudos")
+            dispatch_email_template(
+                recip["email"],
+                build_kudos_received_email(recip["username"], user["username"], content, kudos_id, unsub_url, base_url),
+                unsubscribe_url=unsub_url,
+            )
 
         enriched = fetch_enriched_items("WHERE f.id = ?", (kudos_id,), user["id"])
         item_obj = enriched[0]
@@ -2202,8 +2628,58 @@ def handle_api_request(method, path, headers, body_bytes):
             except Exception:
                 pass
 
+        space_announcement_dispatches = []
+        clean_gids = []
+        for g in (group_ids or []):
+            try:
+                clean_gids.append(int(g))
+            except Exception:
+                pass
+        if clean_gids and ("EVENT" in subtypes_list or "RESOURCE" in subtypes_list or bool(body.get("notify_space_members"))):
+            cursor.execute("SELECT id, name FROM groups WHERE id = ?", (clean_gids[0],))
+            primary_space = cursor.fetchone()
+            if primary_space:
+                placeholders = ",".join("?" for _ in clean_gids)
+                cursor.execute(f"""
+                    SELECT DISTINCT u.id, u.username, u.email, u.email_prefs
+                    FROM group_members gm
+                    JOIN users u ON gm.user_id = u.id
+                    WHERE gm.group_id IN ({placeholders})
+                      AND u.id != ?
+                      AND COALESCE(u.is_banned, 0) = 0
+                """, (*clean_gids, user["id"]))
+                subtype_label = (
+                    "Community Event" if "EVENT" in subtypes_list
+                    else ("Community Resource" if "RESOURCE" in subtypes_list else "Space Post")
+                )
+                for mrow in cursor.fetchall():
+                    if is_email_pref_enabled(mrow["email_prefs"], "space_updates"):
+                        m_tok = ensure_user_unsubscribe_token(conn, mrow["id"])
+                        m_unsub = build_unsubscribe_url(base_url, m_tok, "space_updates")
+                        space_announcement_dispatches.append((
+                            mrow["email"],
+                            build_space_announcement_email(
+                                mrow["username"],
+                                user["username"],
+                                primary_space["id"],
+                                primary_space["name"],
+                                post_id,
+                                title,
+                                subtype_label,
+                                event_date=event_date,
+                                event_time=event_time,
+                                summary_snippet=content,
+                                unsubscribe_url=m_unsub,
+                                base_url=base_url,
+                            ),
+                            m_unsub,
+                        ))
+
         conn.commit()
         conn.close()
+
+        for m_email, m_tpl, m_unsub in space_announcement_dispatches:
+            dispatch_email_template(m_email, m_tpl, unsubscribe_url=m_unsub)
 
         enriched = fetch_enriched_items("WHERE f.id = ?", (post_id,), user["id"])
         item_obj = enriched[0]
@@ -2248,8 +2724,15 @@ def handle_api_request(method, path, headers, body_bytes):
         cursor.execute("INSERT INTO comments (item_id, user_id, content) VALUES (?, ?, ?)", (item_id, user["id"], content))
         cid = cursor.lastrowid
 
-        cursor.execute("SELECT author_id, item_type FROM feed_items WHERE id = ?", (item_id,))
+        cursor.execute("""
+            SELECT f.author_id, f.item_type, f.title,
+                   u.username as author_username, u.email as author_email, u.email_prefs as author_prefs
+            FROM feed_items f
+            JOIN users u ON f.author_id = u.id
+            WHERE f.id = ?
+        """, (item_id,))
         parent_row = cursor.fetchone()
+        comment_email_dispatch = None
         if parent_row and parent_row["author_id"] != user["id"]:
             link_prefix = "kudos" if parent_row["item_type"] == "KUDOS" else "post"
             snippet = content[:50] + ("..." if len(content) > 50 else "")
@@ -2262,6 +2745,23 @@ def handle_api_request(method, path, headers, body_bytes):
                 f"💬 @{user['username']} commented: \"{snippet}\"",
                 f"/#/{link_prefix}/{item_id}"
             )
+            if parent_row["author_email"] and is_email_pref_enabled(parent_row["author_prefs"], "comments"):
+                c_tok = ensure_user_unsubscribe_token(conn, parent_row["author_id"])
+                c_unsub = build_unsubscribe_url(base_url, c_tok, "comments")
+                comment_email_dispatch = (
+                    parent_row["author_email"],
+                    build_comment_notification_email(
+                        parent_row["author_username"],
+                        user["username"],
+                        parent_row["item_type"],
+                        parent_row["title"] or "",
+                        content,
+                        int(item_id),
+                        unsubscribe_url=c_unsub,
+                        base_url=base_url,
+                    ),
+                    c_unsub,
+                )
 
         conn.commit()
         cursor.execute("""
@@ -2272,6 +2772,12 @@ def handle_api_request(method, path, headers, body_bytes):
         """, (cid,))
         new_c = dict(cursor.fetchone())
         conn.close()
+        if comment_email_dispatch:
+            dispatch_email_template(
+                comment_email_dispatch[0],
+                comment_email_dispatch[1],
+                unsubscribe_url=comment_email_dispatch[2],
+            )
         return json_response({"comment": new_c, "success": True}, 201)
 
     if path_only.startswith("/api/comments/") and method == "DELETE":
@@ -2700,11 +3206,15 @@ def handle_api_request(method, path, headers, body_bytes):
             conn.close()
             return error_response("You cannot promote or demote yourself.", 400)
 
-        cursor.execute("SELECT id, is_site_admin FROM users WHERE id = ?", (target_uid,))
+        cursor.execute("SELECT id, username, email, is_site_admin FROM users WHERE id = ?", (target_uid,))
         target_user_row = cursor.fetchone()
         if not target_user_row:
             conn.close()
             return error_response("Target user not found.", 404)
+
+        cursor.execute("SELECT name FROM groups WHERE id = ?", (gid,))
+        g_name_row = cursor.fetchone()
+        g_name_str = g_name_row["name"] if g_name_row else f"Space #{gid}"
 
         cursor.execute("SELECT * FROM group_members WHERE group_id = ? AND user_id = ?", (gid, target_uid))
         member_row = cursor.fetchone()
@@ -2715,6 +3225,18 @@ def handle_api_request(method, path, headers, body_bytes):
 
         conn.commit()
         conn.close()
+        if target_user_row["email"]:
+            dispatch_email_template(
+                target_user_row["email"],
+                build_space_role_updated_email(
+                    target_user_row["username"],
+                    gid,
+                    g_name_str,
+                    is_admin_val == 1,
+                    user["username"],
+                    base_url,
+                ),
+            )
         return json_response({"success": True, "group_id": gid, "user_id": target_uid, "is_admin": is_admin_val})
 
     # JOIN / LEAVE GROUP
@@ -2775,6 +3297,12 @@ def handle_api_request(method, path, headers, body_bytes):
             conn.close()
             return error_response("Forbidden: Requires Space Admin or Site Admin status.", 403)
 
+        cursor.execute("SELECT name FROM groups WHERE id = ?", (gid,))
+        g_row_kick = cursor.fetchone()
+        kick_space_name = g_row_kick["name"] if g_row_kick else f"Space #{gid}"
+        cursor.execute("SELECT username, email FROM users WHERE id = ?", (target_uid,))
+        kick_target_user = cursor.fetchone()
+
         cursor.execute("DELETE FROM group_members WHERE group_id = ? AND user_id = ?", (gid, target_uid))
         if ban_flag:
             cursor.execute("""
@@ -2783,6 +3311,17 @@ def handle_api_request(method, path, headers, body_bytes):
             """, (gid, target_uid, user["id"], reason))
         conn.commit()
         conn.close()
+        if kick_target_user and kick_target_user["email"]:
+            dispatch_email_template(
+                kick_target_user["email"],
+                build_space_member_removed_email(
+                    kick_target_user["username"],
+                    kick_space_name,
+                    ban_flag,
+                    reason,
+                    base_url,
+                ),
+            )
         return json_response({"success": True, "group_id": gid, "user_id": target_uid, "banned": ban_flag})
 
     # INVITE OTHERS TO JOIN GROUP
@@ -2820,7 +3359,7 @@ def handle_api_request(method, path, headers, body_bytes):
         already_members = []
 
         for rec in raw_recipients:
-            cursor.execute("SELECT id, username, email FROM users WHERE LOWER(username) = LOWER(?) OR LOWER(email) = LOWER(?) OR id = ?", (rec, rec, int(rec) if rec.isdigit() else -1))
+            cursor.execute("SELECT id, username, email, email_prefs FROM users WHERE LOWER(username) = LOWER(?) OR LOWER(email) = LOWER(?) OR id = ?", (rec, rec, int(rec) if rec.isdigit() else -1))
             urow = cursor.fetchone()
             if urow:
                 cursor.execute("SELECT 1 FROM group_members WHERE group_id = ? AND user_id = ?", (gid, urow["id"]))
@@ -2842,10 +3381,8 @@ def handle_api_request(method, path, headers, body_bytes):
                 return error_response(f"{', '.join(already_members)} is already a member of this space.", 400)
             return error_response("Please enter valid recipient email addresses or usernames")
 
-        subject = f"💌 You've been invited to join \"{group_name}\" on gooddeeds.space!"
-        body_text = f"Hello!\n\n{user['username']} ({user['email']}) has invited you to join the community space \"{group_name}\" on gooddeeds.space.\n\nPersonal Note:\n\"{message or 'Join us in promoting goodness and building meaningful community connections!'}\"\n\nClick here to join this space free today:\nhttp://localhost:8080/#/group/{gid}\n\nPromote goodness — one good deed at a time."
-
-        for raw_rec, target_urow in valid_recipients:
+        space_invite_dispatches = []
+        for (raw_rec, target_urow), target_email in zip(valid_recipients, email_list):
             cursor.execute("""
                 DELETE FROM group_invitations
                 WHERE group_id = ? AND status = 'PENDING'
@@ -2862,11 +3399,30 @@ def handle_api_request(method, path, headers, body_bytes):
                     f"👥 @{user['username']} invited you to join Space: \"{group_name}\"",
                     f"/#/group/{gid}"
                 )
+                if is_email_pref_enabled(target_urow["email_prefs"], "invites"):
+                    inv_tok = ensure_user_unsubscribe_token(conn, target_urow["id"])
+                    inv_unsub = build_unsubscribe_url(base_url, inv_tok, "invites")
+                    space_invite_dispatches.append((target_email, True, inv_unsub))
+            else:
+                space_invite_dispatches.append((target_email, False, ""))
         conn.commit()
         conn.close()
 
-        for rec in email_list:
-            send_real_or_simulated_email(rec, subject, body_text)
+        for rec_email, is_existing_u, inv_unsub in space_invite_dispatches:
+            dispatch_email_template(
+                rec_email,
+                build_space_invitation_email(
+                    user["username"],
+                    user["email"],
+                    gid,
+                    group_name,
+                    message,
+                    is_existing_user=is_existing_u,
+                    unsubscribe_url=inv_unsub,
+                    base_url=base_url,
+                ),
+                unsubscribe_url=inv_unsub or None,
+            )
 
         return json_response({"success": True, "message": f"Invitation sent to {len(email_list)} recipient(s)!"})
 
@@ -2910,17 +3466,7 @@ def handle_api_request(method, path, headers, body_bytes):
             )
 
         note_text = message or "Join me on GoodDeeds.space to recognize everyday kindness with public Kudos and share local community resources & events!"
-        subject = f"☀️ {user['username']} invited you to join GoodDeeds.space!"
-        body_text = (
-            f"Hello!\n\n"
-            f"{user['username']} ({user['email']}) has invited you to join GoodDeeds.space — "
-            f"a community platform built to celebrate everyday kindness with public Kudos and share helpful community events and resources.\n\n"
-            f"Personal Note from {user['username']}:\n"
-            f"\"{note_text}\"\n\n"
-            f"Join free today:\n"
-            f"http://localhost:8080/#/\n\n"
-            f"Become the best version of yourself — one good deed at a time."
-        )
+        site_invite_tpl = build_site_invitation_email(user["username"], user["email"], note_text, base_url)
 
         for rec_email in invited_emails:
             cursor.execute("""
@@ -2936,7 +3482,7 @@ def handle_api_request(method, path, headers, body_bytes):
         conn.close()
 
         for rec_email in invited_emails:
-            send_real_or_simulated_email(rec_email, subject, body_text)
+            dispatch_email_template(rec_email, site_invite_tpl)
 
         msg_parts = [f"Sent {len(invited_emails)} invitation email(s) to join GoodDeeds.space!"]
         if already_registered:
@@ -3132,14 +3678,163 @@ def handle_api_request(method, path, headers, body_bytes):
         if not msg:
             return error_response("Message cannot be empty.")
 
+        broadcast_email = bool(body.get("broadcast_email") or body.get("notify_members"))
+
         ok, mod_err = check_content_moderation(user, [msg])
         if not ok:
             return error_response(mod_err, 400)
 
         conn = get_db()
         cursor = conn.cursor()
-        cursor.execute("INSERT INTO group_messages (group_id, user_id, message) VALUES (?, ?, ?)", (gid, user["id"], msg))
+        cursor.execute("SELECT id, name FROM groups WHERE id = ?", (gid,))
+        g_chat_row = cursor.fetchone()
+        if not g_chat_row:
+            conn.close()
+            return error_response("Space not found", 404)
+        space_name = g_chat_row["name"]
+
+        if broadcast_email:
+            if user.get("is_site_admin") != 1:
+                cursor.execute("SELECT 1 FROM group_members WHERE group_id = ? AND user_id = ?", (gid, user["id"]))
+                if not cursor.fetchone():
+                    conn.close()
+                    return error_response("Join this Space first to broadcast emails to Space members.", 403)
+            ok_bcast, bcast_err = check_auth_rate_limit(
+                "chat_broadcast", f"{user['id']}:{gid}", max_requests=3, window_seconds=300.0
+            )
+            if not ok_bcast:
+                conn.close()
+                return error_response("Broadcast email limit reached for this Space (max 3 per 5 minutes). Uncheck broadcast to keep chatting!", 429)
+
+        cursor.execute(
+            "INSERT INTO group_messages (group_id, user_id, message, is_broadcast) VALUES (?, ?, ?, ?)",
+            (gid, user["id"], msg, 1 if broadcast_email else 0),
+        )
         mid = cursor.lastrowid
+
+        # Hybrid Space Chat Email & In-App Notification Routing:
+        #   1) Direct @username mentions -> immediate 'space_chat_mention' email
+        #   2) Member broadcast toggle   -> immediate 'space_chat_broadcast' email to Space members
+        #   3) Opt-in passive activity   -> 'space_chat_activity' email (max 1 per 6h per Space)
+        chat_email_dispatches = []
+        notified_uids = set()
+        short_snip = msg[:60] + ("..." if len(msg) > 60 else "")
+
+        mention_tokens = list({
+            m_uname.lower()
+            for m_uname in re.findall(r"(?<![A-Za-z0-9_])@([A-Za-z0-9_]{2,40})", msg)
+        })
+        if mention_tokens:
+            m_placeholders = ",".join("?" for _ in mention_tokens)
+            cursor.execute(f"""
+                SELECT id, username, email, email_prefs
+                FROM users
+                WHERE LOWER(username) IN ({m_placeholders})
+                  AND id != ?
+                  AND COALESCE(is_banned, 0) = 0
+            """, (*mention_tokens, user["id"]))
+            for m_user in cursor.fetchall():
+                notified_uids.add(m_user["id"])
+                create_in_app_notification(
+                    conn,
+                    m_user["id"],
+                    user["id"],
+                    "CHAT_MENTION",
+                    gid,
+                    f"💬 @{user['username']} mentioned you in {space_name}: \"{short_snip}\"",
+                    f"/#/group/{gid}",
+                )
+                if m_user["email"] and is_email_pref_enabled(m_user["email_prefs"], "chat_mentions"):
+                    u_tok = ensure_user_unsubscribe_token(conn, m_user["id"])
+                    u_unsub = build_unsubscribe_url(base_url, u_tok, "chat_mentions")
+                    chat_email_dispatches.append((
+                        m_user["email"],
+                        build_space_chat_email(
+                            m_user["username"],
+                            user["username"],
+                            gid,
+                            space_name,
+                            msg,
+                            mode="mention",
+                            unsubscribe_url=u_unsub,
+                            base_url=base_url,
+                        ),
+                        u_unsub,
+                    ))
+
+        cursor.execute("""
+            SELECT DISTINCT u.id, u.username, u.email, u.email_prefs
+            FROM group_members gm
+            JOIN users u ON gm.user_id = u.id
+            WHERE gm.group_id = ?
+              AND u.id != ?
+              AND COALESCE(u.is_banned, 0) = 0
+        """, (gid, user["id"]))
+        space_members = cursor.fetchall()
+
+        if broadcast_email:
+            for sm in space_members:
+                if sm["id"] in notified_uids:
+                    continue
+                notified_uids.add(sm["id"])
+                create_in_app_notification(
+                    conn,
+                    sm["id"],
+                    user["id"],
+                    "CHAT_BROADCAST",
+                    gid,
+                    f"📢 @{user['username']} in {space_name}: \"{short_snip}\"",
+                    f"/#/group/{gid}",
+                )
+                if sm["email"] and is_email_pref_enabled(sm["email_prefs"], "chat_mentions"):
+                    u_tok = ensure_user_unsubscribe_token(conn, sm["id"])
+                    u_unsub = build_unsubscribe_url(base_url, u_tok, "chat_mentions")
+                    chat_email_dispatches.append((
+                        sm["email"],
+                        build_space_chat_email(
+                            sm["username"],
+                            user["username"],
+                            gid,
+                            space_name,
+                            msg,
+                            mode="broadcast",
+                            unsubscribe_url=u_unsub,
+                            base_url=base_url,
+                        ),
+                        u_unsub,
+                    ))
+        else:
+            activity_subj = f"💬 New chat conversation in \"{space_name}\""
+            for sm in space_members:
+                if sm["id"] in notified_uids:
+                    continue
+                if sm["email"] and is_email_pref_enabled(sm["email_prefs"], "chat_activity"):
+                    cursor.execute("""
+                        SELECT 1 FROM email_outbox
+                        WHERE recipient_email = ?
+                          AND template_key = 'space_chat_activity'
+                          AND subject = ?
+                          AND sent_at >= datetime('now', '-6 hours')
+                        LIMIT 1
+                    """, (sm["email"], activity_subj))
+                    if not cursor.fetchone():
+                        u_tok = ensure_user_unsubscribe_token(conn, sm["id"])
+                        u_unsub = build_unsubscribe_url(base_url, u_tok, "chat_activity")
+                        chat_email_dispatches.append((
+                            sm["email"],
+                            build_space_chat_email(
+                                sm["username"],
+                                user["username"],
+                                gid,
+                                space_name,
+                                msg,
+                                mode="activity",
+                                unsubscribe_url=u_unsub,
+                                base_url=base_url,
+                            ),
+                            u_unsub,
+                        ))
+
         conn.commit()
 
         cursor.execute("""
@@ -3150,7 +3845,16 @@ def handle_api_request(method, path, headers, body_bytes):
         """, (mid,))
         new_m = dict(cursor.fetchone())
         conn.close()
-        return json_response({"message": new_m, "success": True}, 201)
+
+        for rec_email, chat_tpl, chat_unsub in chat_email_dispatches:
+            dispatch_email_template(rec_email, chat_tpl, unsubscribe_url=chat_unsub)
+
+        return json_response({
+            "message": new_m,
+            "emailed_count": len(chat_email_dispatches),
+            "broadcast": broadcast_email,
+            "success": True,
+        }, 201)
 
     # DELETE GROUP CHAT MESSAGE
     if path_only.startswith("/api/groups/") and "/chat/" in path_only and method == "DELETE":
@@ -3234,6 +3938,8 @@ def handle_api_request(method, path, headers, body_bytes):
 
         conn = get_db()
         cursor = conn.cursor()
+        cursor.execute("SELECT username, email FROM users WHERE id = ?", (target_uid,))
+        ban_u_row = cursor.fetchone()
         cursor.execute("UPDATE users SET is_banned = ? WHERE id = ?", (is_banned_val, target_uid))
         if is_banned_val == 1:
             cursor.execute("DELETE FROM sessions WHERE user_id = ?", (target_uid,))
@@ -3243,6 +3949,16 @@ def handle_api_request(method, path, headers, body_bytes):
                 cursor.execute("DELETE FROM group_messages WHERE user_id = ?", (target_uid,))
         conn.commit()
         conn.close()
+        if ban_u_row and ban_u_row["email"]:
+            dispatch_email_template(
+                ban_u_row["email"],
+                build_moderation_action_email(
+                    ban_u_row["username"],
+                    "ACCOUNT_SUSPENDED" if is_banned_val == 1 else "ACCOUNT_RESTORED",
+                    "ACCOUNT",
+                    base_url=base_url,
+                ),
+            )
         return json_response({"success": True, "user_id": target_uid, "is_banned": is_banned_val, "purged": purge_content})
 
     # ================== CONTENT REPORTING & MODERATION QUEUE ==================
@@ -3266,8 +3982,46 @@ def handle_api_request(method, path, headers, body_bytes):
             VALUES (?, ?, ?, ?, ?)
         """, (target_type, target_id, user["id"], reason, notes))
         rid = cursor.lastrowid
+
+        rep_snippet = ""
+        rep_author_name = ""
+        if target_type in ("POST", "KUDOS"):
+            cursor.execute("SELECT f.title, f.content, u.username FROM feed_items f LEFT JOIN users u ON f.author_id = u.id WHERE f.id = ?", (target_id,))
+            r_item = cursor.fetchone()
+            if r_item:
+                rep_snippet = f"{r_item['title'] or ''} - {r_item['content']}".strip(" -")
+                rep_author_name = r_item["username"] or ""
+        elif target_type == "COMMENT":
+            cursor.execute("SELECT c.content, u.username FROM comments c LEFT JOIN users u ON c.user_id = u.id WHERE c.id = ?", (target_id,))
+            r_item = cursor.fetchone()
+            if r_item:
+                rep_snippet = r_item["content"]
+                rep_author_name = r_item["username"] or ""
+        elif target_type == "CHAT":
+            cursor.execute("SELECT m.message, u.username FROM group_messages m LEFT JOIN users u ON m.user_id = u.id WHERE m.id = ?", (target_id,))
+            r_item = cursor.fetchone()
+            if r_item:
+                rep_snippet = r_item["message"]
+                rep_author_name = r_item["username"] or ""
+
         conn.commit()
         conn.close()
+
+        support_alert_recipient = os.environ.get("SUPPORT_ALERT_EMAIL", "support@gooddeeds.space")
+        dispatch_email_template(
+            support_alert_recipient,
+            build_content_report_admin_alert_email(
+                reporter_username=user["username"],
+                target_type=target_type,
+                target_id=target_id,
+                target_author_name=rep_author_name,
+                reason=reason,
+                notes=notes,
+                content_snippet=rep_snippet,
+                report_id=rid,
+                base_url=base_url,
+            ),
+        )
         return json_response({"success": True, "report_id": rid}, 201)
 
     if path_only == "/api/admin/reports" and method == "GET":
@@ -3338,6 +4092,7 @@ def handle_api_request(method, path, headers, body_bytes):
         ttype = rep["target_type"]
         tid = rep["target_id"]
         target_author_id = None
+        target_author_info = None
 
         if action in ("DELETE_CONTENT", "BAN_AUTHOR"):
             if ttype in ("POST", "KUDOS"):
@@ -3356,6 +4111,12 @@ def handle_api_request(method, path, headers, body_bytes):
                 if row: target_author_id = row["user_id"]
                 cursor.execute("DELETE FROM group_messages WHERE id = ?", (tid,))
 
+            if target_author_id:
+                cursor.execute("SELECT username, email FROM users WHERE id = ?", (target_author_id,))
+                au_row = cursor.fetchone()
+                if au_row and au_row["email"]:
+                    target_author_info = (au_row["email"], au_row["username"])
+
             if action == "BAN_AUTHOR" and target_author_id:
                 cursor.execute("UPDATE users SET is_banned = 1 WHERE id = ?", (target_author_id,))
                 cursor.execute("DELETE FROM sessions WHERE user_id = ?", (target_author_id,))
@@ -3364,6 +4125,17 @@ def handle_api_request(method, path, headers, body_bytes):
         cursor.execute("UPDATE content_reports SET status = ? WHERE id = ?", (new_status, rid))
         conn.commit()
         conn.close()
+        if target_author_info:
+            dispatch_email_template(
+                target_author_info[0],
+                build_moderation_action_email(
+                    target_author_info[1],
+                    "ACCOUNT_SUSPENDED" if action == "BAN_AUTHOR" else "CONTENT_REMOVED",
+                    ttype,
+                    reason=rep["reason"] or "",
+                    base_url=base_url,
+                ),
+            )
         return json_response({"success": True, "report_id": rid, "status": new_status, "action": action})
 
     # ================== EMAIL OUTBOX LOG VIEWER ==================
@@ -3387,19 +4159,21 @@ def handle_api_request(method, path, headers, body_bytes):
         conn = get_db()
         cursor = conn.cursor()
         cursor.execute("INSERT INTO customer_service_inquiries (user_id, subject, message) VALUES (?, ?, ?)", (user["id"], subject, message))
-
-        user_subj = f"Confirmation: We received your inquiry '{subject}'"
-        user_body = f"Hello {user['username']},\n\nThank you for reaching out to gooddeeds.space customer service. We have received your inquiry:\n\n\"{message}\"\n\nOur volunteer support team will review this and respond shortly."
-
-        admin_subj = f"🚨 Support Alert from {user['username']}: {subject}"
-        admin_body = f"User: {user['username']} ({user['email']})\nInquiry Subject: {subject}\n\nMessage:\n{message}\n\nSubmitted at: {datetime.datetime.now().strftime('%Y-%m-%d %H:%M:%S')}"
-
+        inquiry_id = cursor.lastrowid
+        submitted_at = datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")
         conn.commit()
         conn.close()
 
         support_alert_recipient = os.environ.get("SUPPORT_ALERT_EMAIL", "support@gooddeeds.space")
-        send_real_or_simulated_email(user["email"], user_subj, user_body)
-        send_real_or_simulated_email(support_alert_recipient, admin_subj, admin_body)
+        dispatch_email_template(
+            user["email"],
+            build_support_confirmation_email(user["username"], inquiry_id, subject, message, base_url),
+        )
+        dispatch_email_template(
+            support_alert_recipient,
+            build_support_admin_alert_email(user["username"], user["email"], inquiry_id, subject, message, submitted_at, base_url),
+            reply_to=user["email"],
+        )
 
         return json_response({"success": True, "message": "Customer service inquiry submitted successfully."})
 
@@ -3419,7 +4193,7 @@ def handle_api_request(method, path, headers, body_bytes):
     # ================== SOURCE CODE BROWSER ENDPOINT ==================
     if path_only in ("/api/source", "/api/code", "/api/browse") and method == "GET":
         fname = query.get("file", ["server.py"])[0]
-        allowed = {"server.py", "database.py", "handlers.py", "run.sh", "static/index.html", "static/app.js", "static/style.css"}
+        allowed = {"server.py", "database.py", "handlers.py", "email_templates.py", "run.sh", "static/index.html", "static/app.js", "static/style.css"}
         if fname not in allowed:
             return error_response("Source file restricted or not found.", 404)
         base_dir = os.path.dirname(os.path.abspath(__file__))

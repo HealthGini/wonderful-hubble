@@ -3575,6 +3575,672 @@ class TestRegressionCoverage(GoodDeedsTestCase):
         self.assertIn('id="btn-google-signup" type="button" onclick="triggerGoogleSignIn()" class="auth-sso-btn w-full py-2 px-3.5', html)
         self.assertIn('id="btn-google-login" type="button" onclick="triggerGoogleSignIn()" class="auth-sso-btn w-full py-2 px-3.5', html)
 
+    def test_email_templates_gallery_and_html_escaping(self):
+        """
+        Verifies all 19 platform email templates in email_templates.py and GET /api/email/templates:
+        - Dynamic PUBLIC_BASE_URL link generation (no broken localhost links when PUBLIC_BASE_URL is set).
+        - Non-empty subject, plain-text body, and branded HTML body across all 6 scenario groups.
+        - XSS safety (user-supplied HTML/script tags are escaped in rendered HTML emails).
+        - Source browser exposes email_templates.py.
+        """
+        import email_templates
+
+        old_base = os.environ.get("PUBLIC_BASE_URL")
+        try:
+            os.environ["PUBLIC_BASE_URL"] = "https://community.gooddeeds.space"
+            status, _, body = self.make_request("GET", "/api/email/templates")
+            self.assertEqual(status, 200)
+            self.assertTrue(body.get("success"))
+            templates = body.get("templates", [])
+            self.assertEqual(len(templates), 22)
+
+            expected_keys = {
+                "welcome", "email_verification", "password_reset", "security_alert",
+                "site_invitation", "space_invitation", "invite_accepted",
+                "kudos_received", "comment_received", "space_announcement",
+                "space_chat_mention", "space_chat_broadcast", "space_chat_activity", "weekly_digest",
+                "space_role_updated", "space_member_removed",
+                "support_confirmation", "support_admin_alert", "content_report_alert", "moderation_action",
+                "supporter_receipt", "org_onboarding",
+            }
+            returned_keys = {t["template_key"] for t in templates}
+            self.assertEqual(returned_keys, expected_keys)
+
+            for tpl in templates:
+                self.assertTrue(tpl["subject"])
+                self.assertTrue(tpl["text_body"])
+                self.assertIn("<!DOCTYPE html>", tpl["html_body"])
+                self.assertIn("https://community.gooddeeds.space", tpl["html_body"])
+                self.assertNotIn("http://localhost:8080", tpl["html_body"])
+        finally:
+            if old_base is None:
+                os.environ.pop("PUBLIC_BASE_URL", None)
+            else:
+                os.environ["PUBLIC_BASE_URL"] = old_base
+
+        # Verify XSS escaping inside HTML templates
+        xss_tpl = email_templates.build_kudos_received_email(
+            recipient_username="<script>alert(1)</script>",
+            sender_username="<b>Attacker</b>",
+            content="Kindness <img src=x onerror=alert(2)>",
+            kudos_id=99,
+            base_url="https://gooddeeds.space",
+        )
+        self.assertNotIn("<script>alert(1)</script>", xss_tpl["html_body"])
+        self.assertNotIn("<img src=x", xss_tpl["html_body"])
+        self.assertIn("&lt;script&gt;alert(1)&lt;/script&gt;", xss_tpl["html_body"])
+
+        # Verify /api/source serves email_templates.py
+        status_src, _, body_src = self.make_request("GET", "/api/source?file=email_templates.py")
+        self.assertEqual(status_src, 200)
+        self.assertIn("render_branded_email", body_src.get("content", ""))
+
+    def test_auth_welcome_verification_and_password_reset_emails(self):
+        """
+        Verifies end-to-end Account & Security email workflows:
+        1. Signup sends branded Welcome + Email Verification link and starts with email_verified = 0.
+        2. POST /api/auth/verify_email marks email_verified = 1 and rejects token reuse.
+        3. POST /api/auth/forgot_password issues a reset token & email; POST /api/auth/reset_password
+           updates password, revokes old sessions, sends security_alert email, and permits login with new password.
+        """
+        import re
+
+        signup_payload = {
+            "email": "newmember@gooddeeds.space",
+            "username": "New_Member",
+            "password": "InitialPass123!",
+            "bio": "Excited to help neighbors"
+        }
+        status, _, body = self.make_request("POST", "/api/auth/signup", body=signup_payload)
+        self.assertEqual(status, 201)
+        self.assertEqual(body["user"]["email_verified"], 0)
+        old_session_token = body["token"]
+
+        conn = self.database.get_db()
+        cur = conn.cursor()
+        cur.execute(
+            "SELECT * FROM email_outbox WHERE recipient_email = ? AND template_key = 'welcome' ORDER BY id DESC LIMIT 1",
+            ("newmember@gooddeeds.space",),
+        )
+        welcome_row = cur.fetchone()
+        conn.close()
+        self.assertIsNotNone(welcome_row)
+        self.assertIn("<!DOCTYPE html>", welcome_row["html_body"])
+        m_ver = re.search(r"verify-email\?token=([A-Za-z0-9_\-]+)", welcome_row["body"])
+        self.assertIsNotNone(m_ver)
+        verify_token = m_ver.group(1)
+
+        # Verify email with 1-click token
+        st_ver, _, body_ver = self.make_request("POST", "/api/auth/verify_email", body={"token": verify_token})
+        self.assertEqual(st_ver, 200)
+        self.assertTrue(body_ver["success"])
+
+        # Token is single-use
+        st_reuse, _, _ = self.make_request("POST", "/api/auth/verify_email", body={"token": verify_token})
+        self.assertEqual(st_reuse, 400)
+
+        # Confirm /api/auth/me now reports email_verified == 1
+        st_me, _, body_me = self.make_request("GET", "/api/auth/me", headers=self.get_auth_headers(old_session_token))
+        self.assertEqual(st_me, 200)
+        self.assertEqual(body_me["user"]["email_verified"], 1)
+
+        # Forgot password -> Reset password flow
+        st_fp, _, body_fp = self.make_request("POST", "/api/auth/forgot_password", body={"email": "newmember@gooddeeds.space"})
+        self.assertEqual(st_fp, 200)
+        self.assertTrue(body_fp["success"])
+
+        conn = self.database.get_db()
+        cur = conn.cursor()
+        cur.execute(
+            "SELECT * FROM email_outbox WHERE recipient_email = ? AND template_key = 'password_reset' ORDER BY id DESC LIMIT 1",
+            ("newmember@gooddeeds.space",),
+        )
+        reset_email = cur.fetchone()
+        conn.close()
+        self.assertIsNotNone(reset_email)
+        m_rst = re.search(r"reset-password\?token=([A-Za-z0-9_\-]+)", reset_email["body"])
+        self.assertIsNotNone(m_rst)
+        reset_token = m_rst.group(1)
+
+        st_rp, _, body_rp = self.make_request(
+            "POST",
+            "/api/auth/reset_password",
+            body={"token": reset_token, "new_password": "UpdatedSecurePass99!"},
+        )
+        self.assertEqual(st_rp, 200)
+        self.assertTrue(body_rp["success"])
+
+        # Old session should be invalidated after password reset
+        st_old, _, _ = self.make_request("GET", "/api/auth/me", headers=self.get_auth_headers(old_session_token))
+        self.assertEqual(st_old, 401)
+
+        # Security alert email was logged
+        conn = self.database.get_db()
+        cur = conn.cursor()
+        cur.execute(
+            "SELECT * FROM email_outbox WHERE recipient_email = ? AND template_key = 'security_alert' ORDER BY id DESC LIMIT 1",
+            ("newmember@gooddeeds.space",),
+        )
+        sec_row = cur.fetchone()
+        conn.close()
+        self.assertIsNotNone(sec_row)
+        self.assertIn("password was reset", sec_row["body"])
+
+        # Login succeeds with the new password
+        st_login, _, body_login = self.make_request(
+            "POST",
+            "/api/auth/login",
+            body={"email": "newmember@gooddeeds.space", "password": "UpdatedSecurePass99!"},
+        )
+        self.assertEqual(st_login, 200)
+        self.assertIn("token", body_login)
+
+    def test_community_email_triggers_preferences_and_one_click_unsubscribe(self):
+        """
+        Verifies Invitations, Comments, Space Event Announcements, Weekly Digest, and 1-Click Unsubscribe:
+        1. Invitee signing up triggers 'invite_accepted' email to the inviter.
+        2. Commenting on another member's post triggers 'comment_received' email with 1-click unsubscribe link.
+        3. Using 1-click POST /api/email/unsubscribe disables that category and suppresses subsequent emails.
+        4. Posting a Community Event in a Space triggers 'space_announcement' to joined Space members.
+        5. POST /api/email/send_digest logs a branded 'weekly_digest' email.
+        """
+        import re
+        from urllib.parse import parse_qs, urlparse
+
+        maya_tok = self.get_token("maya@gooddeeds.space")
+        maya_hdr = self.get_auth_headers(maya_tok)
+        elena_tok = self.get_token("elena@gooddeeds.space")
+        elena_hdr = self.get_auth_headers(elena_tok)
+
+        # 1. Maya invites friend -> friend signs up -> Maya receives 'invite_accepted' email
+        st_inv, _, _ = self.make_request(
+            "POST",
+            "/api/invitations/site",
+            headers=maya_hdr,
+            body={"emails": "friend_joined@example.com", "message": "Join our kindness community!"},
+        )
+        self.assertEqual(st_inv, 200)
+
+        st_sup, _, _ = self.make_request(
+            "POST",
+            "/api/auth/signup",
+            body={"email": "friend_joined@example.com", "username": "Friend_Joined", "password": "Password123!"},
+        )
+        self.assertEqual(st_sup, 201)
+
+        conn = self.database.get_db()
+        cur = conn.cursor()
+        cur.execute(
+            "SELECT * FROM email_outbox WHERE recipient_email = ? AND template_key = 'invite_accepted' ORDER BY id DESC LIMIT 1",
+            ("maya@gooddeeds.space",),
+        )
+        inv_acc = cur.fetchone()
+        conn.close()
+        self.assertIsNotNone(inv_acc)
+        self.assertIn("Friend_Joined", inv_acc["subject"])
+
+        # 2. Maya comments on Item #2 (authored by Elena) -> Elena receives 'comment_received' email
+        st_c1, _, _ = self.make_request(
+            "POST",
+            "/api/comments",
+            headers=maya_hdr,
+            body={"item_id": 2, "content": "Thank you Elena for sharing these grounding exercises!"},
+        )
+        self.assertEqual(st_c1, 201)
+
+        conn = self.database.get_db()
+        cur = conn.cursor()
+        cur.execute(
+            "SELECT * FROM email_outbox WHERE recipient_email = ? AND template_key = 'comment_received' ORDER BY id DESC LIMIT 1",
+            ("elena@gooddeeds.space",),
+        )
+        comm_email = cur.fetchone()
+        conn.close()
+        self.assertIsNotNone(comm_email)
+        self.assertIn("Maya_Lin", comm_email["subject"])
+
+        # Extract 1-click unsubscribe token from HTML body and unsubscribe Elena from 'comments'
+        m_unsub = re.search(r"#/unsubscribe\?([^\"'<>\s]+)", comm_email["html_body"].replace("&amp;", "&"))
+        self.assertIsNotNone(m_unsub)
+        qs = parse_qs(m_unsub.group(1))
+        unsub_token = qs["token"][0]
+        unsub_cat = qs["category"][0]
+        self.assertEqual(unsub_cat, "comments")
+
+        st_unsub, _, body_unsub = self.make_request(
+            "POST",
+            "/api/email/unsubscribe",
+            body={"token": unsub_token, "category": "comments"},
+        )
+        self.assertEqual(st_unsub, 200)
+        self.assertFalse(body_unsub["email_prefs"]["comments"])
+        self.assertTrue(body_unsub["email_prefs"]["kudos"])
+
+        # Subsequent comment by Maya on Item #2 must NOT send another 'comment_received' email to Elena
+        conn = self.database.get_db()
+        cur = conn.cursor()
+        cur.execute(
+            "SELECT COUNT(*) as cnt FROM email_outbox WHERE recipient_email = ? AND template_key = 'comment_received'",
+            ("elena@gooddeeds.space",),
+        )
+        before_cnt = cur.fetchone()["cnt"]
+        conn.close()
+
+        self.make_request(
+            "POST",
+            "/api/comments",
+            headers=maya_hdr,
+            body={"item_id": 2, "content": "Second follow-up comment after unsubscribe!"},
+        )
+
+        conn = self.database.get_db()
+        cur = conn.cursor()
+        cur.execute(
+            "SELECT COUNT(*) as cnt FROM email_outbox WHERE recipient_email = ? AND template_key = 'comment_received'",
+            ("elena@gooddeeds.space",),
+        )
+        after_cnt = cur.fetchone()["cnt"]
+        conn.close()
+        self.assertEqual(after_cnt, before_cnt)
+
+        # 3. Posting a Community Event in Group 1 sends 'space_announcement' to joined Space members
+        future_date = "2027-05-15"
+        st_ev, _, _ = self.make_request(
+            "POST",
+            "/api/posts",
+            headers=maya_hdr,
+            body={
+                "title": "Spring Mutual Aid Gathering",
+                "theme": "Wellbeing & Care",
+                "content": "Open neighborhood wellness circle and resource swap.",
+                "post_subtypes": ["EVENT"],
+                "event_date": future_date,
+                "event_time": "11:00 AM",
+                "group_ids": [1],
+            },
+        )
+        self.assertEqual(st_ev, 201)
+
+        conn = self.database.get_db()
+        cur = conn.cursor()
+        cur.execute(
+            "SELECT * FROM email_outbox WHERE template_key = 'space_announcement' ORDER BY id DESC LIMIT 1"
+        )
+        ann_row = cur.fetchone()
+        conn.close()
+        self.assertIsNotNone(ann_row)
+        self.assertIn("Spring Mutual Aid Gathering", ann_row["subject"])
+
+        # 4. Weekly Digest endpoint sends 'weekly_digest' email
+        st_dig, _, body_dig = self.make_request("POST", "/api/email/send_digest", headers=elena_hdr, body={})
+        self.assertEqual(st_dig, 200)
+        self.assertTrue(body_dig["success"])
+
+        conn = self.database.get_db()
+        cur = conn.cursor()
+        cur.execute(
+            "SELECT * FROM email_outbox WHERE recipient_email = ? AND template_key = 'weekly_digest' ORDER BY id DESC LIMIT 1",
+            ("elena@gooddeeds.space",),
+        )
+        dig_row = cur.fetchone()
+        conn.close()
+        self.assertIsNotNone(dig_row)
+
+    def test_governance_moderation_support_emails_and_frontend_ui(self):
+        """
+        Verifies Space Governance, Flagged Content Report Alerts, Moderation Resolution Notices,
+        Support Reply-To headers, and Frontend Email UI / TDZ-safe state declarations.
+        """
+        maya_tok = self.get_token("maya@gooddeeds.space")  # Site Admin & Space 1 Admin
+        maya_hdr = self.get_auth_headers(maya_tok)
+        arthur_tok = self.get_token("arthur@gooddeeds.space")
+        arthur_hdr = self.get_auth_headers(arthur_tok)
+
+        # 1. Space Role Promotion triggers 'space_role_updated'
+        st_role, _, _ = self.make_request(
+            "POST",
+            "/api/groups/1/members/role",
+            headers=maya_hdr,
+            body={"user_id": 4, "is_admin": 1},
+        )
+        self.assertEqual(st_role, 200)
+
+        conn = self.database.get_db()
+        cur = conn.cursor()
+        cur.execute(
+            "SELECT * FROM email_outbox WHERE recipient_email = ? AND template_key = 'space_role_updated' ORDER BY id DESC LIMIT 1",
+            ("arthur@gooddeeds.space",),
+        )
+        role_email = cur.fetchone()
+        conn.close()
+        self.assertIsNotNone(role_email)
+        self.assertIn("Space Admin", role_email["subject"])
+
+        # 2. Flagging content triggers 'content_report_alert' to SUPPORT_ALERT_EMAIL,
+        #    and resolving with DELETE_CONTENT sends 'moderation_action' to the author
+        st_post, _, body_post = self.make_request(
+            "POST",
+            "/api/posts",
+            headers=arthur_hdr,
+            body={"title": "Questionable Flyer", "theme": "General", "content": "Unverified external promo."},
+        )
+        self.assertEqual(st_post, 201)
+        flagged_post_id = body_post["item"]["id"]
+
+        st_rep, _, body_rep = self.make_request(
+            "POST",
+            "/api/reports",
+            headers=maya_hdr,
+            body={"target_type": "POST", "target_id": flagged_post_id, "reason": "Spam or commercial link", "notes": "Needs review"},
+        )
+        self.assertEqual(st_rep, 201)
+        rep_id = body_rep["report_id"]
+
+        conn = self.database.get_db()
+        cur = conn.cursor()
+        cur.execute(
+            "SELECT * FROM email_outbox WHERE template_key = 'content_report_alert' ORDER BY id DESC LIMIT 1"
+        )
+        rep_alert = cur.fetchone()
+        conn.close()
+        self.assertIsNotNone(rep_alert)
+        self.assertIn(f"#{rep_id}", rep_alert["subject"])
+
+        st_res, _, _ = self.make_request(
+            "POST",
+            f"/api/admin/reports/{rep_id}/resolve",
+            headers=maya_hdr,
+            body={"action": "DELETE_CONTENT"},
+        )
+        self.assertEqual(st_res, 200)
+
+        conn = self.database.get_db()
+        cur = conn.cursor()
+        cur.execute(
+            "SELECT * FROM email_outbox WHERE recipient_email = ? AND template_key = 'moderation_action' ORDER BY id DESC LIMIT 1",
+            ("arthur@gooddeeds.space",),
+        )
+        mod_email = cur.fetchone()
+        conn.close()
+        self.assertIsNotNone(mod_email)
+        self.assertIn("removed", mod_email["subject"].lower())
+
+        # 3. Customer Support inquiry records Reply-To on support_admin_alert
+        st_sup, _, _ = self.make_request(
+            "POST",
+            "/api/support",
+            headers=arthur_hdr,
+            body={"subject": "Coalition Space Question", "message": "Can 3 sister nonprofits share a network plan?"},
+        )
+        self.assertEqual(st_sup, 200)
+
+        conn = self.database.get_db()
+        cur = conn.cursor()
+        cur.execute(
+            "SELECT * FROM email_outbox WHERE template_key = 'support_admin_alert' ORDER BY id DESC LIMIT 1"
+        )
+        sup_alert = cur.fetchone()
+        conn.close()
+        self.assertIsNotNone(sup_alert)
+        self.assertEqual(sup_alert["reply_to"], "arthur@gooddeeds.space")
+
+        # 4. Frontend HTML & JS TDZ-safe email state verification
+        base_dir = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+        with open(os.path.join(base_dir, "static", "index.html"), "r", encoding="utf-8") as f:
+            html = f.read()
+        with open(os.path.join(base_dir, "static", "app.js"), "r", encoding="utf-8") as f:
+            js = f.read()
+
+        for elem_id in (
+            'id="modal-forgot-password"',
+            'id="modal-reset-password"',
+            'id="btn-open-forgot-password"',
+            'id="eprof-email-verification-box"',
+            'id="epref-kudos"',
+            'id="epref-comments"',
+            'id="epref-invites"',
+            'id="epref-space-updates"',
+            'id="epref-digest"',
+            'id="outbox-templates-gallery"',
+            'id="btn-outbox-mode-templates"',
+        ):
+            self.assertIn(elem_id, html)
+
+        init_idx = js.find("async function initApp()")
+        for decl in (
+            'let pendingPasswordResetToken = "";',
+            'let currentOutboxMode = "logs";',
+            "let emailTemplatesCache = [];",
+        ):
+            d_idx = js.find(decl)
+            self.assertNotEqual(d_idx, -1)
+            self.assertLess(d_idx, init_idx)
+
+    def test_hybrid_space_chat_emails_mentions_member_broadcast_and_cooldown(self):
+        """
+        Verifies the Hybrid Space Chat Board Email System:
+        1. Casual chat without @mentions or broadcast_email sends 0 emails by default.
+        2. Direct @username mention sends 'space_chat_mention' only to the mentioned member.
+        3. Any joined Space member (even non-admin, e.g. Arthur_74 in Space #1) can set
+           broadcast_email=True to send 'space_chat_broadcast' to all Space members (with zero
+           duplicate emails if someone was also @mentioned), while non-members get 403.
+        4. Opt-in 'chat_activity' preference sends 'space_chat_activity' and enforces the
+           6-hour per-Space cooldown so subsequent chat messages don't spam the user.
+        5. Frontend Chat Board broadcast checkbox and Profile chat preference checkboxes exist.
+        """
+        arthur_tok = self.get_token("arthur@gooddeeds.space")  # Regular (non-admin) member of Space #1
+        arthur_hdr = self.get_auth_headers(arthur_tok)
+        elena_tok = self.get_token("elena@gooddeeds.space")    # Member of Space #1, NOT member of Space #2
+        elena_hdr = self.get_auth_headers(elena_tok)
+        marcus_tok = self.get_token("marcus@gooddeeds.space")  # Member of Space #1
+        marcus_hdr = self.get_auth_headers(marcus_tok)
+
+        # 1. Casual chat sends 0 emails by default
+        st_c0, _, body_c0 = self.make_request(
+            "POST",
+            "/api/groups/1/chat",
+            headers=arthur_hdr,
+            body={"message": "Good morning everyone, hope your week is going well!"},
+        )
+        self.assertEqual(st_c0, 201)
+        self.assertEqual(body_c0["emailed_count"], 0)
+        self.assertEqual(body_c0["message"]["is_broadcast"], 0)
+
+        # 2. Direct @username mention emails ONLY Elena_Wellness
+        st_m, _, body_m = self.make_request(
+            "POST",
+            "/api/groups/1/chat",
+            headers=arthur_hdr,
+            body={"message": "Hey @Elena_Wellness could you share the breathing exercise PDF?"},
+        )
+        self.assertEqual(st_m, 201)
+        self.assertEqual(body_m["emailed_count"], 1)
+
+        conn = self.database.get_db()
+        cur = conn.cursor()
+        cur.execute("SELECT * FROM email_outbox WHERE template_key = 'space_chat_mention' ORDER BY id DESC LIMIT 1")
+        m_row = cur.fetchone()
+        conn.close()
+        self.assertIsNotNone(m_row)
+        self.assertEqual(m_row["recipient_email"], "elena@gooddeeds.space")
+        self.assertIn("Arthur_74 mentioned you", m_row["subject"])
+
+        # 3. Regular non-admin Space member (Arthur_74) broadcasts to Space #1 (4 members -> 3 recipients)
+        #    Include @Elena_Wellness in message text to verify deduplication (Elena gets mention, Maya & Marcus get broadcast -> total 3 emails!)
+        st_b, _, body_b = self.make_request(
+            "POST",
+            "/api/groups/1/chat",
+            headers=arthur_hdr,
+            body={
+                "message": "Urgent update (@Elena_Wellness FYI): Today's peer circle moved to Community Room 2B!",
+                "broadcast_email": True,
+            },
+        )
+        self.assertEqual(st_b, 201)
+        self.assertTrue(body_b["broadcast"])
+        self.assertEqual(body_b["message"]["is_broadcast"], 1)
+        self.assertEqual(body_b["emailed_count"], 3)
+
+        conn = self.database.get_db()
+        cur = conn.cursor()
+        cur.execute("SELECT recipient_email FROM email_outbox WHERE template_key = 'space_chat_broadcast'")
+        bcast_recipients = {r["recipient_email"] for r in cur.fetchall()}
+        conn.close()
+        self.assertEqual(bcast_recipients, {"maya@gooddeeds.space", "marcus@gooddeeds.space"})
+
+        # Non-member (Elena in Space #2) cannot trigger broadcast_email=True
+        st_nonmem, _, _ = self.make_request(
+            "POST",
+            "/api/groups/2/chat",
+            headers=elena_hdr,
+            body={"message": "Trying to broadcast without joining", "broadcast_email": True},
+        )
+        self.assertEqual(st_nonmem, 403)
+
+        # 4. Opt-in 'chat_activity' with 6-hour per-Space cooldown
+        st_pref, _, body_pref = self.make_request(
+            "PUT",
+            "/api/email/preferences",
+            headers=marcus_hdr,
+            body={"chat_activity": True},
+        )
+        self.assertEqual(st_pref, 200)
+        self.assertTrue(body_pref["email_prefs"]["chat_activity"])
+
+        # First regular chat message sends 1 'space_chat_activity' email to Marcus
+        st_act1, _, body_act1 = self.make_request(
+            "POST",
+            "/api/groups/1/chat",
+            headers=arthur_hdr,
+            body={"message": "Anyone bringing herbal tea for the circle?"},
+        )
+        self.assertEqual(st_act1, 201)
+        self.assertEqual(body_act1["emailed_count"], 1)
+
+        # Immediate second regular chat message in the same Space sends 0 emails due to 6h cooldown
+        st_act2, _, body_act2 = self.make_request(
+            "POST",
+            "/api/groups/1/chat",
+            headers=elena_hdr,
+            body={"message": "I have chamomile and peppermint packed!"},
+        )
+        self.assertEqual(st_act2, 201)
+        self.assertEqual(body_act2["emailed_count"], 0)
+
+        # 5. Frontend UI assertions
+        base_dir = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+        with open(os.path.join(base_dir, "static", "index.html"), "r", encoding="utf-8") as f:
+            html = f.read()
+        with open(os.path.join(base_dir, "static", "app.js"), "r", encoding="utf-8") as f:
+            js = f.read()
+
+        self.assertIn('id="group-chat-broadcast-toggle"', html)
+        self.assertIn("📢 Also email all Space members", html)
+        self.assertIn('id="epref-chat-mentions"', html)
+        self.assertIn('id="epref-chat-activity"', html)
+        self.assertIn("broadcast_email", js)
+
+    def test_kudos_rich_formatting_and_full_page_post_composer(self):
+        """
+        Verifies:
+        1. Give Public Kudos modal (#modal-kudos) provides rich text formatting options
+           matching Posts (#kudos-format-toolbar, Write/Preview switcher, Bold, Italic,
+           Underline, Heading, Bullet/Numbered List, Quote, and Insert Hyperlink popover),
+           and Kudos cards render formatted text via renderFormattedPostContent.
+        2. Formatted Kudos with Markdown hyperlinks and lists persist via POST /api/kudos
+           and remain searchable.
+        3. The Create Post form is a spacious full-page view (<section id="view-create-post">
+           routed via #/create-post) instead of a cramped <dialog id="modal-post"> modal,
+           with TDZ-safe top-level state declarations before initApp().
+        """
+        base_dir = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+        with open(os.path.join(base_dir, "static", "index.html"), "r", encoding="utf-8") as f:
+            html = f.read()
+        with open(os.path.join(base_dir, "static", "app.js"), "r", encoding="utf-8") as f:
+            js = f.read()
+        with open(os.path.join(base_dir, "static", "style.css"), "r", encoding="utf-8") as f:
+            css = f.read()
+
+        # 1. Kudos rich text formatting toolbar & preview in HTML, CSS & JS
+        self.assertIn('id="kudos-rich-editor-frame"', html)
+        self.assertIn('id="kudos-format-toolbar"', html)
+        self.assertIn("applyKudosFormat('bold')", html)
+        self.assertIn("applyKudosFormat('italic')", html)
+        self.assertIn("applyKudosFormat('underline')", html)
+        self.assertIn("applyKudosFormat('heading')", html)
+        self.assertIn("applyKudosFormat('bullet')", html)
+        self.assertIn("applyKudosFormat('numbered')", html)
+        self.assertIn("applyKudosFormat('quote')", html)
+        self.assertIn('id="btn-kudos-insert-link"', html)
+        self.assertIn("openKudosLinkPopover()", html)
+        self.assertIn('id="kudos-insert-link-popover"', html)
+        self.assertIn('id="kudos-link-text-input"', html)
+        self.assertIn('id="kudos-link-url-input"', html)
+        self.assertIn("confirmInsertKudosLink()", html)
+        self.assertIn('id="kudos-editor-live-preview"', html)
+        self.assertIn("switchKudosEditorMode('write')", html)
+        self.assertIn("switchKudosEditorMode('preview')", html)
+
+        self.assertIn(".kudos-rich-content blockquote", css)
+        self.assertIn("function applyKudosFormat(", js)
+        self.assertIn("window.applyKudosFormat = applyKudosFormat", js)
+        self.assertIn("function switchKudosEditorMode(", js)
+        self.assertIn("window.switchKudosEditorMode = switchKudosEditorMode", js)
+        self.assertIn("function openKudosLinkPopover(", js)
+        self.assertIn("function confirmInsertKudosLink(", js)
+        self.assertIn("function initKudosRichEditor(", js)
+        self.assertIn('kudos-rich-content flex-1 min-w-0">${renderFormattedPostContent(escapeHtml(item.content))}</div>', js)
+
+        # 2. Full-page Create Post composer (no longer a <dialog id="modal-post"> modal)
+        self.assertNotIn('<dialog id="modal-post"', html)
+        self.assertIn('<section id="view-create-post"', html)
+        self.assertIn('id="btn-back-create-post"', html)
+        self.assertIn('id="create-post-step-badge"', html)
+        self.assertIn('id="create-post-space-context-badge"', html)
+        self.assertIn('path === "/create-post"', js)
+        self.assertIn('"view-create-post"', js)
+        self.assertIn("function openCreatePostPage(", js)
+        self.assertIn("window.openCreatePostPage = openCreatePostPage", js)
+        self.assertIn("function cancelCreatePost(", js)
+        self.assertIn("window.cancelCreatePost = cancelCreatePost", js)
+
+        init_idx = js.find("async function initApp()")
+        for decl in (
+            'let postComposerReturnHash = "#/feed";',
+            "let postComposerOriginGroupId = null;",
+            "let pendingGroupTab = null;",
+            "let _kudosSavedLinkSelection = { start: 0, end: 0 };",
+        ):
+            d_idx = js.find(decl)
+            self.assertNotEqual(d_idx, -1)
+            self.assertLess(d_idx, init_idx)
+
+        # 3. End-to-end formatted Kudos persistence & searchability
+        maya_tok = self.get_token("maya@gooddeeds.space")
+        maya_hdr = self.get_auth_headers(maya_tok)
+        rich_kudos = (
+            "Huge appreciation for **Elena's** calm leadership during our *peer support circle*!\n"
+            "- Prepared the [Mindfulness Guide](https://gooddeeds.space/mindfulness-guide)\n"
+            "- Stayed late to welcome newcomers\n"
+            "> True everyday kindness in action!"
+        )
+        st_k, _, res_k = self.make_request(
+            "POST",
+            "/api/kudos",
+            headers=maya_hdr,
+            body={"recipient_id": 2, "content": rich_kudos, "group_ids": [1]},
+        )
+        self.assertEqual(st_k, 201)
+        kudos_id = res_k["item"]["id"]
+        self.assertEqual(res_k["item"]["content"], rich_kudos)
+
+        st_ks, _, res_ks = self.make_request("GET", "/api/feed?search=Mindfulness%20Guide", headers=maya_hdr)
+        self.assertEqual(st_ks, 200)
+        self.assertIn(kudos_id, [it["id"] for it in res_ks["feed"]])
+
+
+
+
 
 
 

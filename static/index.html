@@ -703,11 +703,20 @@
       <div id="gcontent-chat" class="space-y-6 animate-fadeIn">
         <div class="bg-white p-6 sm:p-8 rounded-3xl border border-slate-200 shadow-sm space-y-4">
           <h3 class="text-xl font-extrabold text-slate-900 tracking-tight">💬 Chat Board</h3>
-          <form onsubmit="event.preventDefault(); sendGroupChat();" class="flex flex-col sm:flex-row gap-3">
-            <input type="text" id="group-chat-input" placeholder="Type a message for everyone in this space..." class="flex-1 px-4 py-3.5 rounded-xl border border-slate-300 font-medium text-base bg-slate-50 text-slate-900 placeholder:text-slate-400 focus:bg-white focus:border-indigo-600 transition">
-            <button type="submit" class="px-6 py-3.5 bg-indigo-600 hover:bg-indigo-700 text-white font-bold text-base rounded-xl shadow-sm transition touch-target shrink-0">
-              Send Message
-            </button>
+          <form onsubmit="event.preventDefault(); sendGroupChat();" class="space-y-3">
+            <div class="flex flex-col sm:flex-row gap-3">
+              <input type="text" id="group-chat-input" placeholder="Type a message (use @username to email a member directly)..." class="flex-1 px-4 py-3.5 rounded-xl border border-slate-300 font-medium text-base bg-slate-50 text-slate-900 placeholder:text-slate-400 focus:bg-white focus:border-indigo-600 transition">
+              <button type="submit" class="px-6 py-3.5 bg-indigo-600 hover:bg-indigo-700 text-white font-bold text-base rounded-xl shadow-sm transition touch-target shrink-0">
+                Send Message
+              </button>
+            </div>
+            <div id="group-chat-email-controls" class="flex flex-wrap items-center justify-between gap-2 px-1 text-xs">
+              <label id="group-chat-broadcast-label" class="inline-flex items-center gap-2 cursor-pointer font-bold text-slate-700 hover:text-indigo-700 transition">
+                <input type="checkbox" id="group-chat-broadcast-toggle" class="w-4 h-4 accent-indigo-600 rounded">
+                <span>📢 Also email all Space members</span>
+              </label>
+              <span id="group-chat-broadcast-hint" class="text-slate-400 font-medium">Tip: <code class="px-1.5 py-0.5 bg-slate-100 rounded text-slate-600 font-semibold">@username</code> emails one member; check broadcast for Space-wide updates.</span>
+            </div>
           </form>
         </div>
         <div id="group-chat-list" class="space-y-3"></div>
@@ -841,16 +850,28 @@
     <section id="view-outbox" class="hidden space-y-8">
       <div class="bg-amber-50 p-8 rounded-3xl border-2 border-amber-300 flex flex-col md:flex-row justify-between items-start md:items-center gap-6">
         <div class="space-y-2">
-          <span class="px-3 py-1 bg-amber-500 text-white font-black text-xs rounded-full uppercase tracking-wider">Verification Audit Log</span>
-          <h1 class="text-3xl sm:text-4xl font-black text-amber-950">Simulated Email Outbox</h1>
-          <p class="text-amber-900 font-medium text-lg">Inspect all real-time email notifications triggered by Kudos celebrations and Customer Service inquiries.</p>
+          <span class="px-3 py-1 bg-amber-500 text-white font-black text-xs rounded-full uppercase tracking-wider">Verification Audit Log &amp; Template Showcase</span>
+          <h1 class="text-3xl sm:text-4xl font-black text-amber-950">Email Outbox &amp; Templates</h1>
+          <p class="text-amber-900 font-medium text-base sm:text-lg">Inspect real-time HTML &amp; plain-text emails triggered across Onboarding, Verification, Password Reset, Invitations, Kudos, Comments, Space Governance, Moderation, Weekly Digests, and Support.</p>
         </div>
-        <button onclick="loadOutbox()" class="px-6 py-3 bg-amber-600 hover:bg-amber-700 text-white font-black text-base rounded-xl shadow touch-target">
-          🔄 Refresh Logs
+        <div class="flex flex-wrap items-center gap-3">
+          <button type="button" onclick="refreshOutboxView()" class="px-5 py-3 bg-amber-600 hover:bg-amber-700 text-white font-black text-sm sm:text-base rounded-xl shadow touch-target">
+            🔄 Refresh
+          </button>
+        </div>
+      </div>
+
+      <div id="outbox-mode-tabs" class="flex flex-wrap items-center gap-3 bg-white p-3 rounded-2xl border border-stone-200 shadow-xs">
+        <button type="button" id="btn-outbox-mode-logs" onclick="switchOutboxMode('logs')" class="px-5 py-2.5 rounded-xl font-black text-sm bg-amber-600 text-white shadow-xs transition">
+          📬 Sent / Triggered Outbox Logs
+        </button>
+        <button type="button" id="btn-outbox-mode-templates" onclick="switchOutboxMode('templates')" class="px-5 py-2.5 rounded-xl font-bold text-sm bg-stone-100 hover:bg-stone-200 text-stone-700 transition">
+          📚 All Email Templates Gallery (22 Scenarios)
         </button>
       </div>
 
       <div id="outbox-list" class="space-y-6"></div>
+      <div id="outbox-templates-gallery" class="hidden space-y-8"></div>
     </section>
 
     <!-- ================== VIEW: ADMIN MODERATION QUEUE ================== -->
@@ -885,6 +906,7 @@
           <button onclick="browseSourceFile('server.py')" class="cfile-btn w-full text-left px-3.5 py-2.5 rounded-xl font-bold text-sm text-slate-700 hover:bg-slate-100 transition flex items-center space-x-2"><span>🐍</span><span>server.py</span></button>
           <button onclick="browseSourceFile('handlers.py')" class="cfile-btn w-full text-left px-3.5 py-2.5 rounded-xl font-bold text-sm text-slate-700 hover:bg-slate-100 transition flex items-center space-x-2"><span>⚡</span><span>handlers.py</span></button>
           <button onclick="browseSourceFile('database.py')" class="cfile-btn w-full text-left px-3.5 py-2.5 rounded-xl font-bold text-sm text-slate-700 hover:bg-slate-100 transition flex items-center space-x-2"><span>🗄️</span><span>database.py</span></button>
+          <button onclick="browseSourceFile('email_templates.py')" class="cfile-btn w-full text-left px-3.5 py-2.5 rounded-xl font-bold text-sm text-slate-700 hover:bg-slate-100 transition flex items-center space-x-2"><span>✉️</span><span>email_templates.py</span></button>
           <button onclick="browseSourceFile('static/index.html')" class="cfile-btn w-full text-left px-3.5 py-2.5 rounded-xl font-bold text-sm text-slate-700 hover:bg-slate-100 transition flex items-center space-x-2"><span>🌐</span><span>index.html</span></button>
           <button onclick="browseSourceFile('static/app.js')" class="cfile-btn w-full text-left px-3.5 py-2.5 rounded-xl font-bold text-sm text-slate-700 hover:bg-slate-100 transition flex items-center space-x-2"><span>📜</span><span>app.js</span></button>
           <button onclick="browseSourceFile('static/style.css')" class="cfile-btn w-full text-left px-3.5 py-2.5 rounded-xl font-bold text-sm text-slate-700 hover:bg-slate-100 transition flex items-center space-x-2"><span>🎨</span><span>style.css</span></button>
@@ -949,6 +971,285 @@
       </div>
     </section>
 
+    <!-- ================== VIEW: FULL-PAGE CREATE POST COMPOSER ================== -->
+    <section id="view-create-post" class="hidden max-w-6xl mx-auto space-y-6 animate-fadeIn">
+      <!-- Composer Page Header Card -->
+      <div class="bg-white px-6 py-5 sm:px-8 sm:py-6 rounded-3xl border border-slate-200/90 shadow-sm relative flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
+        <div class="space-y-1.5 pr-10 sm:pr-0">
+          <div class="flex flex-wrap items-center gap-2.5">
+            <button type="button" id="btn-back-create-post" onclick="cancelCreatePost()" class="rte-toolbar-btn inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-slate-100 hover:bg-slate-200 text-slate-700 font-bold text-xs transition">
+              <span id="btn-back-create-post-label">← Back to Feed</span>
+            </button>
+            <span id="create-post-step-badge" class="px-3 py-1 rounded-full bg-indigo-50 text-indigo-700 border border-indigo-200 font-extrabold text-xs">Step 1 of 2 • Compose</span>
+            <span id="create-post-space-context-badge" class="hidden px-3 py-1 rounded-full bg-teal-50 text-teal-800 border border-teal-200 font-extrabold text-xs"></span>
+          </div>
+          <h1 class="text-2xl sm:text-3xl font-extrabold text-slate-900 tracking-tight pt-1">Share Story, Event or Resource</h1>
+          <p class="text-slate-500 font-medium text-sm">Publish public announcements, inspiring experiences, upcoming events, and reusable community guides.</p>
+        </div>
+        <button type="button" id="btn-dismiss-create-post" onclick="closeModal('modal-post')" class="absolute top-4 right-4 sm:static w-10 h-10 rounded-full flex items-center justify-center text-stone-400 hover:text-stone-700 hover:bg-stone-100 text-xl font-black transition touch-target shrink-0" aria-label="Close post composer" title="Cancel and go back">✕</button>
+      </div>
+
+      <!-- STEP 1: SPACIOUS TWO-COLUMN COMPOSER -->
+      <div id="post-step-1" class="grid grid-cols-1 lg:grid-cols-12 gap-6 items-start">
+        <!-- Left Primary Column: Post Type, Title, Rich Story & Attachments -->
+        <div class="lg:col-span-8 space-y-6">
+          <!-- Card 1: Essentials & Rich Story Editor -->
+          <div class="bg-white p-6 sm:p-8 rounded-3xl border border-slate-200/90 shadow-sm space-y-6">
+            <!-- Multi-Select Post Type Checkboxes -->
+            <div id="post-subtype-selector">
+              <label class="block font-bold text-slate-700 text-sm mb-1">Post Type(s) <span class="text-red-500">*</span> <span class="text-slate-400 font-normal text-xs">(Select all that apply — e.g. Event + Resource, or General Post + Resource)</span></label>
+              <div class="flex flex-wrap gap-3 pt-1">
+                <label class="inline-flex items-center space-x-2 px-3.5 py-2.5 rounded-xl border border-slate-300 bg-white hover:bg-indigo-50/60 cursor-pointer font-bold text-sm text-slate-700 transition shadow-2xs">
+                  <input type="checkbox" id="post-subtype-chk-general" name="post_subtype" value="GENERAL" checked onchange="togglePostSubtype(this)" class="w-4 h-4 rounded text-indigo-600 focus:ring-indigo-500">
+                  <span>📝 General Post</span>
+                </label>
+                <label class="inline-flex items-center space-x-2 px-3.5 py-2.5 rounded-xl border border-slate-300 bg-white hover:bg-rose-50/60 cursor-pointer font-bold text-sm text-slate-700 transition shadow-2xs">
+                  <input type="checkbox" id="post-subtype-chk-event" name="post_subtype" value="EVENT" onchange="togglePostSubtype(this)" class="w-4 h-4 rounded text-rose-600 focus:ring-rose-500">
+                  <span>📅 Community Event</span>
+                </label>
+                <label class="inline-flex items-center space-x-2 px-3.5 py-2.5 rounded-xl border border-slate-300 bg-white hover:bg-teal-50/60 cursor-pointer font-bold text-sm text-slate-700 transition shadow-2xs">
+                  <input type="checkbox" id="post-subtype-chk-resource" name="post_subtype" value="RESOURCE" onchange="togglePostSubtype(this)" class="w-4 h-4 rounded text-teal-600 focus:ring-teal-500">
+                  <span>📚 Community Resource</span>
+                </label>
+              </div>
+            </div>
+
+            <!-- Event Date & Optional Time Picker (Shown only when Community Event selected) -->
+            <div id="post-event-date-container" class="hidden p-4 rounded-2xl bg-rose-50/60 border border-rose-200/80 animate-fadeIn">
+              <div class="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                <div>
+                  <label class="block font-bold text-slate-800 text-sm mb-1">Event Date <span class="text-red-500">*</span></label>
+                  <p class="text-xs text-slate-500 font-medium mb-1.5">Scheduled date when this community event will take place.</p>
+                  <input type="date" id="post-event-date" class="w-full px-4 py-3 rounded-xl border border-slate-300 font-bold text-base bg-white focus:border-indigo-600 transition cursor-pointer">
+                </div>
+                <div>
+                  <label class="block font-bold text-slate-800 text-sm mb-1">Event Time <span class="text-slate-400 font-normal text-xs">(Optional)</span></label>
+                  <p class="text-xs text-slate-500 font-medium mb-1.5">Start time or range (e.g. 2:00 PM or 10:00 AM - 12:00 PM).</p>
+                  <input type="text" id="post-event-time" list="post-event-time-options" placeholder="e.g. 2:00 PM (Optional)" class="w-full px-4 py-3 rounded-xl border border-slate-300 font-bold text-base bg-white focus:border-indigo-600 transition">
+                  <datalist id="post-event-time-options">
+                    <option value="9:00 AM"></option>
+                    <option value="10:00 AM"></option>
+                    <option value="11:00 AM"></option>
+                    <option value="12:00 PM"></option>
+                    <option value="1:00 PM"></option>
+                    <option value="2:00 PM"></option>
+                    <option value="3:00 PM"></option>
+                    <option value="4:00 PM"></option>
+                    <option value="5:00 PM"></option>
+                    <option value="6:00 PM"></option>
+                    <option value="7:00 PM"></option>
+                  </datalist>
+                </div>
+              </div>
+            </div>
+
+            <div>
+              <label for="post-input-title" class="block font-bold text-slate-700 text-sm mb-1.5">Title <span class="text-red-500">*</span></label>
+              <input type="text" id="post-input-title" required placeholder="e.g. Free Senior Tutoring & Mentorship Workshop" class="w-full px-4 py-3.5 rounded-xl border border-slate-300 font-semibold text-base sm:text-lg bg-slate-50 focus:bg-white focus:border-indigo-600 transition">
+            </div>
+
+            <div>
+              <div class="flex flex-wrap items-center justify-between gap-2 mb-1.5">
+                <label for="post-input-content" class="block font-bold text-slate-700 text-sm">Description <span class="text-slate-400 font-normal text-xs">*(Your story, event details, or resource guide)*</span> <span class="text-red-500">*</span></label>
+                <div class="inline-flex rounded-lg bg-slate-100 p-0.5 border border-slate-200 text-xs font-bold">
+                  <button type="button" id="btn-post-editor-write" onclick="switchPostEditorMode('write')" class="rte-toolbar-btn px-2.5 py-1 rounded-md bg-white text-indigo-700 shadow-2xs transition">✏️ Write</button>
+                  <button type="button" id="btn-post-editor-preview" onclick="switchPostEditorMode('preview')" class="rte-toolbar-btn px-2.5 py-1 rounded-md text-slate-600 hover:text-slate-900 transition">👁️ Preview</button>
+                </div>
+              </div>
+
+              <div id="post-rich-editor-frame" class="rounded-xl border border-slate-300 bg-slate-50 focus-within:bg-white focus-within:border-indigo-600 transition overflow-hidden">
+                <!-- Formatting Toolbar -->
+                <div id="post-format-toolbar" class="flex flex-wrap items-center gap-1 px-3 py-2 bg-slate-100/90 border-b border-slate-200" role="toolbar" aria-label="Text formatting toolbar">
+                  <button type="button" onclick="applyPostFormat('bold')" class="rte-toolbar-btn px-2.5 py-1 rounded-lg hover:bg-white text-slate-700 hover:text-indigo-700 font-black text-sm transition" title="Bold (Ctrl+B)" aria-label="Bold">B</button>
+                  <button type="button" onclick="applyPostFormat('italic')" class="rte-toolbar-btn px-2.5 py-1 rounded-lg hover:bg-white text-slate-700 hover:text-indigo-700 italic font-serif font-bold text-sm transition" title="Italic (Ctrl+I)" aria-label="Italic">I</button>
+                  <button type="button" onclick="applyPostFormat('underline')" class="rte-toolbar-btn px-2.5 py-1 rounded-lg hover:bg-white text-slate-700 hover:text-indigo-700 underline font-bold text-sm transition" title="Underline (Ctrl+U)" aria-label="Underline">U</button>
+                  <span class="w-px h-4 bg-slate-300 mx-0.5" aria-hidden="true"></span>
+                  <button type="button" onclick="applyPostFormat('heading')" class="rte-toolbar-btn px-2 py-1 rounded-lg hover:bg-white text-slate-700 hover:text-indigo-700 font-extrabold text-xs transition" title="Heading" aria-label="Heading">H</button>
+                  <button type="button" onclick="applyPostFormat('bullet')" class="rte-toolbar-btn px-2 py-1 rounded-lg hover:bg-white text-slate-700 hover:text-indigo-700 font-bold text-xs transition" title="Bullet List" aria-label="Bullet List">• List</button>
+                  <button type="button" onclick="applyPostFormat('numbered')" class="rte-toolbar-btn px-2 py-1 rounded-lg hover:bg-white text-slate-700 hover:text-indigo-700 font-bold text-xs transition" title="Numbered List" aria-label="Numbered List">1. List</button>
+                  <button type="button" onclick="applyPostFormat('quote')" class="rte-toolbar-btn px-2 py-1 rounded-lg hover:bg-white text-slate-700 hover:text-indigo-700 font-bold text-xs transition" title="Quote" aria-label="Quote">❝ Quote</button>
+                  <span class="w-px h-4 bg-slate-300 mx-0.5" aria-hidden="true"></span>
+                  <button type="button" id="btn-post-insert-link" onclick="openPostLinkPopover()" class="rte-toolbar-btn px-2.5 py-1 rounded-lg bg-white hover:bg-indigo-50 text-indigo-700 border border-indigo-200 font-bold text-xs transition inline-flex items-center gap-1 shadow-2xs" title="Insert Hyperlink (Ctrl+K)" aria-label="Insert Hyperlink">
+                    <span>🔗</span><span>Add Link</span>
+                  </button>
+                </div>
+
+                <!-- Inline Insert Hyperlink Bar -->
+                <div id="post-insert-link-popover" class="hidden px-3 py-2.5 bg-indigo-50/90 border-b border-indigo-200 space-y-2 animate-fadeIn">
+                  <div class="grid grid-cols-1 sm:grid-cols-2 gap-2">
+                    <input type="text" id="post-link-text-input" placeholder="Link text (e.g. Sign Up Form)" class="px-3 py-1.5 rounded-lg border border-indigo-200 bg-white text-sm font-medium text-slate-800 focus:border-indigo-600 focus:outline-none">
+                    <input type="url" id="post-link-url-input" placeholder="https://example.com" class="px-3 py-1.5 rounded-lg border border-indigo-200 bg-white text-sm font-medium text-slate-800 focus:border-indigo-600 focus:outline-none">
+                  </div>
+                  <div class="flex items-center justify-end gap-2">
+                    <button type="button" onclick="closePostLinkPopover()" class="rte-toolbar-btn px-3 py-1 rounded-lg bg-white hover:bg-slate-100 text-slate-600 border border-slate-200 text-xs font-bold transition">Cancel</button>
+                    <button type="button" id="btn-confirm-insert-post-link" onclick="confirmInsertPostLink()" class="rte-toolbar-btn px-3 py-1 rounded-lg bg-indigo-600 hover:bg-indigo-700 text-white text-xs font-extrabold shadow-2xs transition">Insert Hyperlink</button>
+                  </div>
+                </div>
+
+                <textarea id="post-input-content" required rows="9" placeholder="Share your experience, wisdom, or detailed announcements... Highlight text to format or add hyperlinks, or paste any URL." class="w-full px-4 py-3.5 font-medium text-base bg-transparent focus:outline-none resize-y border-0"></textarea>
+                <div id="post-editor-live-preview" class="hidden px-4 py-3.5 min-h-[220px] bg-white text-base text-slate-700 font-medium leading-relaxed post-rich-content"></div>
+              </div>
+              <p class="text-xs text-slate-400 font-medium mt-1.5">Supports <strong>bold</strong>, <em>italic</em>, lists, quotes, <strong>🔗 Add Link</strong> hyperlinks, and auto-clickable URLs.</p>
+            </div>
+          </div>
+
+          <!-- Card 2: Attachments (Links & Downloadable Files) -->
+          <div class="bg-white p-6 sm:p-8 rounded-3xl border border-slate-200/90 shadow-sm space-y-5">
+            <div>
+              <h2 class="text-lg font-extrabold text-slate-900 tracking-tight">📎 Attachments &amp; Reference Links <span class="text-slate-400 font-medium text-xs">(Optional)</span></h2>
+              <p class="text-xs text-slate-500 font-medium mt-0.5">Include helpful web links or upload flyers, PDFs, and guides.</p>
+            </div>
+
+            <div class="grid grid-cols-1 md:grid-cols-2 gap-6 items-start">
+              <div class="space-y-2.5">
+                <label class="block font-bold text-slate-700 text-sm">Web Links</label>
+                <div id="post-links-list" class="space-y-2.5">
+                  <div class="flex gap-2">
+                    <input type="url" id="post-input-url" oninput="updatePostResourceNudge()" placeholder="https://example.com/resource-link" class="post-link-input flex-1 px-4 py-3 rounded-xl border border-slate-300 font-medium text-sm bg-slate-50 focus:bg-white focus:border-indigo-600 transition">
+                  </div>
+                </div>
+                <button type="button" onclick="addPostLinkField()" class="rte-toolbar-btn px-3.5 py-2 bg-indigo-50 hover:bg-indigo-100 text-indigo-700 font-bold text-xs rounded-xl transition inline-flex items-center space-x-1">
+                  <span>+ Add More Links</span>
+                </button>
+              </div>
+
+              <div class="space-y-2.5">
+                <label class="block font-bold text-slate-700 text-sm">Files &amp; Flyers</label>
+                <div class="border-2 border-dashed border-slate-300 hover:border-indigo-500 rounded-2xl p-5 bg-slate-50 transition text-center cursor-pointer relative">
+                  <input type="file" id="post-file-input" multiple onchange="handlePostFilesSelect(event)" class="absolute inset-0 opacity-0 cursor-pointer w-full h-full">
+                  <div class="space-y-1 pointer-events-none">
+                    <span class="text-2xl block">📁</span>
+                    <span class="font-bold text-sm text-slate-700 block">Choose Files or Drag &amp; Drop</span>
+                    <span class="text-xs text-slate-400 block font-medium">*(Attach downloadable guides, flyers, or images)*</span>
+                  </div>
+                </div>
+                <div id="post-files-preview" class="space-y-2 pt-1"></div>
+              </div>
+            </div>
+
+            <!-- Gentle Smart Nudge to Optionally Dual-Tag as Community Resource -->
+            <div id="post-resource-nudge" class="hidden px-4 py-3 rounded-2xl bg-teal-50/90 border border-teal-200 flex flex-wrap items-center justify-between gap-2.5 text-xs animate-fadeIn">
+              <span class="font-semibold text-teal-950">💡 Sharing a reusable guide, article, or flyer? You can also list this under <strong>📚 Community Resources</strong>.</span>
+              <button type="button" id="btn-enable-resource-tag-nudge" onclick="enablePostResourceTagFromNudge()" class="rte-toolbar-btn px-3 py-1.5 rounded-xl bg-teal-700 hover:bg-teal-800 text-white font-extrabold text-xs shadow-2xs transition shrink-0">+ Also Tag as 📚 Community Resource</button>
+            </div>
+          </div>
+        </div>
+
+        <!-- Right Sidebar Column: Spaces & Optional Discovery Metadata -->
+        <div class="lg:col-span-4 space-y-6">
+          <!-- Card 3: Associated Spaces -->
+          <div class="bg-white p-6 rounded-3xl border border-slate-200/90 shadow-sm space-y-3">
+            <div>
+              <label class="block font-extrabold text-slate-900 text-base">👥 Tag Associated Spaces <span class="text-slate-400 font-medium text-xs">(Optional)</span></label>
+              <p class="text-xs text-slate-500 font-medium mt-0.5">Share directly with relevant Community Spaces.</p>
+            </div>
+            <div id="post-groups-list" class="flex flex-wrap gap-2 max-h-52 overflow-y-auto p-3 bg-slate-50 rounded-2xl border border-slate-200"></div>
+          </div>
+
+          <!-- Card 4: Discovery, Audience & Contact Metadata -->
+          <div class="bg-white p-6 rounded-3xl border border-slate-200/90 shadow-sm space-y-4">
+            <div>
+              <h2 class="text-base font-extrabold text-slate-900">🔎 Discovery &amp; Coordination <span class="text-slate-400 font-medium text-xs">(Optional)</span></h2>
+              <p class="text-xs text-slate-500 font-medium mt-0.5">Helps community members search and filter effectively.</p>
+            </div>
+
+            <div id="post-theme-field-container" class="hidden">
+              <label class="block font-bold text-slate-700 text-sm mb-1">Choose a Theme <span class="text-red-500">*</span></label>
+              <select id="post-input-theme" class="w-full px-4 py-3 rounded-xl border border-slate-300 font-bold text-base bg-white focus:border-indigo-600 transition cursor-pointer touch-target">
+                <option value="Inspiring Stories">✨ Inspiring Stories</option>
+                <option value="Wellbeing & Care">🌱 Wellbeing & Care</option>
+                <option value="Skills & Learning">💡 Skills & Learning</option>
+                <option value="Community & Action">🤝 Community & Action</option>
+              </select>
+            </div>
+
+            <div id="post-category-field-container" class="space-y-1.5">
+              <label for="post-category" class="block font-bold text-slate-700 text-sm">Category</label>
+              <input type="text" id="post-category" list="post-category-options" placeholder="e.g., Education &amp; Tutoring, Health &amp; Wellness..." class="w-full px-3.5 py-2.5 rounded-xl border border-slate-300 font-medium text-sm bg-slate-50 focus:bg-white focus:border-indigo-600 transition">
+              <datalist id="post-category-options">
+                <option value="Education &amp; Tutoring"></option>
+                <option value="Health &amp; Wellness"></option>
+                <option value="Food &amp; Mutual Aid"></option>
+                <option value="Senior Support"></option>
+                <option value="Youth &amp; Mentorship"></option>
+                <option value="Housing &amp; Shelter"></option>
+                <option value="Career &amp; Job Skills"></option>
+                <option value="Environment &amp; Sustainability"></option>
+                <option value="Arts, Culture &amp; Recreation"></option>
+                <option value="Legal &amp; Financial Aid"></option>
+                <option value="Disability &amp; Accessibility"></option>
+                <option value="General Community"></option>
+              </datalist>
+              <div class="flex flex-wrap gap-1.5 pt-1">
+                <button type="button" onclick="selectPostCategoryPreset('Education &amp; Tutoring')" class="rte-toolbar-btn px-2.5 py-1 rounded-lg text-xs font-bold bg-slate-100 hover:bg-indigo-50 text-slate-700 hover:text-indigo-700 border border-slate-200 transition">📚 Education</button>
+                <button type="button" onclick="selectPostCategoryPreset('Health &amp; Wellness')" class="rte-toolbar-btn px-2.5 py-1 rounded-lg text-xs font-bold bg-slate-100 hover:bg-indigo-50 text-slate-700 hover:text-indigo-700 border border-slate-200 transition">🌱 Wellness</button>
+                <button type="button" onclick="selectPostCategoryPreset('Food &amp; Mutual Aid')" class="rte-toolbar-btn px-2.5 py-1 rounded-lg text-xs font-bold bg-slate-100 hover:bg-indigo-50 text-slate-700 hover:text-indigo-700 border border-slate-200 transition">🥫 Mutual Aid</button>
+                <button type="button" onclick="selectPostCategoryPreset('Senior Support')" class="rte-toolbar-btn px-2.5 py-1 rounded-lg text-xs font-bold bg-slate-100 hover:bg-indigo-50 text-slate-700 hover:text-indigo-700 border border-slate-200 transition">👵 Seniors</button>
+                <button type="button" onclick="selectPostCategoryPreset('Youth &amp; Mentorship')" class="rte-toolbar-btn px-2.5 py-1 rounded-lg text-xs font-bold bg-slate-100 hover:bg-indigo-50 text-slate-700 hover:text-indigo-700 border border-slate-200 transition">🎓 Youth</button>
+                <button type="button" onclick="selectPostCategoryPreset('Environment &amp; Sustainability')" class="rte-toolbar-btn px-2.5 py-1 rounded-lg text-xs font-bold bg-slate-100 hover:bg-indigo-50 text-slate-700 hover:text-indigo-700 border border-slate-200 transition">🌿 Environment</button>
+              </div>
+            </div>
+
+            <div>
+              <label for="post-target-audience" class="block font-bold text-slate-700 text-sm mb-1">Target Audience</label>
+              <input type="text" id="post-target-audience" placeholder="e.g., Families, Seniors, Youth Volunteers" class="w-full px-3.5 py-2.5 rounded-xl border border-slate-300 font-medium text-sm bg-slate-50 focus:bg-white focus:border-indigo-600 transition">
+            </div>
+
+            <div>
+              <label for="post-target-geography" class="block font-bold text-slate-700 text-sm mb-1">Target Geographical Areas</label>
+              <input type="text" id="post-target-geography" placeholder="e.g., Bay Area, Downtown, Remote" class="w-full px-3.5 py-2.5 rounded-xl border border-slate-300 font-medium text-sm bg-slate-50 focus:bg-white focus:border-indigo-600 transition">
+            </div>
+
+            <div id="post-contact-box" class="p-3.5 rounded-2xl border border-slate-200 bg-slate-50/80 transition space-y-1.5">
+              <div class="flex items-center justify-between flex-wrap gap-1.5">
+                <label for="post-contact-info" class="block font-bold text-slate-800 text-sm">Key Contact Information</label>
+                <span id="post-contact-event-resource-badge" class="hidden px-2 py-0.5 rounded-full text-[10px] font-extrabold bg-indigo-100 text-indigo-800 border border-indigo-200">⭐ Recommended</span>
+              </div>
+              <p id="post-contact-helper" class="text-xs text-slate-500 font-medium leading-snug">Organizer name, email, or phone so members know who to contact.</p>
+              <input type="text" id="post-contact-info" placeholder="e.g., Jordan Lee — jordan@gooddeeds.space" class="w-full px-3.5 py-2.5 rounded-xl border border-slate-300 font-medium text-sm bg-white focus:border-indigo-600 transition">
+            </div>
+          </div>
+        </div>
+
+        <!-- Bottom Action Bar Spanning Full Width -->
+        <div class="lg:col-span-12 bg-white px-6 py-4 sm:px-8 sm:py-5 rounded-3xl border border-slate-200/90 shadow-sm flex flex-col sm:flex-row items-center justify-between gap-4">
+          <div class="flex items-center gap-3 w-full sm:w-auto justify-between sm:justify-start">
+            <button type="button" onclick="cancelCreatePost()" class="px-5 py-3 rounded-xl bg-slate-100 hover:bg-slate-200 text-slate-700 font-bold text-sm transition touch-target">
+              Cancel
+            </button>
+            <span class="text-xs font-medium text-slate-500">You will review a live preview on the next step before publishing.</span>
+          </div>
+          <button type="button" onclick="reviewPostStep(event)" class="w-full sm:w-auto min-w-[260px] px-8 py-3.5 bg-gradient-to-r from-indigo-600 to-violet-600 hover:from-indigo-700 hover:to-violet-700 text-white font-extrabold text-base sm:text-lg rounded-xl shadow-lg shadow-indigo-600/25 transition touch-target">
+            Preview &amp; Verify Before Publishing →
+          </button>
+        </div>
+      </div>
+
+      <!-- STEP 2: FOCUSED FULL-PAGE REVIEW & CONFIRMATION -->
+      <div id="post-step-2" class="hidden max-w-3xl mx-auto bg-white p-6 sm:p-10 rounded-3xl border border-slate-200/90 shadow-sm space-y-6 animate-fadeIn">
+        <div class="bg-amber-50 p-5 rounded-2xl border border-amber-200 space-y-2">
+          <div class="font-black text-amber-950 text-base flex items-center space-x-1.5">
+            <span>⚠️</span><span>Step 2 of 2: Please Review Carefully Before Publishing</span>
+          </div>
+          <p class="text-amber-900/90 text-sm font-medium">
+            To ensure a dignified, reliable community record, posts cannot be edited or deleted once published. Please confirm your details below are correct.
+          </p>
+        </div>
+
+        <div id="post-preview-card" class="bg-slate-50 p-6 sm:p-8 rounded-2xl border border-slate-200 space-y-4 shadow-xs">
+        </div>
+
+        <div class="flex flex-col sm:flex-row gap-4 pt-2">
+          <button type="button" onclick="backToPostStep1()" class="flex-1 py-3.5 bg-slate-100 hover:bg-slate-200 text-slate-700 font-bold text-base rounded-xl transition touch-target">
+            ← Edit Details
+          </button>
+          <button type="button" onclick="confirmPublishPost()" class="flex-1 py-3.5 bg-indigo-600 hover:bg-indigo-700 text-white font-extrabold text-lg rounded-xl shadow-md shadow-indigo-600/20 transition touch-target">
+            ✅ Confirm &amp; Publish Permanently ↗
+          </button>
+        </div>
+      </div>
+    </section>
+
   </main>
 
   <!-- Footer Area -->
@@ -1010,7 +1311,10 @@
           <input type="text" id="login-email" required placeholder="maya@gooddeeds.space" class="w-full px-5 py-4 rounded-xl border-2 border-stone-300 font-bold text-lg bg-stone-50 focus:bg-white focus:border-amber-600">
         </div>
         <div>
-          <label class="block font-black text-stone-700 mb-1">Password</label>
+          <div class="flex items-center justify-between mb-1">
+            <label class="block font-black text-stone-700">Password</label>
+            <button type="button" id="btn-open-forgot-password" onclick="switchModal('modal-login', 'modal-forgot-password')" class="text-xs font-bold text-amber-700 hover:text-amber-800 underline">Forgot password?</button>
+          </div>
           <input type="password" id="login-pw" required placeholder="••••••••" class="w-full px-5 py-4 rounded-xl border-2 border-stone-300 font-bold text-lg bg-stone-50 focus:bg-white focus:border-amber-600">
         </div>
         <button type="submit" class="w-full py-4 bg-amber-600 hover:bg-amber-700 text-white font-black text-xl rounded-2xl shadow-lg transition touch-target">
@@ -1022,6 +1326,57 @@
       </p>
     </div>
 
+  </dialog>
+
+  <!-- MODAL 1B: FORGOT PASSWORD -->
+  <dialog id="modal-forgot-password" class="p-0 rounded-3xl max-w-lg w-full shadow-2xl border-2 border-stone-200 m-auto max-h-[90vh] overflow-y-auto">
+    <div class="p-8 sm:p-10 space-y-6 bg-white">
+      <div class="flex justify-between items-center border-b pb-4">
+        <h3 class="text-2xl sm:text-3xl font-black text-stone-900">🔑 Reset Password</h3>
+        <button type="button" onclick="closeModal('modal-forgot-password')" class="w-10 h-10 rounded-full flex items-center justify-center text-stone-400 hover:text-stone-700 hover:bg-stone-100 text-2xl font-black transition touch-target" aria-label="Close modal" title="Close">✕</button>
+      </div>
+      <p class="text-stone-600 font-medium text-sm leading-relaxed">
+        Enter the email address associated with your GoodDeeds.space account, and we'll send you a single-use link to choose a new password.
+      </p>
+      <form onsubmit="handleForgotPassword(event)" class="space-y-4">
+        <div>
+          <label class="block font-black text-stone-700 mb-1">Account Email Address</label>
+          <input type="email" id="forgot-pw-email" required placeholder="maya@gooddeeds.space" class="w-full px-5 py-3.5 rounded-xl border-2 border-stone-300 font-bold text-base bg-stone-50 focus:bg-white focus:border-amber-600">
+        </div>
+        <button type="submit" class="w-full py-3.5 bg-amber-600 hover:bg-amber-700 text-white font-black text-lg rounded-2xl shadow-lg transition touch-target">
+          Send Reset Link →
+        </button>
+      </form>
+      <p class="text-center font-bold text-stone-500 text-sm">
+        Remembered your password? <button type="button" onclick="switchModal('modal-forgot-password', 'modal-login')" class="text-amber-700 font-black underline">Back to Log In</button>
+      </p>
+    </div>
+  </dialog>
+
+  <!-- MODAL 1C: CHOOSE NEW PASSWORD (TOKEN RESET) -->
+  <dialog id="modal-reset-password" class="p-0 rounded-3xl max-w-lg w-full shadow-2xl border-2 border-stone-200 m-auto max-h-[90vh] overflow-y-auto">
+    <div class="p-8 sm:p-10 space-y-6 bg-white">
+      <div class="flex justify-between items-center border-b pb-4">
+        <h3 class="text-2xl sm:text-3xl font-black text-stone-900">🛡️ Set New Password</h3>
+        <button type="button" onclick="closeModal('modal-reset-password')" class="w-10 h-10 rounded-full flex items-center justify-center text-stone-400 hover:text-stone-700 hover:bg-stone-100 text-2xl font-black transition touch-target" aria-label="Close modal" title="Close">✕</button>
+      </div>
+      <p class="text-stone-600 font-medium text-sm leading-relaxed">
+        Choose a strong new password (at least 6 characters) for your GoodDeeds.space account.
+      </p>
+      <form onsubmit="handleResetPassword(event)" class="space-y-4">
+        <div>
+          <label class="block font-black text-stone-700 mb-1">New Password</label>
+          <input type="password" id="reset-pw-new" required minlength="6" placeholder="••••••••" class="w-full px-5 py-3.5 rounded-xl border-2 border-stone-300 font-bold text-base bg-stone-50 focus:bg-white focus:border-amber-600">
+        </div>
+        <div>
+          <label class="block font-black text-stone-700 mb-1">Confirm New Password</label>
+          <input type="password" id="reset-pw-confirm" required minlength="6" placeholder="••••••••" class="w-full px-5 py-3.5 rounded-xl border-2 border-stone-300 font-bold text-base bg-stone-50 focus:bg-white focus:border-amber-600">
+        </div>
+        <button type="submit" class="w-full py-3.5 bg-indigo-600 hover:bg-indigo-700 text-white font-black text-lg rounded-2xl shadow-lg transition touch-target">
+          Save New Password ✓
+        </button>
+      </form>
+    </div>
   </dialog>
 
   <!-- MODAL 2: SIGN UP FREE -->
@@ -1084,7 +1439,7 @@
   </dialog>
 
   <!-- MODAL 3: GIVE PUBLIC KUDOS -->
-  <dialog id="modal-kudos" class="p-0 rounded-3xl max-w-lg w-full shadow-2xl border border-slate-200 bg-white m-auto max-h-[90vh] overflow-y-auto">
+  <dialog id="modal-kudos" class="p-0 rounded-3xl max-w-xl w-full shadow-2xl border border-slate-200 bg-white m-auto max-h-[90vh] overflow-y-auto">
     <div class="p-8 sm:p-10 space-y-6 bg-white relative">
       <button type="button" onclick="closeModal('modal-kudos')" class="absolute top-4 right-4 sm:top-6 sm:right-6 w-10 h-10 rounded-full flex items-center justify-center text-stone-400 hover:text-stone-700 hover:bg-stone-100 text-2xl font-black transition touch-target" aria-label="Close modal" title="Close">✕</button>
       <div class="text-center space-y-1 border-b border-slate-100 pb-5 pr-8 pl-8">
@@ -1096,12 +1451,51 @@
         <div class="relative">
           <label class="block font-bold text-slate-700 text-sm mb-1">Recipient <span class="text-red-500">*</span></label>
           <input type="hidden" id="kudos-recipient-id" required>
-          <input type="text" id="kudos-recipient-input" required autocomplete="off" oninput="handleKudosRecipientSearch(this.value)" onfocus="handleKudosRecipientSearch(this.value)" placeholder="Search member by username or email..." class="w-full px-4 py-3 rounded-xl border border-slate-300 font-semibold text-base bg-slate-50 focus:bg-white focus:border-indigo-600 transition">
+          <input type="text" id="kudos-recipient-input" required autocomplete="off" oninput="handleKudosRecipientSearch(this.value)" onfocus="handleKudosRecipientSearch(this.value)" placeholder="Search member by username or email..." class="w-full px-4 py-3 rounded-xl border border-slate-300 font-semibold text-base bg-slate-50 focus:bg-white focus:border-amber-500 transition">
           <div id="kudos-recipient-suggestions" class="absolute left-0 right-0 mt-1 max-h-48 overflow-y-auto bg-white border border-slate-200 rounded-xl shadow-xl hidden z-50 divide-y divide-slate-100"></div>
         </div>
         <div>
-          <label class="block font-bold text-slate-700 text-sm mb-1">Gratitude Message <span class="text-red-500">*</span></label>
-          <textarea id="kudos-content" required rows="4" placeholder="Thank you so much for lending your support and collaboration..." class="w-full px-4 py-3 rounded-xl border border-slate-300 font-medium text-base bg-slate-50 focus:bg-white focus:border-indigo-600 transition"></textarea>
+          <div class="flex flex-wrap items-center justify-between gap-2 mb-1.5">
+            <label for="kudos-content" class="block font-bold text-slate-700 text-sm">Gratitude Message <span class="text-red-500">*</span></label>
+            <div class="inline-flex rounded-lg bg-slate-100 p-0.5 border border-slate-200 text-xs font-bold">
+              <button type="button" id="btn-kudos-editor-write" onclick="switchKudosEditorMode('write')" class="rte-toolbar-btn px-2.5 py-1 rounded-md bg-white text-amber-700 shadow-2xs transition">✏️ Write</button>
+              <button type="button" id="btn-kudos-editor-preview" onclick="switchKudosEditorMode('preview')" class="rte-toolbar-btn px-2.5 py-1 rounded-md text-slate-600 hover:text-slate-900 transition">👁️ Preview</button>
+            </div>
+          </div>
+
+          <div id="kudos-rich-editor-frame" class="rounded-xl border border-slate-300 bg-slate-50 focus-within:bg-white focus-within:border-amber-500 transition overflow-hidden">
+            <!-- Kudos Formatting Toolbar -->
+            <div id="kudos-format-toolbar" class="flex flex-wrap items-center gap-1 px-2.5 py-1.5 bg-amber-50/60 border-b border-slate-200" role="toolbar" aria-label="Kudos text formatting toolbar">
+              <button type="button" onclick="applyKudosFormat('bold')" class="rte-toolbar-btn px-2.5 py-1 rounded-lg hover:bg-white text-slate-700 hover:text-amber-700 font-black text-sm transition" title="Bold (Ctrl+B)" aria-label="Bold">B</button>
+              <button type="button" onclick="applyKudosFormat('italic')" class="rte-toolbar-btn px-2.5 py-1 rounded-lg hover:bg-white text-slate-700 hover:text-amber-700 italic font-serif font-bold text-sm transition" title="Italic (Ctrl+I)" aria-label="Italic">I</button>
+              <button type="button" onclick="applyKudosFormat('underline')" class="rte-toolbar-btn px-2.5 py-1 rounded-lg hover:bg-white text-slate-700 hover:text-amber-700 underline font-bold text-sm transition" title="Underline (Ctrl+U)" aria-label="Underline">U</button>
+              <span class="w-px h-4 bg-slate-300 mx-0.5" aria-hidden="true"></span>
+              <button type="button" onclick="applyKudosFormat('heading')" class="rte-toolbar-btn px-2 py-1 rounded-lg hover:bg-white text-slate-700 hover:text-amber-700 font-extrabold text-xs transition" title="Heading" aria-label="Heading">H</button>
+              <button type="button" onclick="applyKudosFormat('bullet')" class="rte-toolbar-btn px-2 py-1 rounded-lg hover:bg-white text-slate-700 hover:text-amber-700 font-bold text-xs transition" title="Bullet List" aria-label="Bullet List">• List</button>
+              <button type="button" onclick="applyKudosFormat('numbered')" class="rte-toolbar-btn px-2 py-1 rounded-lg hover:bg-white text-slate-700 hover:text-amber-700 font-bold text-xs transition" title="Numbered List" aria-label="Numbered List">1. List</button>
+              <button type="button" onclick="applyKudosFormat('quote')" class="rte-toolbar-btn px-2 py-1 rounded-lg hover:bg-white text-slate-700 hover:text-amber-700 font-bold text-xs transition" title="Quote" aria-label="Quote">❝ Quote</button>
+              <span class="w-px h-4 bg-slate-300 mx-0.5" aria-hidden="true"></span>
+              <button type="button" id="btn-kudos-insert-link" onclick="openKudosLinkPopover()" class="rte-toolbar-btn px-2.5 py-1 rounded-lg bg-white hover:bg-amber-50 text-amber-800 border border-amber-200 font-bold text-xs transition inline-flex items-center gap-1 shadow-2xs" title="Insert Hyperlink (Ctrl+K)" aria-label="Insert Hyperlink">
+                <span>🔗</span><span>Add Link</span>
+              </button>
+            </div>
+
+            <!-- Inline Insert Hyperlink Bar for Kudos -->
+            <div id="kudos-insert-link-popover" class="hidden px-3 py-2.5 bg-amber-50/90 border-b border-amber-200 space-y-2 animate-fadeIn">
+              <div class="grid grid-cols-1 sm:grid-cols-2 gap-2">
+                <input type="text" id="kudos-link-text-input" placeholder="Link text (e.g. Project Page)" class="px-3 py-1.5 rounded-lg border border-amber-200 bg-white text-sm font-medium text-slate-800 focus:border-amber-600 focus:outline-none">
+                <input type="url" id="kudos-link-url-input" placeholder="https://example.com" class="px-3 py-1.5 rounded-lg border border-amber-200 bg-white text-sm font-medium text-slate-800 focus:border-amber-600 focus:outline-none">
+              </div>
+              <div class="flex items-center justify-end gap-2">
+                <button type="button" onclick="closeKudosLinkPopover()" class="rte-toolbar-btn px-3 py-1 rounded-lg bg-white hover:bg-slate-100 text-slate-600 border border-slate-200 text-xs font-bold transition">Cancel</button>
+                <button type="button" id="btn-confirm-insert-kudos-link" onclick="confirmInsertKudosLink()" class="rte-toolbar-btn px-3 py-1 rounded-lg bg-amber-600 hover:bg-amber-700 text-white text-xs font-extrabold shadow-2xs transition">Insert Hyperlink</button>
+              </div>
+            </div>
+
+            <textarea id="kudos-content" required rows="4" placeholder="Thank you so much for lending your support and collaboration... Highlight text to format or add hyperlinks." class="w-full px-4 py-3 font-medium text-base bg-transparent focus:outline-none resize-y border-0"></textarea>
+            <div id="kudos-editor-live-preview" class="hidden px-4 py-3 min-h-[112px] bg-amber-50/30 text-base text-slate-800 font-semibold leading-relaxed post-rich-content kudos-rich-content"></div>
+          </div>
+          <p class="text-xs text-slate-400 font-medium mt-1">Supports <strong>bold</strong>, <em>italic</em>, lists, quotes, <strong>🔗 Add Link</strong> hyperlinks, and auto-clickable URLs.</p>
         </div>
         <div>
           <label class="block font-bold text-slate-700 text-sm mb-1.5">Tag Associated Spaces (Optional)</label>
@@ -1113,241 +1507,6 @@
           </button>
         </div>
       </form>
-    </div>
-  </dialog>
-
-  <!-- MODAL 4: SHARE POST -->
-  <dialog id="modal-post" class="p-0 rounded-3xl max-w-2xl w-full shadow-2xl border border-slate-200 bg-white m-auto max-h-[90vh] overflow-y-auto">
-    <div class="p-8 sm:p-12 space-y-8 bg-white relative">
-      <button type="button" onclick="closeModal('modal-post')" class="absolute top-4 right-4 sm:top-6 sm:right-6 w-10 h-10 rounded-full flex items-center justify-center text-stone-400 hover:text-stone-700 hover:bg-stone-100 text-2xl font-black transition touch-target" aria-label="Close modal" title="Close">✕</button>
-      <div class="text-center space-y-2 border-b border-slate-100 pb-5 pr-8 pl-8">
-        <h3 class="text-3xl font-extrabold text-slate-800 tracking-tight">Share Story, Event or Resource</h3>
-        <p class="text-slate-500 font-medium text-sm">Publish public announcements, inspiring experiences, and community guides.</p>
-      </div>
-
-      <div id="post-step-1" class="space-y-6">
-        <div>
-          <label class="block font-bold text-slate-700 text-sm mb-1.5">Title <span class="text-red-500">*</span></label>
-          <input type="text" id="post-input-title" required placeholder="e.g. Free Senior Tutoring & Mentorship Workshop" class="w-full px-4 py-3 rounded-xl border border-slate-300 font-semibold text-base bg-slate-50 focus:bg-white focus:border-indigo-600 transition">
-        </div>
-
-        <div>
-          <div class="flex flex-wrap items-center justify-between gap-2 mb-1.5">
-            <label for="post-input-content" class="block font-bold text-slate-700 text-sm">Description <span class="text-slate-400 font-normal text-xs">*(Your story or announcement)*</span> <span class="text-red-500">*</span></label>
-            <div class="inline-flex rounded-lg bg-slate-100 p-0.5 border border-slate-200 text-xs font-bold">
-              <button type="button" id="btn-post-editor-write" onclick="switchPostEditorMode('write')" class="rte-toolbar-btn px-2.5 py-1 rounded-md bg-white text-indigo-700 shadow-2xs transition">✏️ Write</button>
-              <button type="button" id="btn-post-editor-preview" onclick="switchPostEditorMode('preview')" class="rte-toolbar-btn px-2.5 py-1 rounded-md text-slate-600 hover:text-slate-900 transition">👁️ Preview</button>
-            </div>
-          </div>
-
-          <div id="post-rich-editor-frame" class="rounded-xl border border-slate-300 bg-slate-50 focus-within:bg-white focus-within:border-indigo-600 transition overflow-hidden">
-            <!-- Formatting Toolbar -->
-            <div id="post-format-toolbar" class="flex flex-wrap items-center gap-1 px-2.5 py-1.5 bg-slate-100/90 border-b border-slate-200" role="toolbar" aria-label="Text formatting toolbar">
-              <button type="button" onclick="applyPostFormat('bold')" class="rte-toolbar-btn px-2.5 py-1 rounded-lg hover:bg-white text-slate-700 hover:text-indigo-700 font-black text-sm transition" title="Bold (Ctrl+B)" aria-label="Bold">B</button>
-              <button type="button" onclick="applyPostFormat('italic')" class="rte-toolbar-btn px-2.5 py-1 rounded-lg hover:bg-white text-slate-700 hover:text-indigo-700 italic font-serif font-bold text-sm transition" title="Italic (Ctrl+I)" aria-label="Italic">I</button>
-              <button type="button" onclick="applyPostFormat('underline')" class="rte-toolbar-btn px-2.5 py-1 rounded-lg hover:bg-white text-slate-700 hover:text-indigo-700 underline font-bold text-sm transition" title="Underline (Ctrl+U)" aria-label="Underline">U</button>
-              <span class="w-px h-4 bg-slate-300 mx-0.5" aria-hidden="true"></span>
-              <button type="button" onclick="applyPostFormat('heading')" class="rte-toolbar-btn px-2 py-1 rounded-lg hover:bg-white text-slate-700 hover:text-indigo-700 font-extrabold text-xs transition" title="Heading" aria-label="Heading">H</button>
-              <button type="button" onclick="applyPostFormat('bullet')" class="rte-toolbar-btn px-2 py-1 rounded-lg hover:bg-white text-slate-700 hover:text-indigo-700 font-bold text-xs transition" title="Bullet List" aria-label="Bullet List">• List</button>
-              <button type="button" onclick="applyPostFormat('numbered')" class="rte-toolbar-btn px-2 py-1 rounded-lg hover:bg-white text-slate-700 hover:text-indigo-700 font-bold text-xs transition" title="Numbered List" aria-label="Numbered List">1. List</button>
-              <button type="button" onclick="applyPostFormat('quote')" class="rte-toolbar-btn px-2 py-1 rounded-lg hover:bg-white text-slate-700 hover:text-indigo-700 font-bold text-xs transition" title="Quote" aria-label="Quote">❝ Quote</button>
-              <span class="w-px h-4 bg-slate-300 mx-0.5" aria-hidden="true"></span>
-              <button type="button" id="btn-post-insert-link" onclick="openPostLinkPopover()" class="rte-toolbar-btn px-2.5 py-1 rounded-lg bg-white hover:bg-indigo-50 text-indigo-700 border border-indigo-200 font-bold text-xs transition inline-flex items-center gap-1 shadow-2xs" title="Insert Hyperlink (Ctrl+K)" aria-label="Insert Hyperlink">
-                <span>🔗</span><span>Add Link</span>
-              </button>
-            </div>
-
-            <!-- Inline Insert Hyperlink Bar -->
-            <div id="post-insert-link-popover" class="hidden px-3 py-2.5 bg-indigo-50/90 border-b border-indigo-200 space-y-2 animate-fadeIn">
-              <div class="grid grid-cols-1 sm:grid-cols-2 gap-2">
-                <input type="text" id="post-link-text-input" placeholder="Link text (e.g. Sign Up Form)" class="px-3 py-1.5 rounded-lg border border-indigo-200 bg-white text-sm font-medium text-slate-800 focus:border-indigo-600 focus:outline-none">
-                <input type="url" id="post-link-url-input" placeholder="https://example.com" class="px-3 py-1.5 rounded-lg border border-indigo-200 bg-white text-sm font-medium text-slate-800 focus:border-indigo-600 focus:outline-none">
-              </div>
-              <div class="flex items-center justify-end gap-2">
-                <button type="button" onclick="closePostLinkPopover()" class="rte-toolbar-btn px-3 py-1 rounded-lg bg-white hover:bg-slate-100 text-slate-600 border border-slate-200 text-xs font-bold transition">Cancel</button>
-                <button type="button" id="btn-confirm-insert-post-link" onclick="confirmInsertPostLink()" class="rte-toolbar-btn px-3 py-1 rounded-lg bg-indigo-600 hover:bg-indigo-700 text-white text-xs font-extrabold shadow-2xs transition">Insert Hyperlink</button>
-              </div>
-            </div>
-
-            <textarea id="post-input-content" required rows="5" placeholder="Share your experience, wisdom, or detailed announcements... Highlight text to format or add hyperlinks, or paste any URL." class="w-full px-4 py-3 font-medium text-base bg-transparent focus:outline-none resize-y border-0"></textarea>
-            <div id="post-editor-live-preview" class="hidden px-4 py-3 min-h-[132px] bg-white text-base text-slate-700 font-medium leading-relaxed post-rich-content"></div>
-          </div>
-          <p class="text-xs text-slate-400 font-medium mt-1">Supports <strong>bold</strong>, <em>italic</em>, lists, quotes, <strong>🔗 Add Link</strong> hyperlinks, and auto-clickable URLs.</p>
-        </div>
-
-        <!-- Multi-Select Post Type Checkboxes -->
-        <div id="post-subtype-selector">
-          <label class="block font-bold text-slate-700 text-sm mb-1">Post Type(s) <span class="text-red-500">*</span> <span class="text-slate-400 font-normal text-xs">(Select all that apply — e.g. Event + Resource, or General Post + Resource)</span></label>
-          <div class="flex flex-wrap gap-3 pt-1 pb-2">
-            <label class="inline-flex items-center space-x-2 px-3.5 py-2 rounded-xl border border-slate-300 bg-white hover:bg-indigo-50/60 cursor-pointer font-bold text-sm text-slate-700 transition shadow-2xs">
-              <input type="checkbox" id="post-subtype-chk-general" name="post_subtype" value="GENERAL" checked onchange="togglePostSubtype(this)" class="w-4 h-4 rounded text-indigo-600 focus:ring-indigo-500">
-              <span>📝 General Post</span>
-            </label>
-            <label class="inline-flex items-center space-x-2 px-3.5 py-2 rounded-xl border border-slate-300 bg-white hover:bg-rose-50/60 cursor-pointer font-bold text-sm text-slate-700 transition shadow-2xs">
-              <input type="checkbox" id="post-subtype-chk-event" name="post_subtype" value="EVENT" onchange="togglePostSubtype(this)" class="w-4 h-4 rounded text-rose-600 focus:ring-rose-500">
-              <span>📅 Community Event</span>
-            </label>
-            <label class="inline-flex items-center space-x-2 px-3.5 py-2 rounded-xl border border-slate-300 bg-white hover:bg-teal-50/60 cursor-pointer font-bold text-sm text-slate-700 transition shadow-2xs">
-              <input type="checkbox" id="post-subtype-chk-resource" name="post_subtype" value="RESOURCE" onchange="togglePostSubtype(this)" class="w-4 h-4 rounded text-teal-600 focus:ring-teal-500">
-              <span>📚 Community Resource</span>
-            </label>
-          </div>
-        </div>
-
-        <!-- Event Date & Optional Time Picker (Shown only when Community Event selected) -->
-        <div id="post-event-date-container" class="hidden animate-fadeIn">
-          <div class="grid grid-cols-1 sm:grid-cols-2 gap-4">
-            <div>
-              <label class="block font-bold text-slate-700 text-sm mb-1">Event Date <span class="text-red-500">*</span></label>
-              <p class="text-xs text-slate-400 font-medium mb-1.5">Scheduled future date when this community event will take place.</p>
-              <input type="date" id="post-event-date" class="w-full px-4 py-3 rounded-xl border border-slate-300 font-bold text-base bg-white focus:border-indigo-600 transition cursor-pointer">
-            </div>
-            <div>
-              <label class="block font-bold text-slate-700 text-sm mb-1">Event Time <span class="text-slate-400 font-normal text-xs">(Optional)</span></label>
-              <p class="text-xs text-slate-400 font-medium mb-1.5">Start time or time range (e.g. 2:00 PM or 10:00 AM - 12:00 PM).</p>
-              <input type="text" id="post-event-time" list="post-event-time-options" placeholder="e.g. 2:00 PM (Optional)" class="w-full px-4 py-3 rounded-xl border border-slate-300 font-bold text-base bg-white focus:border-indigo-600 transition">
-              <datalist id="post-event-time-options">
-                <option value="9:00 AM"></option>
-                <option value="10:00 AM"></option>
-                <option value="11:00 AM"></option>
-                <option value="12:00 PM"></option>
-                <option value="1:00 PM"></option>
-                <option value="2:00 PM"></option>
-                <option value="3:00 PM"></option>
-                <option value="4:00 PM"></option>
-                <option value="5:00 PM"></option>
-                <option value="6:00 PM"></option>
-                <option value="7:00 PM"></option>
-              </datalist>
-            </div>
-          </div>
-        </div>
-
-        <div id="post-theme-field-container" class="hidden">
-          <label class="block font-bold text-slate-700 text-sm mb-1">Choose a Theme <span class="text-red-500">*</span></label>
-          <p class="text-xs text-slate-400 font-medium mb-2">Explicitly categorizes this post to help space members search, filter, and discover it.</p>
-          <select id="post-input-theme" class="w-full px-4 py-3 rounded-xl border border-slate-300 font-bold text-base bg-white focus:border-indigo-600 transition cursor-pointer touch-target">
-            <option value="Inspiring Stories">✨ Inspiring Stories</option>
-            <option value="Wellbeing & Care">🌱 Wellbeing & Care</option>
-            <option value="Skills & Learning">💡 Skills & Learning</option>
-            <option value="Community & Action">🤝 Community & Action</option>
-          </select>
-        </div>
-
-        <div id="post-category-field-container" class="space-y-1.5">
-          <label for="post-category" class="block font-bold text-slate-700 text-sm">Category <span class="text-slate-400 font-normal text-xs">(Select a category or type your own to help members search &amp; filter)</span></label>
-          <input type="text" id="post-category" list="post-category-options" placeholder="e.g., Education &amp; Tutoring, Health &amp; Wellness, Senior Support, Food &amp; Mutual Aid..." class="w-full px-4 py-3 rounded-xl border border-slate-300 font-medium text-sm bg-white focus:border-indigo-600 transition">
-          <datalist id="post-category-options">
-            <option value="Education &amp; Tutoring"></option>
-            <option value="Health &amp; Wellness"></option>
-            <option value="Food &amp; Mutual Aid"></option>
-            <option value="Senior Support"></option>
-            <option value="Youth &amp; Mentorship"></option>
-            <option value="Housing &amp; Shelter"></option>
-            <option value="Career &amp; Job Skills"></option>
-            <option value="Environment &amp; Sustainability"></option>
-            <option value="Arts, Culture &amp; Recreation"></option>
-            <option value="Legal &amp; Financial Aid"></option>
-            <option value="Disability &amp; Accessibility"></option>
-            <option value="General Community"></option>
-          </datalist>
-          <div class="flex flex-wrap gap-1.5 pt-1">
-            <button type="button" onclick="selectPostCategoryPreset('Education &amp; Tutoring')" class="px-2.5 py-1 rounded-lg text-xs font-bold bg-slate-100 hover:bg-indigo-50 text-slate-700 hover:text-indigo-700 border border-slate-200 transition">📚 Education &amp; Tutoring</button>
-            <button type="button" onclick="selectPostCategoryPreset('Health &amp; Wellness')" class="px-2.5 py-1 rounded-lg text-xs font-bold bg-slate-100 hover:bg-indigo-50 text-slate-700 hover:text-indigo-700 border border-slate-200 transition">🌱 Health &amp; Wellness</button>
-            <button type="button" onclick="selectPostCategoryPreset('Food &amp; Mutual Aid')" class="px-2.5 py-1 rounded-lg text-xs font-bold bg-slate-100 hover:bg-indigo-50 text-slate-700 hover:text-indigo-700 border border-slate-200 transition">🥫 Food &amp; Mutual Aid</button>
-            <button type="button" onclick="selectPostCategoryPreset('Senior Support')" class="px-2.5 py-1 rounded-lg text-xs font-bold bg-slate-100 hover:bg-indigo-50 text-slate-700 hover:text-indigo-700 border border-slate-200 transition">👵 Senior Support</button>
-            <button type="button" onclick="selectPostCategoryPreset('Youth &amp; Mentorship')" class="px-2.5 py-1 rounded-lg text-xs font-bold bg-slate-100 hover:bg-indigo-50 text-slate-700 hover:text-indigo-700 border border-slate-200 transition">🎓 Youth &amp; Mentorship</button>
-            <button type="button" onclick="selectPostCategoryPreset('Environment &amp; Sustainability')" class="px-2.5 py-1 rounded-lg text-xs font-bold bg-slate-100 hover:bg-indigo-50 text-slate-700 hover:text-indigo-700 border border-slate-200 transition">🌿 Environment &amp; Sustainability</button>
-          </div>
-        </div>
-
-        <div class="grid grid-cols-1 sm:grid-cols-2 gap-4">
-          <div>
-            <label for="post-target-audience" class="block font-bold text-slate-700 text-sm mb-1">Target Audience <span class="text-slate-400 font-normal text-xs">(Optional)</span></label>
-            <p class="text-xs text-slate-400 font-medium mb-1.5">Who is this post intended for?</p>
-            <input type="text" id="post-target-audience" placeholder="e.g., Families, Seniors, Youth Volunteers, All Members" class="w-full px-4 py-3 rounded-xl border border-slate-300 font-medium text-sm bg-white focus:border-indigo-600 transition">
-          </div>
-          <div>
-            <label for="post-target-geography" class="block font-bold text-slate-700 text-sm mb-1">Target Geographical Areas <span class="text-slate-400 font-normal text-xs">(Optional)</span></label>
-            <p class="text-xs text-slate-400 font-medium mb-1.5">Which neighborhoods, cities, regions, or online spaces?</p>
-            <input type="text" id="post-target-geography" placeholder="e.g., Bay Area, Downtown District, Global / Remote" class="w-full px-4 py-3 rounded-xl border border-slate-300 font-medium text-sm bg-white focus:border-indigo-600 transition">
-          </div>
-        </div>
-
-        <div id="post-contact-box" class="p-4 rounded-2xl border border-slate-200 bg-slate-50/70 transition space-y-1.5">
-          <div class="flex items-center justify-between flex-wrap gap-2">
-            <label for="post-contact-info" class="block font-bold text-slate-800 text-sm">Key Contact Information <span class="text-slate-400 font-normal text-xs">(Optional)</span></label>
-            <span id="post-contact-event-resource-badge" class="hidden px-2.5 py-0.5 rounded-full text-[11px] font-extrabold bg-indigo-100 text-indigo-800 border border-indigo-200">⭐ Recommended for Community Events &amp; Resources</span>
-          </div>
-          <p id="post-contact-helper" class="text-xs text-slate-500 font-medium">Provide an organizer name, email, phone number, or coordination point — especially helpful for <strong class="text-slate-700">Community Events</strong> or <strong class="text-slate-700">Community Resources</strong> so members know who to reach out to.</p>
-          <input type="text" id="post-contact-info" placeholder="e.g., Jordan Lee — jordan@gooddeeds.space / (555) 234-5678" class="w-full px-4 py-3 rounded-xl border border-slate-300 font-medium text-sm bg-white focus:border-indigo-600 transition">
-        </div>
-
-        <div class="space-y-3">
-          <label class="block font-bold text-slate-700 text-sm">Links</label>
-          <div id="post-links-list" class="space-y-2.5">
-            <div class="flex gap-2">
-              <input type="url" id="post-input-url" oninput="updatePostResourceNudge()" placeholder="https://example.com/resource-link" class="post-link-input flex-1 px-4 py-3 rounded-xl border border-slate-300 font-medium text-sm bg-slate-50 focus:bg-white focus:border-indigo-600 transition">
-            </div>
-          </div>
-          <button type="button" onclick="addPostLinkField()" class="px-4 py-2 bg-indigo-50 hover:bg-indigo-100 text-indigo-700 font-bold text-xs rounded-lg transition flex items-center space-x-1">
-            <span>+ Add More Links</span>
-          </button>
-        </div>
-
-        <div class="space-y-3">
-          <label class="block font-bold text-slate-700 text-sm">Files</label>
-          <div class="border-2 border-dashed border-slate-300 hover:border-indigo-500 rounded-2xl p-6 bg-slate-50 transition text-center cursor-pointer relative">
-            <input type="file" id="post-file-input" multiple onchange="handlePostFilesSelect(event)" class="absolute inset-0 opacity-0 cursor-pointer w-full h-full">
-            <div class="space-y-1 pointer-events-none">
-              <span class="text-2xl block">📁</span>
-              <span class="font-bold text-sm text-slate-700">Choose Files or Drag & Drop Here</span>
-              <span class="text-xs text-slate-400 block font-medium">*(Attach downloadable guides, flyers, or images)*</span>
-            </div>
-          </div>
-          <div id="post-files-preview" class="space-y-2 pt-1"></div>
-        </div>
-
-        <!-- Gentle Smart Nudge to Optionally Dual-Tag as Community Resource -->
-        <div id="post-resource-nudge" class="hidden px-4 py-3 rounded-2xl bg-teal-50/90 border border-teal-200 flex flex-wrap items-center justify-between gap-2.5 text-xs animate-fadeIn">
-          <span class="font-semibold text-teal-950">💡 Sharing a reusable guide, article, or flyer? You can also list this under <strong>📚 Community Resources</strong>.</span>
-          <button type="button" id="btn-enable-resource-tag-nudge" onclick="enablePostResourceTagFromNudge()" class="rte-toolbar-btn px-3 py-1.5 rounded-xl bg-teal-700 hover:bg-teal-800 text-white font-extrabold text-xs shadow-2xs transition shrink-0">+ Also Tag as 📚 Community Resource</button>
-        </div>
-
-        <div>
-          <label class="block font-bold text-slate-700 text-sm mb-1.5">Tag Associated Spaces (Optional)</label>
-          <div id="post-groups-list" class="flex flex-wrap gap-2 max-h-32 overflow-y-auto p-3 bg-slate-50 rounded-xl border border-slate-200"></div>
-        </div>
-
-        <div class="pt-4 text-center">
-          <button type="button" onclick="reviewPostStep(event)" class="w-full sm:w-auto min-w-[280px] px-8 py-3.5 bg-indigo-600 hover:bg-indigo-700 text-white font-extrabold text-lg rounded-xl shadow-lg shadow-indigo-600/25 transition touch-target">
-            Preview & Verify Before Publishing →
-          </button>
-        </div>
-      </div>
-
-      <div id="post-step-2" class="hidden space-y-6">
-        <div class="bg-amber-50 p-5 rounded-2xl border border-amber-200 space-y-2">
-          <div class="font-black text-amber-950 text-base flex items-center space-x-1.5">
-            <span>⚠️</span><span>Step 2 of 2: Please Review Carefully Before Publishing</span>
-          </div>
-          <p class="text-amber-900/90 text-sm font-medium">
-            To ensure a dignified, reliable community record, posts cannot be edited or deleted once published. Please confirm your details below are correct.
-          </p>
-        </div>
-
-        <div id="post-preview-card" class="bg-slate-50 p-6 rounded-2xl border border-slate-200 space-y-4 shadow-sm">
-        </div>
-
-        <div class="flex gap-4">
-          <button type="button" onclick="backToPostStep1()" class="flex-1 py-3.5 bg-slate-100 hover:bg-slate-200 text-slate-700 font-bold text-base rounded-xl transition touch-target">
-            ← Edit Details
-          </button>
-          <button type="button" onclick="confirmPublishPost()" class="flex-1 py-3.5 bg-indigo-600 hover:bg-indigo-700 text-white font-extrabold text-lg rounded-xl shadow-md shadow-indigo-600/20 transition touch-target">
-            ✅ Confirm & Publish Permanently ↗
-          </button>
-        </div>
-      </div>
     </div>
   </dialog>
 
@@ -1443,6 +1602,19 @@
       </div>
 
       <form onsubmit="handleProfileUpdate(event)" class="space-y-4">
+        <div id="eprof-email-verification-box" class="p-4 rounded-2xl bg-stone-50 border border-stone-200 flex flex-wrap items-center justify-between gap-3">
+          <div class="space-y-0.5">
+            <div class="text-xs font-black uppercase tracking-wider text-stone-400">Account Email</div>
+            <div class="flex flex-wrap items-center gap-2">
+              <span id="eprof-email-display" class="font-bold text-sm text-stone-800"></span>
+              <span id="eprof-verified-badge" class="px-2.5 py-0.5 rounded-full text-xs font-extrabold"></span>
+            </div>
+          </div>
+          <button type="button" id="btn-send-verification-email" onclick="requestEmailVerification()" class="hidden px-3.5 py-1.5 bg-teal-600 hover:bg-teal-700 text-white font-bold text-xs rounded-xl shadow-xs transition">
+            ✉️ Send Verification Link
+          </button>
+        </div>
+
         <div>
           <label class="block font-black text-stone-700 mb-1">Avatar Image URL</label>
           <input type="url" id="eprof-avatar" required class="w-full px-5 py-3.5 rounded-xl border-2 border-stone-300 font-semibold bg-stone-50">
@@ -1455,6 +1627,49 @@
           <label class="block font-black text-stone-700 mb-1">New Password (leave blank to keep current)</label>
           <input type="password" id="eprof-pw" placeholder="••••••••" class="w-full px-5 py-3.5 rounded-xl border-2 border-stone-300 font-bold bg-stone-50">
         </div>
+
+        <div id="eprof-email-prefs-section" class="p-4 rounded-2xl bg-amber-50/60 border border-amber-200/80 space-y-3">
+          <div class="flex flex-wrap items-center justify-between gap-2">
+            <div>
+              <div class="font-black text-sm text-stone-900">📬 Email Notification Preferences</div>
+              <p class="text-xs text-stone-500 font-medium">Essential security &amp; support notices are always delivered.</p>
+            </div>
+            <button type="button" id="btn-send-sample-digest" onclick="triggerSampleWeeklyDigest()" class="px-3 py-1.5 bg-white hover:bg-amber-100 text-amber-900 border border-amber-300 font-bold text-xs rounded-xl transition">
+              ☀️ Send Weekly Digest Now
+            </button>
+          </div>
+          <div class="space-y-2 text-sm font-semibold text-stone-700">
+            <label class="flex items-center gap-2.5 cursor-pointer">
+              <input type="checkbox" id="epref-kudos" checked class="w-4 h-4 accent-amber-600 rounded">
+              <span>🌟 Public Kudos celebrations received</span>
+            </label>
+            <label class="flex items-center gap-2.5 cursor-pointer">
+              <input type="checkbox" id="epref-comments" checked class="w-4 h-4 accent-amber-600 rounded">
+              <span>💬 New comments on my Posts &amp; Kudos</span>
+            </label>
+            <label class="flex items-center gap-2.5 cursor-pointer">
+              <input type="checkbox" id="epref-invites" checked class="w-4 h-4 accent-amber-600 rounded">
+              <span>💌 Space invitations &amp; accepted invite updates</span>
+            </label>
+            <label class="flex items-center gap-2.5 cursor-pointer">
+              <input type="checkbox" id="epref-space-updates" checked class="w-4 h-4 accent-amber-600 rounded">
+              <span>📢 New Community Events &amp; Resources in my Spaces</span>
+            </label>
+            <label class="flex items-center gap-2.5 cursor-pointer">
+              <input type="checkbox" id="epref-chat-mentions" checked class="w-4 h-4 accent-amber-600 rounded">
+              <span>💬 Space Chat <code class="text-xs bg-white px-1 rounded border border-amber-200">@mentions</code> &amp; member broadcast alerts</span>
+            </label>
+            <label class="flex items-center gap-2.5 cursor-pointer">
+              <input type="checkbox" id="epref-chat-activity" class="w-4 h-4 accent-amber-600 rounded">
+              <span>🔔 All Space Chat messages <span class="text-xs font-normal text-stone-500">(opt-in, max 1 email / 6h per Space)</span></span>
+            </label>
+            <label class="flex items-center gap-2.5 cursor-pointer">
+              <input type="checkbox" id="epref-digest" checked class="w-4 h-4 accent-amber-600 rounded">
+              <span>☀️ Weekly Joined Spaces Community Digest</span>
+            </label>
+          </div>
+        </div>
+
         <button type="submit" class="w-full py-4 bg-stone-800 hover:bg-black text-white font-black text-xl rounded-2xl shadow transition touch-target">
           Save Changes ↗
         </button>
