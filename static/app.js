@@ -1515,9 +1515,24 @@ function renderFeedCard(item, isProfileView = false, searchContext = null) {
     `;
   }).join("");
 
+  const isItemOwner = Boolean(currentUser && (
+    Number(currentUser.id) === Number(item.author_id) ||
+    (isKudos && item.recipient_id && Number(currentUser.id) === Number(item.recipient_id))
+  ));
+  const isSpaceAdminForCard = Boolean(
+    item.is_space_admin_for_item ||
+    (currentUser && activeGroupData && Number(activeGroupData.is_admin) === 1 && (item.groups || []).some(g => Number(g.id) === Number(activeGroupData.id)))
+  );
+  const canDeleteItem = Boolean(currentUser && (
+    item.can_delete ||
+    isItemOwner ||
+    Number(currentUser.is_site_admin) === 1 ||
+    isSpaceAdminForCard
+  ));
+
   // Comments HTML
   const commentsHtml = (item.comments || []).map(c => {
-    const canDeleteComment = currentUser && (currentUser.id === c.user_id || currentUser.is_site_admin === 1 || currentUser.id === item.author_id);
+    const canDeleteComment = currentUser && (currentUser.id === c.user_id || currentUser.is_site_admin === 1 || currentUser.id === item.author_id || isSpaceAdminForCard);
     const canReportComment = currentUser && currentUser.id !== c.user_id;
     return `
     <div class="bg-stone-50 p-4 rounded-2xl border border-stone-200 flex items-start space-x-3 text-base">
@@ -1763,11 +1778,18 @@ function renderFeedCard(item, isProfileView = false, searchContext = null) {
           <span class="text-xs font-black text-stone-400 uppercase tracking-wider pr-1">Celebrate:</span>
           ${reactionsHtml}
         </div>
-        ${currentUser && currentUser.id !== item.author_id ? `
-          <button type="button" onclick="openReportModal('${isKudos ? 'KUDOS' : 'POST'}', ${item.id})" class="text-xs font-bold text-stone-400 hover:text-amber-700 px-2.5 py-1 rounded-lg hover:bg-stone-100 transition flex items-center space-x-1" title="Report content">
-            <span>🚩</span><span>Report</span>
-          </button>
-        ` : ""}
+        <div class="flex items-center gap-1.5">
+          ${currentUser && Number(currentUser.id) !== Number(item.author_id) ? `
+            <button type="button" onclick="openReportModal('${isKudos ? 'KUDOS' : 'POST'}', ${item.id})" class="text-xs font-bold text-stone-400 hover:text-amber-700 px-2.5 py-1 rounded-lg hover:bg-stone-100 transition flex items-center space-x-1" title="Report content">
+              <span>🚩</span><span>Report</span>
+            </button>
+          ` : ""}
+          ${canDeleteItem ? `
+            <button type="button" id="btn-delete-item-${item.id}" onclick="deleteFeedItem(${item.id}, '${isKudos ? 'KUDOS' : 'POST'}', ${(item.groups || []).length})" class="text-xs font-bold text-stone-500 hover:text-red-600 px-2.5 py-1 rounded-lg hover:bg-red-50 transition flex items-center space-x-1" title="Delete ${isKudos ? 'Kudos' : 'Post'}">
+              <span>🗑️</span><span>Delete</span>
+            </button>
+          ` : ""}
+        </div>
       </div>
 
       <!-- Comments Stream & Authoring Input -->
@@ -7167,6 +7189,54 @@ function adjustPasskeyButtonsSupport() {
 
 /* ================= MODERATION & GOVERNANCE CONTROLS ================= */
 
+async function refreshActiveSpaceFeedTabs() {
+  const kudosBox = document.getElementById("gcontent-kudos");
+  const postsBox = document.getElementById("gcontent-posts");
+  const eventsBox = document.getElementById("gcontent-events");
+  if (kudosBox && !kudosBox.classList.contains("hidden")) {
+    await renderGroupKudos();
+  } else if (postsBox && !postsBox.classList.contains("hidden")) {
+    await renderGroupPosts();
+  } else if (eventsBox && !eventsBox.classList.contains("hidden")) {
+    await renderGroupEvents();
+  }
+  if (typeof renderGroupCalendar === "function") {
+    renderGroupCalendar();
+  }
+}
+
+async function deleteFeedItem(itemId, itemType = "POST", spaceCount = 1) {
+  const label = itemType === "KUDOS" ? "Kudos" : "Post";
+  const multiSpaceNote = Number(spaceCount) > 1
+    ? ` Because it is shared across ${spaceCount} Spaces, deleting it will remove it from all Spaces and delete it everywhere.`
+    : " It will be removed from its Space and deleted everywhere.";
+  if (!confirm(`Are you sure you want to delete this ${label}?${multiSpaceNote} This cannot be undone.`)) {
+    return;
+  }
+  try {
+    await apiFetch(`/feed/${itemId}`, { method: "DELETE" });
+    const cardEl = document.getElementById(`feed-card-${itemId}`);
+    if (cardEl) cardEl.remove();
+    showToast(`🗑️ ${label} deleted.`);
+
+    const hash = window.location.hash || "";
+    if (hash.includes("/kudos/") || hash.includes("/post/")) {
+      navigateTo(activeGroupId ? `/group/${activeGroupId}` : (itemType === "KUDOS" ? "/kudos" : "/feed"));
+    } else if (hash.includes("/group/") && activeGroupId) {
+      await refreshActiveSpaceFeedTabs();
+    } else if (hash.includes("/profile") || hash.includes("/user/")) {
+      const uId = activeProfileData && activeProfileData.user ? activeProfileData.user.id : (currentUser && currentUser.id);
+      if (uId) await loadUserProfile(uId);
+    } else if (!hash || hash === "#" || hash === "#/") {
+      await loadLandingPreview(false);
+    } else {
+      await loadFeed(false, true);
+    }
+  } catch (err) {
+    showToast("❌ " + err.message);
+  }
+}
+
 async function deleteComment(commentId, itemId) {
   if (!confirm("Are you sure you want to delete this comment?")) return;
   try {
@@ -7175,6 +7245,8 @@ async function deleteComment(commentId, itemId) {
     if (window.location.hash.includes("/kudos/") || window.location.hash.includes("/post/")) {
       const id = window.location.hash.split("/")[2];
       loadSingleItemView(id);
+    } else if (window.location.hash.includes("/group/") && activeGroupId) {
+      await refreshActiveSpaceFeedTabs();
     } else if (window.location.hash.includes("/profile") || window.location.hash.includes("/user/")) {
       const uId = activeProfileData ? activeProfileData.user.id : currentUser.id;
       await loadUserProfile(uId);
@@ -7344,6 +7416,7 @@ async function resolveReport(reportId, action) {
   }
 }
 
+window.deleteFeedItem = deleteFeedItem;
 window.deleteComment = deleteComment;
 window.deleteGroupChatMessage = deleteGroupChatMessage;
 window.toggleUserBan = toggleUserBan;

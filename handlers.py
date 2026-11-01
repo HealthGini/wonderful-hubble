@@ -752,9 +752,17 @@ def enrich_items_list(raw_items, user_id=None):
     cursor = conn.cursor()
     try:
         joined_group_ids = set()
+        admin_group_ids = set()
+        is_site_admin = False
         if user_id:
-            cursor.execute("SELECT group_id FROM group_members WHERE user_id = ?", (user_id,))
-            joined_group_ids = {r["group_id"] for r in cursor.fetchall()}
+            cursor.execute("SELECT group_id, is_admin FROM group_members WHERE user_id = ?", (user_id,))
+            for r in cursor.fetchall():
+                joined_group_ids.add(r["group_id"])
+                if r["is_admin"] == 1:
+                    admin_group_ids.add(r["group_id"])
+            cursor.execute("SELECT is_site_admin FROM users WHERE id = ?", (user_id,))
+            u_row = cursor.fetchone()
+            is_site_admin = bool(u_row and u_row["is_site_admin"] == 1)
 
         enriched = []
         for item in raw_items:
@@ -766,6 +774,16 @@ def enrich_items_list(raw_items, user_id=None):
                 WHERE ig.item_id = ?
             """, (item_id,))
             item["groups"] = [dict(g) for g in cursor.fetchall()]
+
+            is_space_admin_for_item = bool(user_id and any(g["id"] in admin_group_ids for g in item["groups"]))
+            is_item_owner = bool(
+                user_id and (
+                    item.get("author_id") == user_id
+                    or (item.get("item_type") == "KUDOS" and item.get("recipient_id") == user_id)
+                )
+            )
+            item["is_space_admin_for_item"] = is_space_admin_for_item
+            item["can_delete"] = bool(user_id and (is_item_owner or is_site_admin or is_space_admin_for_item))
 
             cursor.execute("SELECT emoji, COUNT(*) as cnt FROM reactions WHERE item_id = ? GROUP BY emoji", (item_id,))
             r_counts = {r["emoji"]: r["cnt"] for r in cursor.fetchall()}
@@ -2674,15 +2692,35 @@ def handle_api_request(method, path, headers, body_bytes):
         if not row:
             conn.close()
             return error_response("Item not found", 404)
-        is_owner = (row["author_id"] == user["id"]) or (row["recipient_id"] == user["id"])
-        is_admin = (user.get("is_site_admin") == 1)
-        if not (is_owner or is_admin):
+        is_owner = (row["author_id"] == user["id"]) or (row["item_type"] == "KUDOS" and row["recipient_id"] == user["id"])
+        is_site_admin = (user.get("is_site_admin") == 1)
+        is_space_admin = False
+        if not (is_owner or is_site_admin):
+            cursor.execute("""
+                SELECT 1
+                FROM item_groups ig
+                JOIN group_members gm ON ig.group_id = gm.group_id
+                WHERE ig.item_id = ? AND gm.user_id = ? AND gm.is_admin = 1
+                LIMIT 1
+            """, (item_id, user["id"]))
+            if cursor.fetchone():
+                is_space_admin = True
+        if not (is_owner or is_site_admin or is_space_admin):
             conn.close()
-            return error_response("Forbidden: You do not have permission to delete this post", 403)
+            return error_response("Forbidden: You do not have permission to delete this item", 403)
+        # Remove from all Spaces and delete the item everywhere
+        cursor.execute("DELETE FROM item_groups WHERE item_id = ?", (item_id,))
+        cursor.execute("DELETE FROM reactions WHERE item_id = ?", (item_id,))
+        cursor.execute("DELETE FROM comments WHERE item_id = ?", (item_id,))
+        cursor.execute(
+            "UPDATE content_reports SET status = 'RESOLVED' WHERE target_type IN ('POST', 'KUDOS') AND target_id = ? AND status = 'PENDING'",
+            (item_id,),
+        )
         cursor.execute("DELETE FROM feed_items WHERE id = ?", (item_id,))
         conn.commit()
         conn.close()
-        return json_response({"success": True, "message": "Post deleted successfully", "deleted_id": item_id})
+        item_label = "Kudos" if row["item_type"] == "KUDOS" else "Post"
+        return json_response({"success": True, "message": f"{item_label} deleted successfully", "deleted_id": item_id})
 
     # ================== DELETE GROUP RESOURCE ==================
     if path_only.startswith("/api/groups/") and "/resources/" in path_only and method == "DELETE":

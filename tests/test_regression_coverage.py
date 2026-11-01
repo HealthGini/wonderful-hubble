@@ -1711,10 +1711,12 @@ class TestRegressionCoverage(GoodDeedsTestCase):
         self.assertIn("urlRegex", js)
         self.assertIn("embeddedUrls", js)
 
-        # Authenticate author (Maya, user 1) and non-author (Elena, user 3)
+        # Authenticate author (Maya, user 1), Space 1 Admin (Elena, user 3), and regular Space 1 member (Arthur, user 4)
         token_author = self.get_token("maya@gooddeeds.space")
         headers_author = self.get_auth_headers(token_author)
-        token_other = self.get_token("elena@gooddeeds.space")
+        token_space_admin = self.get_token("elena@gooddeeds.space")
+        headers_space_admin = self.get_auth_headers(token_space_admin)
+        token_other = self.get_token("arthur@gooddeeds.space")
         headers_other = self.get_auth_headers(token_other)
 
         # 1. Create a test event
@@ -1733,10 +1735,12 @@ class TestRegressionCoverage(GoodDeedsTestCase):
         item = body.get("item") or body.get("post", {})
         event_id = item["id"]
 
-        # 2. Non-author cannot edit or delete the event
+        # 2. Regular non-author / non-admin cannot edit or delete the event; Space Admin cannot edit another user's text
         status, _, _ = self.make_request("PUT", f"/api/posts/{event_id}", headers=headers_other, body={"title": "Hacked Title"})
         self.assertEqual(status, 403)
         status, _, _ = self.make_request("DELETE", f"/api/posts/{event_id}", headers=headers_other)
+        self.assertEqual(status, 403)
+        status, _, _ = self.make_request("PUT", f"/api/posts/{event_id}", headers=headers_space_admin, body={"title": "Admin Rewrite"})
         self.assertEqual(status, 403)
 
         # 3. Author can edit the event via PUT /api/posts/<id>
@@ -4655,6 +4659,180 @@ class TestRegressionCoverage(GoodDeedsTestCase):
         self.assertIn("window._gdToastTimer", js)
         self.assertIn('document.getElementById("forgot-pw-sent-banner")', js)
         self.assertIn('document.getElementById("eprof-email-spam-tip")', js)
+
+    def test_direct_delete_post_and_kudos_across_spaces_and_roles(self):
+        """
+        Verifies direct deletion of Posts and Kudos without requiring a prior content report:
+        - Permitted for Space Admins (for items in their Space), Site Admins, Author, and Kudos Recipient.
+        - Forbidden (403) for regular members and Space Admins of unrelated Spaces.
+        - Deleting a multi-Space Post or Kudos by an admin of just ONE of its Spaces removes it from
+          all Spaces (item_groups) AND deletes the item completely everywhere.
+        - Enriches `can_delete` and `is_space_admin_for_item` in feed responses and renders `deleteFeedItem`
+          in `static/app.js` while preserving `window.openAttachment`.
+        """
+        base_dir = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+        with open(os.path.join(base_dir, "static", "app.js"), "r", encoding="utf-8") as fj:
+            js = fj.read()
+
+        # Verify frontend delete button & attachment handler integrity
+        self.assertIn("async function deleteFeedItem(", js)
+        self.assertIn("window.deleteFeedItem = deleteFeedItem;", js)
+        self.assertIn('id="btn-delete-item-${item.id}"', js)
+        self.assertIn("onclick=\"deleteFeedItem(${item.id},", js)
+        self.assertIn("window.openAttachment(window._attachmentCache[", js)
+
+        # Roles in seeded demo DB:
+        # - Maya (user 1): Site Admin + Space 2 Admin
+        # - Marcus (user 2): Space 3 Admin, regular member of Space 1 & Space 2
+        # - Elena (user 3): Space 1 Admin ONLY (not admin of Space 2)
+        # - Arthur (user 4): Regular member of Spaces 1, 2, 3 (no admin roles)
+        headers_maya = self.get_auth_headers(self.get_token("maya@gooddeeds.space"))
+        headers_marcus = self.get_auth_headers(self.get_token("marcus@gooddeeds.space"))
+        headers_elena = self.get_auth_headers(self.get_token("elena@gooddeeds.space"))
+        headers_arthur = self.get_auth_headers(self.get_token("arthur@gooddeeds.space"))
+
+        # 1. Arthur authors a Post shared into MULTIPLE Spaces at once: Space 1 and Space 2
+        status, _, post_res = self.make_request(
+            "POST",
+            "/api/posts",
+            headers=headers_arthur,
+            body={
+                "title": "Multi-Space Post Direct Delete Check",
+                "theme": "General",
+                "content": "Shared simultaneously into Space 1 and Space 2.",
+                "group_ids": [1, 2],
+            },
+        )
+        self.assertEqual(status, 201)
+        multi_post_id = (post_res.get("post") or post_res.get("item"))["id"]
+
+        # Verify enrichment flags:
+        # - Elena (Admin of Space 1) sees can_delete=True, is_space_admin_for_item=True
+        # - Marcus (Admin of Space 3 ONLY) sees can_delete=False, is_space_admin_for_item=False
+        status, _, elena_item_res = self.make_request("GET", f"/api/feed/{multi_post_id}", headers=headers_elena)
+        self.assertEqual(status, 200)
+        self.assertTrue(elena_item_res["item"]["can_delete"])
+        self.assertTrue(elena_item_res["item"]["is_space_admin_for_item"])
+
+        status, _, marcus_item_res = self.make_request("GET", f"/api/feed/{multi_post_id}", headers=headers_marcus)
+        self.assertEqual(status, 200)
+        self.assertFalse(marcus_item_res["item"]["can_delete"])
+        self.assertFalse(marcus_item_res["item"]["is_space_admin_for_item"])
+
+        # Unauthenticated gets 401; Marcus (Space 3 admin only) gets 403
+        status, _, _ = self.make_request("DELETE", f"/api/feed/{multi_post_id}")
+        self.assertEqual(status, 401)
+        status, _, _ = self.make_request("DELETE", f"/api/feed/{multi_post_id}", headers=headers_marcus)
+        self.assertEqual(status, 403)
+
+        # Also file a pending report on this post to ensure direct deletion auto-resolves pending reports
+        rep_status, _, _ = self.make_request(
+            "POST",
+            "/api/reports",
+            headers=headers_marcus,
+            body={"target_type": "POST", "target_id": multi_post_id, "reason": "Spam", "notes": "Cleanup check"},
+        )
+        self.assertIn(rep_status, (200, 201))
+
+        # Elena (Admin of Space 1 ONLY, NOT Space 2) deletes the multi-Space Post directly
+        status, _, del_body = self.make_request("DELETE", f"/api/feed/{multi_post_id}", headers=headers_elena)
+        self.assertEqual(status, 200)
+        self.assertTrue(del_body.get("success"))
+
+        # Verify removed from Space 1, removed from Space 2, and deleted everywhere in DB
+        status, _, _ = self.make_request("GET", f"/api/feed/{multi_post_id}", headers=headers_maya)
+        self.assertEqual(status, 404)
+        _, _, g1_feed = self.make_request("GET", "/api/feed?group_id=1", headers=headers_maya)
+        _, _, g2_feed = self.make_request("GET", "/api/feed?group_id=2", headers=headers_maya)
+        self.assertNotIn(multi_post_id, [i["id"] for i in g1_feed.get("feed", [])])
+        self.assertNotIn(multi_post_id, [i["id"] for i in g2_feed.get("feed", [])])
+
+        import database
+        conn = database.get_db()
+        cur = conn.cursor()
+        cur.execute("SELECT COUNT(*) as cnt FROM item_groups WHERE item_id = ?", (multi_post_id,))
+        self.assertEqual(cur.fetchone()["cnt"], 0)
+        cur.execute("SELECT COUNT(*) as cnt FROM feed_items WHERE id = ?", (multi_post_id,))
+        self.assertEqual(cur.fetchone()["cnt"], 0)
+        cur.execute(
+            "SELECT status FROM content_reports WHERE target_type = 'POST' AND target_id = ?",
+            (multi_post_id,),
+        )
+        rep_rows = cur.fetchall()
+        conn.close()
+        self.assertTrue(all(r["status"] == "RESOLVED" for r in rep_rows))
+
+        # 2. Multi-Space Kudos direct delete by Space Admin of just one Space (Elena, Space 1)
+        status, _, kudos_res = self.make_request(
+            "POST",
+            "/api/kudos",
+            headers=headers_maya,
+            body={
+                "recipient_id": 4,
+                "content": "Multi-Space Kudos for Arthur across Space 1 and Space 2!",
+                "group_ids": [1, 2],
+            },
+        )
+        self.assertEqual(status, 201)
+        multi_kudos_id = (kudos_res.get("kudos") or kudos_res.get("item"))["id"]
+
+        # Marcus (Space 3 admin, neither author nor recipient nor Space 1/2 admin) gets 403
+        status, _, _ = self.make_request("DELETE", f"/api/kudos/{multi_kudos_id}", headers=headers_marcus)
+        self.assertEqual(status, 403)
+
+        # Elena (Space 1 admin only) deletes the multi-Space Kudos -> deleted everywhere
+        status, _, del_k_body = self.make_request("DELETE", f"/api/kudos/{multi_kudos_id}", headers=headers_elena)
+        self.assertEqual(status, 200)
+        self.assertTrue(del_k_body.get("success"))
+        status, _, _ = self.make_request("GET", f"/api/kudos/{multi_kudos_id}", headers=headers_maya)
+        self.assertEqual(status, 404)
+
+        # 3. Kudos Recipient can delete Kudos sent to them; Regular unrelated user gets 403
+        status, _, rec_kudos_res = self.make_request(
+            "POST",
+            "/api/kudos",
+            headers=headers_arthur,
+            body={
+                "recipient_id": 2,  # Marcus is recipient
+                "content": "Thank you Marcus for helping in Space 2!",
+                "group_ids": [2],
+            },
+        )
+        self.assertEqual(status, 201)
+        rec_kudos_id = (rec_kudos_res.get("kudos") or rec_kudos_res.get("item"))["id"]
+
+        # Elena is NOT in Space 2, NOT author, NOT recipient -> 403 and can_delete=False
+        status, _, elena_check = self.make_request("GET", f"/api/feed/{rec_kudos_id}", headers=headers_elena)
+        self.assertEqual(status, 200)
+        self.assertFalse(elena_check["item"]["can_delete"])
+        status, _, _ = self.make_request("DELETE", f"/api/feed/{rec_kudos_id}", headers=headers_elena)
+        self.assertEqual(status, 403)
+
+        # Marcus (Recipient) sees can_delete=True and deletes it cleanly
+        status, _, marcus_check = self.make_request("GET", f"/api/feed/{rec_kudos_id}", headers=headers_marcus)
+        self.assertEqual(status, 200)
+        self.assertTrue(marcus_check["item"]["can_delete"])
+        status, _, _ = self.make_request("DELETE", f"/api/feed/{rec_kudos_id}", headers=headers_marcus)
+        self.assertEqual(status, 200)
+
+        # 4. Site Admin (Maya) can delete an item in Space 3 (where Marcus is Space Admin and Arthur is author)
+        status, _, s3_post_res = self.make_request(
+            "POST",
+            "/api/posts",
+            headers=headers_arthur,
+            body={
+                "title": "Space 3 Post for Site Admin Delete Check",
+                "theme": "General",
+                "content": "Posted in Space 3 only.",
+                "group_ids": [3],
+            },
+        )
+        self.assertEqual(status, 201)
+        s3_post_id = (s3_post_res.get("post") or s3_post_res.get("item"))["id"]
+        status, _, _ = self.make_request("DELETE", f"/api/feed/{s3_post_id}", headers=headers_elena)
+        self.assertEqual(status, 403)
+        status, _, _ = self.make_request("DELETE", f"/api/feed/{s3_post_id}", headers=headers_maya)
+        self.assertEqual(status, 200)
 
 
 
