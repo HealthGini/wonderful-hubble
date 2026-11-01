@@ -4627,6 +4627,36 @@ class TestRegressionCoverage(GoodDeedsTestCase):
         self.assertTrue(mid_hdr and "@gooddeeds.space>" in mid_hdr, "SMTP wire message must include Message-ID header")
         self.assertIn("GoodDeeds Community <notifications@gooddeeds.space>", from_hdr)
 
+    def test_email_spam_folder_ui_reminders(self):
+        """
+        Verifies friendly Spam / Not spam UI guidance across Forgot Password, Sign Up,
+        Email Verification, Space Invitations, and Website Invitations in static/index.html
+        and static/app.js so early users never miss verification or password-reset links.
+        """
+        base_dir = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+        with open(os.path.join(base_dir, "static", "index.html"), "r", encoding="utf-8") as fh:
+            html = fh.read()
+        with open(os.path.join(base_dir, "static", "app.js"), "r", encoding="utf-8") as fj:
+            js = fj.read()
+
+        for elem_id in (
+            'id="forgot-pw-sent-banner"',
+            'id="forgot-pw-spam-tip"',
+            'id="signup-email-tip"',
+            'id="eprof-email-spam-tip"',
+            'id="group-invite-spam-tip"',
+            'id="site-invite-spam-tip"',
+        ):
+            self.assertIn(elem_id, html, f"Missing Spam reminder UI element {elem_id} in static/index.html")
+
+        self.assertIn("notifications@gooddeeds.space", html)
+        self.assertIn("Not spam", html)
+        self.assertIn("function showToast(msg)", js)
+        self.assertIn("window._gdToastTimer", js)
+        self.assertIn('document.getElementById("forgot-pw-sent-banner")', js)
+        self.assertIn('document.getElementById("eprof-email-spam-tip")', js)
+
+
 
 
 

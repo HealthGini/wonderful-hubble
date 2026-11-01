@@ -705,6 +705,8 @@ function openModal(modalId) {
     if (modalId === "modal-forgot-password") {
       const loginEmailEl = document.getElementById("login-email");
       const forgotEmailEl = document.getElementById("forgot-pw-email");
+      const sentBannerEl = document.getElementById("forgot-pw-sent-banner");
+      if (sentBannerEl) sentBannerEl.classList.add("hidden");
       if (loginEmailEl && forgotEmailEl && loginEmailEl.value.includes("@") && !forgotEmailEl.value) {
         forgotEmailEl.value = loginEmailEl.value.trim();
       }
@@ -731,6 +733,7 @@ function switchModal(fromId, toId) {
 }
 
 function showToast(msg) {
+  const durationMs = arguments.length > 1 && arguments[1] ? arguments[1] : 3500;
   const toast = document.getElementById("toast-popup");
   if (!toast) return;
   
@@ -741,11 +744,14 @@ function showToast(msg) {
     document.body.appendChild(toast);
   }
 
+  if (window._gdToastTimer) {
+    clearTimeout(window._gdToastTimer);
+  }
   toast.textContent = msg;
   toast.classList.remove("hidden");
-  setTimeout(() => {
+  window._gdToastTimer = setTimeout(() => {
     toast.classList.add("hidden");
-  }, 3500);
+  }, durationMs);
 }
 
 /* ================= AUTHENTICATION & SESSION ================= */
@@ -964,7 +970,7 @@ async function handleSignup(e) {
     sessionPromise = Promise.resolve();
     updateAuthUI(currentUser);
     closeModal("modal-signup");
-    showToast(`☀️ Welcome to gooddeeds.space, ${currentUser.username}!`);
+    showToast(`☀️ Welcome to gooddeeds.space, ${currentUser.username}! Check your inbox (or Spam folder) for your welcome email.`, 6500);
     await loadQuickNavGroups();
     navigateTo("/feed");
   } catch (err) {
@@ -999,8 +1005,13 @@ async function handleForgotPassword(e) {
       body: JSON.stringify({ email })
     });
     if (emailEl) emailEl.value = "";
-    closeModal("modal-forgot-password");
-    showToast("📧 " + (data.message || "If an account exists, a password reset link has been sent."));
+    const sentBannerEl = document.getElementById("forgot-pw-sent-banner");
+    if (sentBannerEl) {
+      sentBannerEl.classList.remove("hidden");
+    } else {
+      closeModal("modal-forgot-password");
+    }
+    showToast("📧 " + (data.message || "If an account exists, a password reset link has been sent.") + " Check Spam and mark Not spam if needed.", 6500);
   } catch (err) {
     showToast("❌ " + err.message);
   }
@@ -4787,6 +4798,11 @@ function populateEditProfileModal() {
     if (isVerified) verBtn.classList.add("hidden");
     else verBtn.classList.remove("hidden");
   }
+  const spamTipEl = document.getElementById("eprof-email-spam-tip");
+  if (spamTipEl) {
+    if (isVerified) spamTipEl.classList.add("hidden");
+    else spamTipEl.classList.remove("hidden");
+  }
 
   const prefs = currentUser.email_prefs || {};
   const prefFieldMap = {
@@ -4808,7 +4824,9 @@ async function requestEmailVerification() {
   if (!currentUser) return;
   try {
     const data = await apiFetch("/auth/send_verification", { method: "POST", body: "{}" });
-    showToast("✉️ " + (data.message || "Verification link sent!"));
+    const spamTipEl = document.getElementById("eprof-email-spam-tip");
+    if (spamTipEl) spamTipEl.classList.remove("hidden");
+    showToast("✉️ " + (data.message || "Verification link sent!") + " Check your Spam folder and mark Not spam if needed.", 6500);
   } catch (err) {
     showToast("❌ " + err.message);
   }
@@ -4818,7 +4836,7 @@ async function triggerSampleWeeklyDigest() {
   if (!currentUser) return;
   try {
     const data = await apiFetch("/email/send_digest", { method: "POST", body: "{}" });
-    showToast("☀️ " + (data.message || "Weekly Community Digest sent!"));
+    showToast("☀️ " + (data.message || "Weekly Community Digest sent!") + " Check Spam and mark Not spam if needed.", 6500);
   } catch (err) {
     showToast("❌ " + err.message);
   }
@@ -5433,7 +5451,7 @@ async function handleGroupInviteSubmit(e) {
       } catch (err) {}
     }
     renderGroupRoster();
-    showToast("✅ " + (data.message || "Invitation sent successfully!"));
+    showToast("✅ " + (data.message || "Invitation sent successfully!") + " (Tip: ask external invitees to check Spam if needed.)", 6500);
   } catch (err) {
     if (submitBtn) { submitBtn.disabled = false; submitBtn.textContent = origText; }
     showToast("❌ " + err.message);
@@ -5644,7 +5662,7 @@ async function handleSiteInviteSubmit(e) {
     if (messageInput) messageInput.value = "";
     updateSiteInviteEmailPreview();
     await loadSiteInvitationsHistory();
-    showToast("✅ " + (data.message || `Sent ${data.count} invitation(s)!`));
+    showToast("✅ " + (data.message || `Sent ${data.count} invitation(s)!`) + " (Tip: let friends know to check Spam if needed.)", 6500);
   } catch (err) {
     if (submitBtn) {
       submitBtn.disabled = false;

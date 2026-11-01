@@ -1425,6 +1425,13 @@
           Send Reset Link →
         </button>
       </form>
+      <div id="forgot-pw-sent-banner" class="hidden p-4 rounded-2xl bg-emerald-50 border border-emerald-200 text-emerald-900 text-xs sm:text-sm font-semibold leading-relaxed space-y-1">
+        <div class="font-extrabold text-emerald-950">✅ Check your inbox!</div>
+        <p>If an account exists for that email address, we've sent a password reset link from <span class="font-bold">notifications@gooddeeds.space</span>. If you don't see it within 60 seconds, check your <span class="font-bold">Spam / Promotions</span> folder and click <span class="font-bold">Not spam</span>.</p>
+      </div>
+      <div id="forgot-pw-spam-tip" class="p-3.5 rounded-2xl bg-amber-50/80 border border-amber-200/80 text-stone-700 text-xs font-semibold leading-relaxed">
+        📬 <span class="font-extrabold text-stone-900">Delivery tip:</span> Don't see our email within 60 seconds? Check your <span class="font-bold">Spam</span> folder for <span class="font-bold">notifications@gooddeeds.space</span> and mark <span class="font-bold">GoodDeeds Community</span> as <span class="font-bold">Not spam</span>.
+      </div>
       <p class="text-center font-bold text-stone-500 text-sm">
         Remembered your password? <button type="button" onclick="switchModal('modal-forgot-password', 'modal-login')" class="text-amber-700 font-black underline">Back to Log In</button>
       </p>
@@ -1505,6 +1512,9 @@
         <div>
           <label class="block font-black text-stone-700 mb-1">Short Warm Bio (Optional)</label>
           <textarea id="sup-bio" rows="2" placeholder="Tell us what brings you fulfillment..." class="w-full px-5 py-3 rounded-xl border-2 border-stone-300 font-semibold"></textarea>
+        </div>
+        <div id="signup-email-tip" class="p-3 rounded-xl bg-teal-50/70 border border-teal-200/80 text-stone-700 text-xs font-semibold leading-relaxed">
+          📬 You'll sign straight in right away! Look for your welcome email from <span class="font-bold">notifications@gooddeeds.space</span> — if it lands in <span class="font-bold">Spam</span>, mark it <span class="font-bold">Not spam</span> so Space updates reach your inbox.
         </div>
         <button type="submit" class="w-full py-4 bg-teal-800 hover:bg-teal-900 text-white font-black text-xl rounded-2xl shadow-lg transition touch-target">
           Create Account ↗
@@ -1680,17 +1690,22 @@
       </div>
 
       <form onsubmit="handleProfileUpdate(event)" class="space-y-4">
-        <div id="eprof-email-verification-box" class="p-4 rounded-2xl bg-stone-50 border border-stone-200 flex flex-wrap items-center justify-between gap-3">
-          <div class="space-y-0.5">
-            <div class="text-xs font-black uppercase tracking-wider text-stone-400">Account Email</div>
-            <div class="flex flex-wrap items-center gap-2">
-              <span id="eprof-email-display" class="font-bold text-sm text-stone-800"></span>
-              <span id="eprof-verified-badge" class="px-2.5 py-0.5 rounded-full text-xs font-extrabold"></span>
+        <div id="eprof-email-verification-box" class="p-4 rounded-2xl bg-stone-50 border border-stone-200 space-y-2.5">
+          <div class="flex flex-wrap items-center justify-between gap-3">
+            <div class="space-y-0.5">
+              <div class="text-xs font-black uppercase tracking-wider text-stone-400">Account Email</div>
+              <div class="flex flex-wrap items-center gap-2">
+                <span id="eprof-email-display" class="font-bold text-sm text-stone-800"></span>
+                <span id="eprof-verified-badge" class="px-2.5 py-0.5 rounded-full text-xs font-extrabold"></span>
+              </div>
             </div>
+            <button type="button" id="btn-send-verification-email" onclick="requestEmailVerification()" class="hidden px-3.5 py-1.5 bg-teal-600 hover:bg-teal-700 text-white font-bold text-xs rounded-xl shadow-xs transition">
+              ✉️ Send Verification Link
+            </button>
           </div>
-          <button type="button" id="btn-send-verification-email" onclick="requestEmailVerification()" class="hidden px-3.5 py-1.5 bg-teal-600 hover:bg-teal-700 text-white font-bold text-xs rounded-xl shadow-xs transition">
-            ✉️ Send Verification Link
-          </button>
+          <p id="eprof-email-spam-tip" class="hidden text-xs font-semibold text-stone-600 leading-relaxed pt-1 border-t border-stone-200/80">
+            📬 Don't see the verification link within 60 seconds? Check your <span class="font-bold">Spam</span> folder for <span class="font-bold">notifications@gooddeeds.space</span> and click <span class="font-bold">Not spam</span>.
+          </p>
         </div>
 
         <div>
@@ -1835,6 +1850,9 @@
           <label class="block text-sm font-bold text-slate-700 mb-2">Personal Message (Optional)</label>
           <textarea id="ginvite-message" rows="3" placeholder="I thought you'd love joining this uplifting community space on gooddeeds.space!" class="w-full px-4 py-3 rounded-xl border-2 border-slate-300 font-medium text-base text-slate-900 focus:border-indigo-600 focus:outline-none"></textarea>
         </div>
+        <div id="group-invite-spam-tip" class="p-3 rounded-xl bg-amber-50/70 border border-amber-200/80 text-slate-700 text-xs font-semibold leading-relaxed">
+          📬 <span class="font-extrabold text-slate-900">Delivery tip:</span> Invitations arrive from <span class="font-bold">notifications@gooddeeds.space</span> — let invitees know to check their <span class="font-bold">Spam</span> folder and mark <span class="font-bold">GoodDeeds Community</span> as <span class="font-bold">Not spam</span> if needed.
+        </div>
         <div class="flex justify-end space-x-3 pt-3">
           <button type="button" onclick="closeModal('modal-invite-group')" class="px-6 py-3 bg-slate-100 hover:bg-slate-200 text-slate-700 font-bold rounded-xl transition">Cancel</button>
           <button type="submit" class="px-8 py-3 bg-indigo-600 hover:bg-indigo-700 text-white font-bold rounded-xl transition shadow-sm touch-target">Send Invitation ↗</button>
@@ -1882,6 +1900,10 @@
             Personal Invitation Note <span class="text-slate-400 font-normal text-xs">(Optional)</span>
           </label>
           <textarea id="site-invite-message" rows="3" placeholder="Join me on GoodDeeds.space to recognize everyday kindness with public Kudos and share local community resources & events!" class="w-full px-4 py-3 rounded-2xl border-2 border-slate-300 font-medium text-sm text-slate-900 bg-slate-50 focus:bg-white focus:border-emerald-600 focus:outline-none transition"></textarea>
+        </div>
+
+        <div id="site-invite-spam-tip" class="p-3 rounded-xl bg-amber-50/70 border border-amber-200/80 text-slate-700 text-xs font-semibold leading-relaxed">
+          📬 <span class="font-extrabold text-slate-900">Delivery tip:</span> Invitations arrive from <span class="font-bold">notifications@gooddeeds.space</span> — let friends know to check their <span class="font-bold">Spam</span> folder and mark <span class="font-bold">GoodDeeds Community</span> as <span class="font-bold">Not spam</span> if they don't see it right away.
         </div>
 
         <div class="flex flex-wrap items-center justify-end gap-3 pt-2 border-t border-slate-100">
