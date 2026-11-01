@@ -4834,6 +4834,37 @@ class TestRegressionCoverage(GoodDeedsTestCase):
         status, _, _ = self.make_request("DELETE", f"/api/feed/{s3_post_id}", headers=headers_maya)
         self.assertEqual(status, 200)
 
+    def test_passkey_auth_buttons_hidden_for_now(self):
+        """
+        Verifies that the 'Sign in with Passkey (FaceID/TouchID)' buttons in both Sign Up and Log In modals
+        (as well as '#btn-register-passkey' on Profile) are hidden in static/index.html without conflicting
+        'flex' display classes, while keeping 'Continue with Google' and email signup/login visible.
+        """
+        import re
+        base_dir = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+        with open(os.path.join(base_dir, "static", "index.html"), "r", encoding="utf-8") as fh:
+            html = fh.read()
+
+        passkey_btn_tags = re.findall(r'<button[^>]*btn-passkey-login[^>]*>', html)
+        self.assertEqual(len(passkey_btn_tags), 2)
+        for tag in passkey_btn_tags:
+            self.assertIn("hidden", tag)
+            class_match = re.search(r'class="([^"]*)"', tag)
+            self.assertIsNotNone(class_match)
+            tokens = class_match.group(1).split()
+            self.assertIn("hidden", tokens)
+            self.assertNotIn("flex", tokens)
+
+        reg_match = re.search(r'<button[^>]*id="btn-register-passkey"[^>]*>', html)
+        self.assertIsNotNone(reg_match)
+        self.assertIn("hidden", reg_match.group(0))
+
+        # Google Sign-In buttons remain visible
+        for google_id in ('id="btn-google-signup"', 'id="btn-google-login"'):
+            g_match = re.search(rf'<button[^>]*{google_id}[^>]*>', html)
+            self.assertIsNotNone(g_match)
+            self.assertNotIn("hidden", g_match.group(0))
+
 
 
 
