@@ -18,6 +18,7 @@ import ssl
 import threading
 from email.mime.multipart import MIMEMultipart
 from email.mime.text import MIMEText
+from email.utils import formatdate, make_msgid
 from urllib.parse import parse_qs, urlencode, urlparse
 import urllib.error
 import urllib.request
@@ -306,7 +307,12 @@ def get_email_transport_config(headers=None) -> dict:
     smtp_user = (os.environ.get("SMTP_USER") or "").strip()
     smtp_pass = (os.environ.get("SMTP_PASSWORD") or "").strip()
     from_email = (os.environ.get("SMTP_FROM_EMAIL") or os.environ.get("EMAIL_FROM") or "notifications@gooddeeds.space").strip()
-    from_name = (os.environ.get("SMTP_FROM_NAME") or os.environ.get("EMAIL_FROM_NAME") or "GoodDeeds Community").strip()
+    raw_from_name = (os.environ.get("SMTP_FROM_NAME") or os.environ.get("EMAIL_FROM_NAME") or "GoodDeeds Community").strip()
+    # Normalize domain-shaped sender names (e.g. "GoodDeeds.space") to avoid FROM_NAME_LOOKS_LIKE_DOMAIN spam flags
+    if "." in raw_from_name and " " not in raw_from_name:
+        from_name = "GoodDeeds Community"
+    else:
+        from_name = raw_from_name or "GoodDeeds Community"
     async_enabled = (os.environ.get("EMAIL_ASYNC") or "").strip().lower() in ("1", "true", "yes", "on")
 
     is_local_unauth_smtp = bool(
@@ -399,18 +405,19 @@ def _deliver_via_transport(
     if provider in ("resend", "brevo", "postmark"):
         try:
             if provider == "resend":
+                resend_headers = {"X-Entity-Ref-ID": secrets.token_hex(12)}
+                resend_headers.update(unsub_headers)
                 payload = {
                     "from": f"{from_name} <{from_email}>",
                     "to": [recipient_email],
                     "subject": subject,
                     "text": text_body,
+                    "headers": resend_headers,
                 }
                 if html_body:
                     payload["html"] = html_body
                 if reply_to:
                     payload["reply_to"] = reply_to
-                if unsub_headers:
-                    payload["headers"] = unsub_headers
                 status_code, _ = _post_json_https_api(
                     "https://api.resend.com/emails",
                     {"Authorization": f"Bearer {(os.environ.get('RESEND_API_KEY') or '').strip()}"},
@@ -486,10 +493,13 @@ def _deliver_via_transport(
         tls_env = (os.environ.get("SMTP_TLS") or "").strip().lower()
 
         try:
+            sender_domain = from_email.split("@", 1)[1] if "@" in from_email else "gooddeeds.space"
             msg = MIMEMultipart("alternative")
             msg["Subject"] = subject
             msg["From"] = f"{from_name} <{from_email}>"
             msg["To"] = recipient_email
+            msg["Date"] = formatdate(localtime=False)
+            msg["Message-ID"] = make_msgid(domain=sender_domain)
             if reply_to:
                 msg["Reply-To"] = reply_to
             for hk, hv in unsub_headers.items():
@@ -2249,13 +2259,16 @@ def handle_api_request(method, path, headers, body_bytes):
         cfg = get_email_transport_config(headers)
         now_utc = datetime.datetime.now(datetime.timezone.utc).strftime("%Y-%m-%d %H:%M:%S UTC")
 
+        conn_tok = get_db()
+        unsub_tok = ensure_user_unsubscribe_token(conn_tok, user["id"])
+        conn_tok.commit()
+        conn_tok.close()
+
         selected_tpl = None
         if requested_tpl_key and requested_tpl_key != "live_diagnostic":
-            for candidate in get_all_template_previews(base_url):
+            for candidate in get_all_template_previews(base_url, unsubscribe_token=unsub_tok):
                 if candidate["template_key"] == requested_tpl_key:
                     selected_tpl = dict(candidate)
-                    if not selected_tpl["subject"].startswith("[TEST]"):
-                        selected_tpl["subject"] = f"[TEST] {selected_tpl['subject']}"
                     break
 
         if not selected_tpl:
@@ -2268,10 +2281,6 @@ def handle_api_request(method, path, headers, body_bytes):
                 sent_at_utc=now_utc,
             )
 
-        conn_tok = get_db()
-        unsub_tok = ensure_user_unsubscribe_token(conn_tok, user["id"])
-        conn_tok.commit()
-        conn_tok.close()
         unsub_url = build_unsubscribe_url(base_url, unsub_tok, "all") if selected_tpl.get("category") != "transactional" else None
 
         diag = send_email_with_diagnostics(
@@ -2280,7 +2289,7 @@ def handle_api_request(method, path, headers, body_bytes):
             text_body=selected_tpl["text_body"],
             html_body=selected_tpl.get("html_body"),
             template_key=selected_tpl.get("template_key", "live_diagnostic"),
-            reply_to=user["email"],
+            reply_to=None,
             unsubscribe_url=unsub_url,
             force_sync=True,
         )
@@ -4196,7 +4205,7 @@ def handle_api_request(method, path, headers, body_bytes):
                         u_unsub,
                     ))
         else:
-            activity_subj = f"💬 New chat conversation in \"{space_name}\""
+            activity_subj = f"New chat conversation in \"{space_name}\""
             for sm in space_members:
                 if sm["id"] in notified_uids:
                     continue

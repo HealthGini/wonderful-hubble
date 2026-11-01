@@ -239,7 +239,7 @@ def render_branded_email(
         <div style="margin:24px 0 18px 0;text-align:center;">
           <a href="{safe_url}" style="display:inline-block;padding:13px 26px;background-color:{pal['cta_bg']};color:#ffffff;text-decoration:none;font-weight:800;font-size:15px;border-radius:999px;">{_esc(cta_label)}</a>
           <div style="margin-top:10px;font-size:12px;color:#64748b;word-break:break-all;">
-            Or open link directly: <a href="{safe_url}" style="color:#4f46e5;text-decoration:underline;">{safe_url}</a>
+            Copy and paste link if needed: <span style="color:#475569;">{safe_url}</span>
           </div>
         </div>
         """
@@ -265,7 +265,7 @@ def render_branded_email(
     else:
         prefs_footer_html = """
         <div style="margin-top:8px;font-size:11px;color:#94a3b8;">
-          This is an essential account, governance, or support service notification for your GoodDeeds.space account.
+          This is an essential account, governance, or support service notification for your GoodDeeds Community account.
         </div>
         """
 
@@ -287,7 +287,7 @@ def render_branded_email(
                 <tr>
                   <td>
                     <a href="{_esc(clean_base)}/#/" style="text-decoration:none;font-size:19px;font-weight:900;color:#0f766e;letter-spacing:-0.02em;">
-                      ☀️ GoodDeeds<span style="color:#b45309;">.space</span>
+                      ☀️ GoodDeeds <span style="color:#b45309;">Community</span>
                     </a>
                   </td>
                   <td align="right">
@@ -316,8 +316,8 @@ def render_branded_email(
                 Become the best version of yourself — one good deed at a time.
               </div>
               <div style="margin-top:4px;font-size:12px;color:#78716c;">
-                <a href="{_esc(clean_base)}/#/" style="color:#0f766e;text-decoration:none;font-weight:700;">GoodDeeds.space</a>
-                &nbsp;&bull;&nbsp; Free &amp; Open Community Spaces
+                <a href="{_esc(clean_base)}/#/" style="color:#0f766e;text-decoration:none;font-weight:700;">Visit GoodDeeds Community</a>
+                &nbsp;&bull;&nbsp; Kindness &amp; Open Community Spaces
               </div>
               {prefs_footer_html}
             </td>
@@ -337,8 +337,8 @@ def render_branded_email(
 def build_welcome_email(username: str, verify_url: str = "", base_url: str = "http://localhost:8080") -> dict:
     clean_base = (base_url or "http://localhost:8080").rstrip("/")
     cta_url = verify_url or f"{clean_base}/#/feed"
-    cta_label = "Verify Email & Explore GoodDeeds.space ↗" if verify_url else "Explore GoodDeeds.space ↗"
-    subject = f"☀️ Welcome to GoodDeeds.space, {username}!"
+    cta_label = "Verify Email & Explore Community ↗" if verify_url else "Explore GoodDeeds Community ↗"
+    subject = f"Welcome to GoodDeeds Community, {username}"
     bullets = [
         "🔍 Search Community Events, Resources, Posts & Kudos — or ask questions in plain English with Ask in Chat.",
         "👥 Join open Community Spaces for mental wellness, education, food & mutual aid, and neighborhood action.",
@@ -351,7 +351,7 @@ def build_welcome_email(username: str, verify_url: str = "", base_url: str = "ht
     )
     text_body = (
         f"Hello {username},\n\n"
-        f"Welcome to GoodDeeds.space! We're thrilled to have you in our community.\n"
+        f"Welcome to GoodDeeds Community! We're thrilled to have you in our community.\n"
         f"{verify_line}\n"
         f"Here are three ways to get started today:\n"
         f"  • {bullets[0]}\n"
@@ -359,15 +359,15 @@ def build_welcome_email(username: str, verify_url: str = "", base_url: str = "ht
         f"  • {bullets[2]}\n\n"
         f"Visit the community feed:\n{clean_base}/#/feed\n\n"
         f"Become the best version of yourself — one good deed at a time.\n"
-        f"— The GoodDeeds.space Team"
+        f"— The GoodDeeds Community Team"
     )
     html_body = render_branded_email(
         badge_text="Welcome",
         accent_theme="amber",
-        heading="Welcome to GoodDeeds.space!",
+        heading="Welcome to GoodDeeds Community!",
         greeting=f"Hello {username},",
         intro_paragraphs=[
-            "We're glad you're here! GoodDeeds.space is a welcoming community platform built to celebrate intrinsic kindness, share helpful local resources & events, and collaborate across open Spaces.",
+            "We're glad you're here! GoodDeeds Community is a welcoming platform built to celebrate intrinsic kindness, share helpful local resources & events, and collaborate across open Spaces.",
             "Please confirm your email address below and jump right into the community:" if verify_url else "Here are a few ways to jump right into the community:",
         ],
         bullet_items=bullets,
@@ -386,12 +386,12 @@ def build_welcome_email(username: str, verify_url: str = "", base_url: str = "ht
 
 def build_email_verification_email(username: str, verify_url: str, base_url: str = "http://localhost:8080") -> dict:
     clean_base = (base_url or "http://localhost:8080").rstrip("/")
-    subject = "✅ Verify your email address for GoodDeeds.space"
+    subject = "Verify your email address for GoodDeeds Community"
     text_body = (
         f"Hello {username},\n\n"
-        f"Please verify your email address for your GoodDeeds.space account by clicking the link below:\n\n"
+        f"Please verify your email address for your GoodDeeds Community account by clicking the link below:\n\n"
         f"{verify_url}\n\n"
-        f"This link expires in 24 hours. If you did not create a GoodDeeds.space account, you can safely ignore this message."
+        f"This link expires in 24 hours. If you did not create a GoodDeeds Community account, you can safely ignore this message."
     )
     html_body = render_branded_email(
         badge_text="Email Verification",
@@ -399,7 +399,7 @@ def build_email_verification_email(username: str, verify_url: str, base_url: str
         heading="Confirm Your Email Address",
         greeting=f"Hello {username},",
         intro_paragraphs=[
-            "Click the button below to confirm your email address and keep your GoodDeeds.space account verified.",
+            "Click the button below to confirm your email address and keep your GoodDeeds Community account verified.",
         ],
         cta_label="Verify My Email Address ✓",
         cta_url=verify_url,
@@ -417,10 +417,10 @@ def build_email_verification_email(username: str, verify_url: str, base_url: str
 
 def build_password_reset_email(username: str, reset_url: str, expires_minutes: int = 60, base_url: str = "http://localhost:8080") -> dict:
     clean_base = (base_url or "http://localhost:8080").rstrip("/")
-    subject = "🔑 Reset your GoodDeeds.space password"
+    subject = "Reset your GoodDeeds Community password"
     text_body = (
         f"Hello {username},\n\n"
-        f"We received a request to reset the password for your GoodDeeds.space account.\n\n"
+        f"We received a request to reset the password for your GoodDeeds Community account.\n\n"
         f"Click the link below to choose a new password (valid for {expires_minutes} minutes):\n"
         f"{reset_url}\n\n"
         f"If you did not request a password reset, no changes have been made to your account and you can safely ignore this email."
@@ -431,7 +431,7 @@ def build_password_reset_email(username: str, reset_url: str, expires_minutes: i
         heading="Reset Your Password",
         greeting=f"Hello {username},",
         intro_paragraphs=[
-            "We received a request to reset the password for your GoodDeeds.space account.",
+            "We received a request to reset the password for your GoodDeeds Community account.",
             f"Use the secure single-use button below within the next {expires_minutes} minutes to set a new password:",
         ],
         cta_label="Choose a New Password →",
@@ -450,11 +450,11 @@ def build_password_reset_email(username: str, reset_url: str, expires_minutes: i
 
 def build_security_alert_email(username: str, event_label: str, base_url: str = "http://localhost:8080") -> dict:
     clean_base = (base_url or "http://localhost:8080").rstrip("/")
-    subject = f"🛡️ Security Notice: {event_label} on GoodDeeds.space"
+    subject = f"Security Notice: {event_label} on GoodDeeds Community"
     support_url = f"{clean_base}/#/feed"
     text_body = (
         f"Hello {username},\n\n"
-        f"This is an automated security confirmation that the following change occurred on your GoodDeeds.space account:\n\n"
+        f"This is an automated security confirmation that the following change occurred on your GoodDeeds Community account:\n\n"
         f"  • {event_label}\n\n"
         f"If you made this change, no further action is needed. If you do not recognize this activity, please reset your password immediately or contact Customer Service at {support_url}."
     )
@@ -464,7 +464,7 @@ def build_security_alert_email(username: str, event_label: str, base_url: str = 
         heading=f"Account Security Update: {event_label}",
         greeting=f"Hello {username},",
         intro_paragraphs=[
-            "We're letting you know about an authentication or security update on your GoodDeeds.space account:",
+            "We're letting you know about an authentication or security update on your GoodDeeds Community account:",
         ],
         quote_block=event_label,
         cta_label="Review My Account →",
@@ -488,29 +488,29 @@ def build_security_alert_email(username: str, event_label: str, base_url: str = 
 def build_site_invitation_email(sender_username: str, sender_email: str, note_text: str, base_url: str = "http://localhost:8080") -> dict:
     clean_base = (base_url or "http://localhost:8080").rstrip("/")
     join_url = f"{clean_base}/#/"
-    note = note_text or "Join me on GoodDeeds.space to recognize everyday kindness with public Kudos and share local community resources & events!"
-    subject = f"☀️ {sender_username} invited you to join GoodDeeds.space!"
+    note = note_text or "Join me on GoodDeeds Community to recognize everyday kindness with public Kudos and share local community resources & events!"
+    subject = f"{sender_username} invited you to join GoodDeeds Community"
     text_body = (
         f"Hello!\n\n"
-        f"{sender_username} ({sender_email}) has invited you to join GoodDeeds.space — "
+        f"{sender_username} ({sender_email}) has invited you to join GoodDeeds Community — "
         f"a community platform built to celebrate everyday kindness with public Kudos and share helpful community events and resources.\n\n"
         f"Personal Note from {sender_username}:\n"
         f"\"{note}\"\n\n"
-        f"Join free today:\n"
+        f"Join the community today:\n"
         f"{join_url}\n\n"
         f"Become the best version of yourself — one good deed at a time."
     )
     html_body = render_branded_email(
         badge_text="Community Invite",
         accent_theme="amber",
-        heading=f"{sender_username} invited you to GoodDeeds.space!",
+        heading=f"{sender_username} invited you to GoodDeeds Community",
         greeting="Hello!",
         intro_paragraphs=[
-            f"{sender_username} ({sender_email}) invited you to join GoodDeeds.space — a welcoming social platform to celebrate intrinsic kindness with public Kudos and discover local community events, mutual aid, and resources.",
+            f"{sender_username} ({sender_email}) invited you to join GoodDeeds Community — a welcoming social platform to celebrate intrinsic kindness with public Kudos and discover local community events, mutual aid, and resources.",
         ],
         quote_block=f"\"{note}\"",
         quote_caption=f"— Personal note from @{sender_username}",
-        cta_label="Join GoodDeeds.space Free ↗",
+        cta_label="Join GoodDeeds Community ↗",
         cta_url=join_url,
         base_url=clean_base,
     )
@@ -537,15 +537,15 @@ def build_space_invitation_email(
     space_url = f"{clean_base}/#/group/{group_id}"
     note = note_text or "Join us in promoting goodness and building meaningful community connections!"
     # Preserve 'invited to join' substring for test compatibility
-    subject = f"💌 You've been invited to join \"{group_name}\" on GoodDeeds.space!"
+    subject = f"You've been invited to join \"{group_name}\" on GoodDeeds Community"
     action_hint = (
         "Log in to accept your invitation and collaborate with Space members:"
         if is_existing_user
-        else "Create your free account or log in to join this Space today:"
+        else "Create your account or log in to join this Space today:"
     )
     text_body = (
         f"Hello!\n\n"
-        f"{sender_username} ({sender_email}) has invited you to join the community Space \"{group_name}\" on GoodDeeds.space.\n\n"
+        f"{sender_username} ({sender_email}) has invited you to join the community Space \"{group_name}\" on GoodDeeds Community.\n\n"
         f"Personal Note:\n"
         f"\"{note}\"\n\n"
         f"{action_hint}\n"
@@ -558,7 +558,7 @@ def build_space_invitation_email(
         heading=f"Join the \"{group_name}\" Space",
         greeting="Hello!",
         intro_paragraphs=[
-            f"{sender_username} ({sender_email}) invited you to collaborate inside the \"{group_name}\" Space on GoodDeeds.space.",
+            f"{sender_username} ({sender_email}) invited you to collaborate inside the \"{group_name}\" Space on GoodDeeds Community.",
             action_hint,
         ],
         quote_block=f"\"{note}\"",
@@ -587,10 +587,10 @@ def build_invite_accepted_email(
 ) -> dict:
     clean_base = (base_url or "http://localhost:8080").rstrip("/")
     profile_url = f"{clean_base}/#/user/{new_user_id}"
-    subject = f"🎉 @{new_username} accepted your invitation to GoodDeeds.space!"
+    subject = f"@{new_username} accepted your invitation to GoodDeeds Community"
     text_body = (
         f"Hello {inviter_username},\n\n"
-        f"Great news — @{new_username} just accepted your invitation and joined GoodDeeds.space!\n\n"
+        f"Great news — @{new_username} just accepted your invitation and joined GoodDeeds Community!\n\n"
         f"Visit their profile or welcome them with their first public Kudos:\n"
         f"{profile_url}\n\n"
         f"Thank you for helping our caring community grow!"
@@ -598,10 +598,10 @@ def build_invite_accepted_email(
     html_body = render_branded_email(
         badge_text="Invite Accepted",
         accent_theme="amber",
-        heading=f"@{new_username} joined GoodDeeds.space!",
+        heading=f"@{new_username} joined GoodDeeds Community",
         greeting=f"Hello {inviter_username},",
         intro_paragraphs=[
-            f"Wonderful news — @{new_username} accepted your invitation and created their GoodDeeds.space account!",
+            f"Wonderful news — @{new_username} accepted your invitation and created their GoodDeeds Community account!",
             "Say hello or send them a warm welcome Kudos to kick off their journey.",
         ],
         cta_label=f"View @{new_username}'s Profile ↗",
@@ -635,10 +635,10 @@ def build_kudos_received_email(
     kudos_url = f"{clean_base}/#/kudos/{kudos_id}"
     preview = content[:240] + ("..." if len(content) > 240 else "")
     # Preserve 'You received new Kudos' in subject and content preview in body
-    subject = f"🌟 You received new Kudos from {sender_username}!"
+    subject = f"You received new Kudos from {sender_username}"
     text_body = (
         f"Hello {recipient_username},\n\n"
-        f"{sender_username} gave you public Kudos on GoodDeeds.space:\n\n"
+        f"{sender_username} gave you public Kudos on GoodDeeds Community:\n\n"
         f"\"{preview}\"\n\n"
         f"View, react, or reply to your Kudos here:\n"
         f"{kudos_url}"
@@ -649,11 +649,11 @@ def build_kudos_received_email(
         heading=f"@{sender_username} celebrated you with Public Kudos!",
         greeting=f"Hello {recipient_username},",
         intro_paragraphs=[
-            f"Your kindness made a difference! @{sender_username} just shared public appreciation for you on GoodDeeds.space:",
+            f"Your kindness made a difference! @{sender_username} just shared public appreciation for you on GoodDeeds Community:",
         ],
         quote_block=f"\"{preview}\"",
         quote_caption=f"— Public Kudos from @{sender_username}",
-        cta_label="View & Celebrate Your Kudos 🌟",
+        cta_label="View & Celebrate Your Kudos ↗",
         cta_url=kudos_url,
         base_url=clean_base,
         unsubscribe_url=unsubscribe_url,
@@ -684,10 +684,10 @@ def build_comment_notification_email(
     item_url = f"{clean_base}/#/{route_seg}/{item_id}"
     label = "Kudos" if is_kudos else (f"Post \"{item_title}\"" if item_title else "Post")
     snippet = comment_text[:240] + ("..." if len(comment_text) > 240 else "")
-    subject = f"💬 @{commenter_username} commented on your {'Kudos' if is_kudos else 'Post'}"
+    subject = f"@{commenter_username} commented on your {'Kudos' if is_kudos else 'Post'}"
     text_body = (
         f"Hello {recipient_username},\n\n"
-        f"@{commenter_username} left a comment on your {label} on GoodDeeds.space:\n\n"
+        f"@{commenter_username} left a comment on your {label} on GoodDeeds Community:\n\n"
         f"\"{snippet}\"\n\n"
         f"View the conversation and reply here:\n"
         f"{item_url}"
@@ -735,7 +735,7 @@ def build_space_announcement_email(
     post_url = f"{clean_base}/#/post/{post_id}"
     when_line = f"📅 Scheduled: {event_date}" + (f" at {event_time}" if event_time else "") if event_date else ""
     snippet = (summary_snippet or "")[:220] + ("..." if len(summary_snippet or "") > 220 else "")
-    subject = f"📢 New {post_subtype_label} in {space_name}: {post_title}"
+    subject = f"New {post_subtype_label} in {space_name}: {post_title}"
     text_body = (
         f"Hello {recipient_username},\n\n"
         f"@{author_username} shared a new {post_subtype_label} in your joined Space \"{space_name}\":\n\n"
@@ -798,10 +798,10 @@ def build_space_chat_email(
         cat_label = "Chat @Mentions & Broadcasts"
         badge = "Space Chat Broadcast"
         theme = "teal"
-        subject = f"📢 Chat Broadcast in \"{space_name}\" from @{sender_username}"
+        subject = f"Chat Broadcast in \"{space_name}\" from @{sender_username}"
         heading = f"Broadcast in \"{space_name}\" Chat Board"
         intro = [
-            f"@{sender_username} shared a broadcast message with members of \"{space_name}\" on GoodDeeds.space:",
+            f"@{sender_username} shared a broadcast message with members of \"{space_name}\" on GoodDeeds Community:",
         ]
         cta_label = f"Open \"{space_name}\" Chat Board ↗"
         sec_note = ""
@@ -811,7 +811,7 @@ def build_space_chat_email(
         cat_label = "All Space Chat Activity"
         badge = "Space Chat Activity"
         theme = "indigo"
-        subject = f"💬 New chat conversation in \"{space_name}\""
+        subject = f"New chat conversation in \"{space_name}\""
         heading = f"New Chat Activity in \"{space_name}\""
         intro = [
             f"@{sender_username} posted a new message on the \"{space_name}\" Chat Board:",
@@ -824,7 +824,7 @@ def build_space_chat_email(
         cat_label = "Chat @Mentions & Broadcasts"
         badge = "Chat @Mention"
         theme = "indigo"
-        subject = f"💬 @{sender_username} mentioned you in \"{space_name}\" Chat Board"
+        subject = f"@{sender_username} mentioned you in \"{space_name}\" Chat Board"
         heading = f"@{sender_username} mentioned you in \"{space_name}\""
         intro = [
             f"@{sender_username} tagged you on the \"{space_name}\" Space Chat Board:",
@@ -873,8 +873,8 @@ def build_weekly_digest_email(
     clean_base = (base_url or "http://localhost:8080").rstrip("/")
     feed_url = f"{clean_base}/#/feed"
     spaces_str = ", ".join(joined_space_names[:4]) if joined_space_names else "All Open Community Spaces"
-    items = highlight_lines or ["🌟 Explore this week's new Kudos, Community Events, and Mutual Aid Resources on GoodDeeds.space!"]
-    subject = f"☀️ Your Weekly GoodDeeds.space Community Digest"
+    items = highlight_lines or ["🌟 Explore this week's new Kudos, Community Events, and Mutual Aid Resources on GoodDeeds Community!"]
+    subject = "Your Weekly GoodDeeds Community Digest"
     bullets_txt = "\n".join(f"  • {line}" for line in items[:6])
     text_body = (
         f"Hello {username},\n\n"
@@ -921,9 +921,9 @@ def build_space_role_updated_email(
     clean_base = (base_url or "http://localhost:8080").rstrip("/")
     space_url = f"{clean_base}/#/group/{group_id}"
     if is_promoted:
-        subject = f"🛡️ You are now a Space Admin for \"{group_name}\""
+        subject = f"You are now a Space Admin for \"{group_name}\""
         intro = [
-            f"@{actor_username} promoted you to Space Admin for \"{group_name}\" on GoodDeeds.space.",
+            f"@{actor_username} promoted you to Space Admin for \"{group_name}\" on GoodDeeds Community.",
             "As a Space Admin, you can now:",
         ]
         bullets = [
@@ -932,7 +932,7 @@ def build_space_role_updated_email(
             "Invite members in bulk and help keep Space conversations welcoming.",
         ]
     else:
-        subject = f"ℹ️ Space Admin role updated for \"{group_name}\""
+        subject = f"Space Admin role updated for \"{group_name}\""
         intro = [
             f"@{actor_username} updated your role in \"{group_name}\" from Space Admin to Space Member.",
             "You remain a full member of the Space and can continue sharing Posts, Events, Resources, and Kudos.",
@@ -948,7 +948,7 @@ def build_space_role_updated_email(
     html_body = render_branded_email(
         badge_text="Space Governance",
         accent_theme="teal" if is_promoted else "slate",
-        heading=subject.replace("🛡️ ", "").replace("ℹ️ ", ""),
+        heading=subject,
         greeting=f"Hello {username},",
         intro_paragraphs=intro,
         bullet_items=bullets,
@@ -1021,7 +1021,7 @@ def build_support_confirmation_email(
     subject = f"Confirmation ({ref_code}): We received your inquiry '{subject_line}'"
     text_body = (
         f"Hello {username},\n\n"
-        f"Thank you for contacting GoodDeeds.space Customer Service ({ref_code}). We have received your inquiry:\n\n"
+        f"Thank you for contacting GoodDeeds Community Customer Service ({ref_code}). We have received your inquiry:\n\n"
         f"Subject: {subject_line}\n"
         f"\"{message}\"\n\n"
         f"Our support team will review your message and follow up at this email address shortly."
@@ -1032,11 +1032,11 @@ def build_support_confirmation_email(
         heading="We Received Your Support Request",
         greeting=f"Hello {username},",
         intro_paragraphs=[
-            f"Thank you for reaching out to GoodDeeds.space! Your request has been logged under reference {ref_code}, and a member of our support team will reply to this email address shortly.",
+            f"Thank you for reaching out to GoodDeeds Community! Your request has been logged under reference {ref_code}, and a member of our support team will reply to this email address shortly.",
         ],
         quote_block=message,
         quote_caption=f"Subject: {subject_line}",
-        cta_label="Return to GoodDeeds.space ↗",
+        cta_label="Return to Community Feed ↗",
         cta_url=f"{clean_base}/#/feed",
         base_url=clean_base,
     )
@@ -1060,7 +1060,7 @@ def build_support_admin_alert_email(
 ) -> dict:
     clean_base = (base_url or "http://localhost:8080").rstrip("/")
     ref_code = f"#GD-{int(inquiry_id):04d}" if inquiry_id else "#GD-NEW"
-    subject = f"🚨 Support Alert ({ref_code}) from {username}: {subject_line}"
+    subject = f"Support Inquiry ({ref_code}) from {username}: {subject_line}"
     text_body = (
         f"Reference: {ref_code}\n"
         f"User: {username} ({user_email})\n"
@@ -1080,7 +1080,7 @@ def build_support_admin_alert_email(
         ],
         quote_block=message,
         quote_caption=f"From @{username} <{user_email}> • {ref_code}",
-        cta_label="Open GoodDeeds.space ↗",
+        cta_label="Open Community Feed ↗",
         cta_url=f"{clean_base}/#/feed",
         base_url=clean_base,
     )
@@ -1107,9 +1107,9 @@ def build_content_report_admin_alert_email(
     clean_base = (base_url or "http://localhost:8080").rstrip("/")
     mod_url = f"{clean_base}/#/moderation"
     snippet = (content_snippet or "[No preview available]")[:260]
-    subject = f"🚩 Moderation Report #{report_id}: {target_type} #{target_id} ({reason})"
+    subject = f"Moderation Report #{report_id}: {target_type} #{target_id} ({reason})"
     text_body = (
-        f"A community member flagged content for review on GoodDeeds.space:\n\n"
+        f"A community member flagged content for review on GoodDeeds Community:\n\n"
         f"  • Report ID: #{report_id}\n"
         f"  • Flagged Item: {target_type} #{target_id} (by @{target_author_name or 'unknown'})\n"
         f"  • Reported By: @{reporter_username}\n"
@@ -1134,7 +1134,7 @@ def build_content_report_admin_alert_email(
         bullet_items=bullets,
         quote_block=snippet,
         quote_caption="Excerpt of reported content",
-        cta_label="Open Moderation Queue 🛡️",
+        cta_label="Open Moderation Queue ↗",
         cta_url=mod_url,
         base_url=clean_base,
     )
@@ -1160,34 +1160,34 @@ def build_moderation_action_email(
     clean_base = (base_url or "http://localhost:8080").rstrip("/")
     act = (action_type or "").upper()
     if act == "ACCOUNT_RESTORED":
-        subject = "✅ Your GoodDeeds.space account has been restored"
+        subject = "Your GoodDeeds Community account has been restored"
         heading = "Your Account Has Been Restored"
         accent = "teal"
         paragraphs = [
-            "Good news — a Site Administrator has restored your GoodDeeds.space account.",
+            "Good news — a Site Administrator has restored your GoodDeeds Community account.",
             "You may sign back in anytime and continue participating in Community Spaces in accordance with our Community Standards.",
         ]
-        cta_label = "Sign In to GoodDeeds.space ↗"
+        cta_label = "Sign In to GoodDeeds Community ↗"
         cta_url = f"{clean_base}/#/"
     elif act == "ACCOUNT_SUSPENDED":
-        subject = "⚠️ Important Notice: Your GoodDeeds.space account has been suspended"
+        subject = "Important Notice: Your GoodDeeds Community account has been suspended"
         heading = "Account Suspension Notice"
         accent = "rose"
         paragraphs = [
-            "Following a Trust & Safety review under our Terms of Service and Community Standards, your GoodDeeds.space account has been suspended and active sessions have been signed out.",
+            "Following a Trust & Safety review under our Terms of Service and Community Standards, your GoodDeeds Community account has been suspended and active sessions have been signed out.",
             "If you believe this action was taken in error, please reply to this email or contact support@gooddeeds.space with your username to request an appeal review.",
         ]
         cta_label = ""
         cta_url = ""
     else:
-        subject = f"ℹ️ Moderation Notice: Your {target_type.title()} was removed"
+        subject = f"Moderation Notice: Your {target_type.title()} was removed"
         heading = f"Your {target_type.title()} Was Removed"
         accent = "slate"
         paragraphs = [
-            f"Following a community report review, a moderator removed your {target_type.lower()} because it did not align with GoodDeeds.space Community Standards.",
-            "Please review our Community Standards to help keep GoodDeeds.space safe, constructive, and welcoming for everyone.",
+            f"Following a community report review, a moderator removed your {target_type.lower()} because it did not align with GoodDeeds Community Standards.",
+            "Please review our Community Standards to help keep our Spaces safe, constructive, and welcoming for everyone.",
         ]
-        cta_label = "View GoodDeeds.space ↗"
+        cta_label = "View Community Standards ↗"
         cta_url = f"{clean_base}/#/"
 
     quote_txt = f"Moderation note: {reason}" if reason else ""
@@ -1228,35 +1228,35 @@ def build_supporter_receipt_email(
     base_url: str = "http://localhost:8080",
 ) -> dict:
     clean_base = (base_url or "http://localhost:8080").rstrip("/")
-    subject = f"💛 Thank you for supporting GoodDeeds.space! (Receipt {transaction_id})"
+    subject = f"Thank you for supporting GoodDeeds Community (Receipt {transaction_id})"
     disclosure = (
-        "Disclosure: GoodDeeds.space is operated as a limited liability company (LLC). "
-        "Voluntary supporter contributions help fund free open community infrastructure and are not tax-deductible as charitable contributions."
+        "Disclosure: GoodDeeds Community is operated as a limited liability company (LLC). "
+        "Voluntary supporter contributions help fund open community infrastructure and are not tax-deductible as charitable contributions."
     )
     text_body = (
         f"Hello {supporter_name},\n\n"
-        f"Thank you for your generous contribution of {amount_str} to help keep GoodDeeds.space free and open for communities!\n\n"
+        f"Thank you for your generous contribution of {amount_str} to help keep GoodDeeds Community open for communities!\n\n"
         f"Receipt Summary:\n"
         f"  • Amount: {amount_str}\n"
         f"  • Transaction ID: {transaction_id}\n"
         f"  • Date: {date_str}\n\n"
         f"{disclosure}\n\n"
-        f"With gratitude,\nGoodDeeds.space"
+        f"With gratitude,\nGoodDeeds Community"
     )
     html_body = render_branded_email(
         badge_text="Supporter Receipt",
         accent_theme="amber",
-        heading="Thank You for Supporting GoodDeeds.space!",
+        heading="Thank You for Supporting GoodDeeds Community!",
         greeting=f"Hello {supporter_name},",
         intro_paragraphs=[
-            f"Your contribution of {amount_str} directly supports hosting, search infrastructure, and free Community Spaces for neighbors and local nonprofits.",
+            f"Your contribution of {amount_str} directly supports hosting, search infrastructure, and open Community Spaces for neighbors and local nonprofits.",
         ],
         bullet_items=[
             f"Amount Paid: {amount_str}",
             f"Receipt / Transaction ID: {transaction_id}",
             f"Date: {date_str}",
         ],
-        cta_label="Visit GoodDeeds.space ↗",
+        cta_label="Visit GoodDeeds Community ↗",
         cta_url=f"{clean_base}/#/",
         secondary_note=disclosure,
         base_url=clean_base,
@@ -1278,7 +1278,7 @@ def build_org_subscription_onboarding_email(
     base_url: str = "http://localhost:8080",
 ) -> dict:
     clean_base = (base_url or "http://localhost:8080").rstrip("/")
-    subject = f"🚀 Welcome \"{org_name}\" to GoodDeeds.space {plan_name}!"
+    subject = f"Welcome \"{org_name}\" to GoodDeeds Community {plan_name}"
     bullets = [
         f"Expanded Space attachment & document storage ({storage_quota_gb} GB pooled allocation).",
         "Priority onboarding & dedicated support via support@gooddeeds.space.",
@@ -1286,7 +1286,7 @@ def build_org_subscription_onboarding_email(
     ]
     text_body = (
         f"Hello {admin_username},\n\n"
-        f"\"{org_name}\" is now active on the GoodDeeds.space {plan_name} plan!\n\n"
+        f"\"{org_name}\" is now active on the GoodDeeds Community {plan_name} plan!\n\n"
         f"Included capabilities:\n"
         + "\n".join(f"  • {b}" for b in bullets)
         + f"\n\nManage your Spaces anytime:\n{clean_base}/#/groups"
@@ -1297,7 +1297,7 @@ def build_org_subscription_onboarding_email(
         heading=f"{org_name} Is Live on {plan_name}!",
         greeting=f"Hello {admin_username},",
         intro_paragraphs=[
-            f"Thank you for partnering with GoodDeeds.space! Your organization's {plan_name} subscription is active.",
+            f"Thank you for partnering with GoodDeeds Community! Your organization's {plan_name} subscription is active.",
         ],
         bullet_items=bullets,
         cta_label="Manage Organization Spaces ↗",
@@ -1324,7 +1324,7 @@ def build_test_diagnostic_email(
     """Builds a branded Site Admin diagnostic email verifying live email delivery end-to-end."""
     clean_base = (base_url or "http://localhost:8080").rstrip("/")
     ts_str = sent_at_utc or "Just now (UTC)"
-    subject = "✅ [TEST] GoodDeeds.space Live Email Delivery Verification"
+    subject = "GoodDeeds Community Live Email Delivery Verification"
     bullets = [
         f"Active Transport: {provider_label}",
         f"Sender Identity (From): {from_email}",
@@ -1334,23 +1334,22 @@ def build_test_diagnostic_email(
     ]
     text_body = (
         f"Hello @{admin_username},\n\n"
-        f"Your GoodDeeds.space email pipeline test completed!\n\n"
+        f"Your GoodDeeds Community email pipeline verification completed!\n\n"
         f"Delivery Diagnostics:\n"
         + "\n".join(f"  • {b}" for b in bullets)
         + f"\n\nInspect Outbox logs & all 22 branded email templates:\n{clean_base}/#/outbox\n"
     )
     html_body = render_branded_email(
-        badge_text="Live Delivery Test",
+        badge_text="Delivery Check",
         accent_theme="teal",
         heading="Your Email Integration Is Working!",
         greeting=f"Hello @{admin_username},",
         intro_paragraphs=[
-            "This test email was dispatched from the GoodDeeds.space Site Admin Outbox Inspector to verify end-to-end multipart HTML + plain-text rendering and transport configuration.",
+            "This verification email was sent from the GoodDeeds Community Outbox Inspector to confirm multipart HTML + plain-text rendering and live transport delivery.",
         ],
         bullet_items=bullets,
         cta_label="Open Email Outbox & Templates ↗",
         cta_url=f"{clean_base}/#/outbox",
-        secondary_note="Tip: Verify SPF, DKIM, and DMARC DNS records on gooddeeds.space before sending high-volume Space broadcasts.",
         base_url=clean_base,
     )
     return {
@@ -1362,10 +1361,10 @@ def build_test_diagnostic_email(
     }
 
 
-def get_all_template_previews(base_url: str = "http://localhost:8080") -> list:
-    """Returns rendered sample previews of all 16+ GoodDeeds.space email templates for inspection."""
+def get_all_template_previews(base_url: str = "http://localhost:8080", unsubscribe_token: str = "sample-preview-token") -> list:
+    """Returns rendered sample previews of all 16+ GoodDeeds Community email templates for inspection."""
     clean_base = (base_url or "http://localhost:8080").rstrip("/")
-    sample_unsub = build_unsubscribe_url(clean_base, "sample-preview-token", "all")
+    sample_unsub = build_unsubscribe_url(clean_base, unsubscribe_token or "sample-preview-token", "all")
     samples = [
         ("1. Account & Security", "Welcome & Onboarding", build_welcome_email("Alex_Kindness", f"{clean_base}/#/verify-email?token=sample-verify-token", clean_base)),
         ("1. Account & Security", "Email Address Verification", build_email_verification_email("Alex_Kindness", f"{clean_base}/#/verify-email?token=sample-verify-token", clean_base)),

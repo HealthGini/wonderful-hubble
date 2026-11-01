@@ -4352,11 +4352,17 @@ class TestRegressionCoverage(GoodDeedsTestCase):
             self.assertEqual(sent_req["url"], "https://api.resend.com/emails")
             self.assertEqual(sent_req["headers"].get("authorization"), "Bearer re_secret_unit_test_key")
             self.assertEqual(sent_req["payload"]["to"], ["inbox-check@example.com"])
-            self.assertTrue(sent_req["payload"]["subject"].startswith("[TEST]"))
+            # Domain-like SMTP_FROM_NAME="GoodDeeds.space" auto-normalizes to "GoodDeeds Community"
+            self.assertEqual(sent_req["payload"]["from"], "GoodDeeds Community <notifications@gooddeeds.space>")
+            self.assertNotIn("[TEST]", sent_req["payload"]["subject"])
+            self.assertNotIn("reply_to", sent_req["payload"])
             self.assertIn("<!DOCTYPE html>", sent_req["payload"]["html"])
-            # RFC 8058 One-Click Unsubscribe headers present & converted to /api/email/unsubscribe
+            # Resend X-Entity-Ref-ID + RFC 8058 One-Click Unsubscribe headers present
+            self.assertTrue(sent_req["payload"]["headers"].get("X-Entity-Ref-ID"))
             self.assertIn("/api/email/unsubscribe?", sent_req["payload"]["headers"]["List-Unsubscribe"])
             self.assertEqual(sent_req["payload"]["headers"]["List-Unsubscribe-Post"], "List-Unsubscribe=One-Click")
+            # HTML footer unsubscribe token matches real token (never leftover sample-preview-token)
+            self.assertNotIn("sample-preview-token", sent_req["payload"]["html"])
 
         # Verify Brevo & Postmark providers as well
         for prov_name, env_key, expected_url, expected_status in (
@@ -4531,6 +4537,96 @@ class TestRegressionCoverage(GoodDeedsTestCase):
             clear=False,
         ):
             self.assertEqual(email_templates.get_public_base_url(), "https://gooddeeds-space.onrender.com")
+
+    def test_email_antispam_deliverability_hardening(self):
+        """
+        Verifies anti-spam & anti-phishing email deliverability rules across all templates & transports:
+        1. Zero <a ...>...</a> anchor texts contain raw URLs (http:// or https://) or '.space' domain literals
+           (prevents link-tracker rewrite phishing flags in Gmail/Outlook/SpamAssassin).
+        2. Zero template subject lines contain '[TEST]' or '.space' TLD literals.
+        3. Domain-shaped SMTP_FROM_NAME ('GoodDeeds.space') normalizes to 'GoodDeeds Community' while
+           human display names ('Maya at GoodDeeds') are preserved.
+        4. Raw SMTP wire messages include RFC 5322 Date and Message-ID headers.
+        """
+        import re
+        import email
+        import threading
+        from email import policy as email_policy
+        from unittest.mock import patch
+        import email_templates
+        import handlers
+        from scripts.local_smtp_sink import LocalSMTPSinkHandler, ReusableThreadingTCPServer
+
+        all_tpls = email_templates.get_all_template_previews("https://gooddeeds.space", unsubscribe_token="real-tok-123")
+        diag_tpl = email_templates.build_test_diagnostic_email(
+            admin_username="Maya_Lin",
+            recipient_email="member@example.com",
+            provider_label="Resend HTTPS REST API",
+            from_email="GoodDeeds Community <notifications@gooddeeds.space>",
+            base_url="https://gooddeeds.space",
+            sent_at_utc="2026-11-01 08:25:00 UTC",
+        )
+        anchor_re = re.compile(r"<a\b[^>]*>(.*?)</a>", re.IGNORECASE | re.DOTALL)
+        tag_strip_re = re.compile(r"<[^>]+>")
+
+        for tpl in list(all_tpls) + [diag_tpl]:
+            key = tpl["template_key"]
+            subj = tpl["subject"]
+            html_body = tpl["html_body"]
+            self.assertNotIn("[TEST]", subj, f"Subject for {key} should not contain [TEST]")
+            self.assertNotIn(".space", subj.lower(), f"Subject for {key} should not contain .space TLD literal")
+            for raw_inner in anchor_re.findall(html_body):
+                visible_text = tag_strip_re.sub("", raw_inner).strip().lower()
+                self.assertNotIn("http://", visible_text, f"Anchor text in {key} must not be a raw URL")
+                self.assertNotIn("https://", visible_text, f"Anchor text in {key} must not be a raw URL")
+                self.assertNotIn(".space", visible_text, f"Anchor text in {key} must not contain .space domain literal")
+
+        with patch.dict(os.environ, {"SMTP_FROM_NAME": "GoodDeeds.space"}, clear=False):
+            self.assertEqual(handlers.get_email_transport_config()["from_name"], "GoodDeeds Community")
+        with patch.dict(os.environ, {"SMTP_FROM_NAME": "Maya at GoodDeeds"}, clear=False):
+            self.assertEqual(handlers.get_email_transport_config()["from_name"], "Maya at GoodDeeds")
+
+        captured_headers = []
+
+        class _HeaderCheckSink(LocalSMTPSinkHandler):
+            @staticmethod
+            def _print_captured_email(mail_from, rcpt_tos, raw_msg):
+                parsed = email.message_from_bytes(raw_msg, policy=email_policy.default)
+                captured_headers.append((parsed.get("Date"), parsed.get("Message-ID"), parsed.get("From")))
+
+        with ReusableThreadingTCPServer(("127.0.0.1", 0), _HeaderCheckSink) as smtp_srv:
+            port = smtp_srv.server_address[1]
+            t = threading.Thread(target=smtp_srv.serve_forever, daemon=True)
+            t.start()
+            try:
+                with patch.dict(
+                    os.environ,
+                    {
+                        "EMAIL_PROVIDER": "smtp",
+                        "SMTP_HOST": "127.0.0.1",
+                        "SMTP_PORT": str(port),
+                        "SMTP_TLS": "false",
+                        "SMTP_FROM_NAME": "GoodDeeds.space",
+                        "SMTP_FROM_EMAIL": "notifications@gooddeeds.space",
+                    },
+                    clear=False,
+                ):
+                    handlers.send_email_with_diagnostics(
+                        recipient_email="rfc-check@example.com",
+                        subject="Header Verification",
+                        text_body="Hello neighbor",
+                        html_body=diag_tpl["html_body"],
+                        force_sync=True,
+                    )
+            finally:
+                smtp_srv.shutdown()
+
+        self.assertEqual(len(captured_headers), 1)
+        dt_hdr, mid_hdr, from_hdr = captured_headers[0]
+        self.assertTrue(dt_hdr, "SMTP wire message must include RFC 5322 Date header")
+        self.assertTrue(mid_hdr and "@gooddeeds.space>" in mid_hdr, "SMTP wire message must include Message-ID header")
+        self.assertIn("GoodDeeds Community <notifications@gooddeeds.space>", from_hdr)
+
 
 
 

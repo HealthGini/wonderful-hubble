@@ -30,7 +30,7 @@ services:
       - key: RESEND_API_KEY
         sync: false
       - key: SMTP_FROM_NAME
-        value: GoodDeeds.space
+        value: GoodDeeds Community
       # Once gooddeeds.space DNS is verified in Resend, set to notifications@gooddeeds.space
       # (use onboarding@resend.dev if testing before domain DNS is verified):
       - key: SMTP_FROM_EMAIL
