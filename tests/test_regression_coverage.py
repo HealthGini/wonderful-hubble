@@ -4865,20 +4865,199 @@ class TestRegressionCoverage(GoodDeedsTestCase):
             self.assertIsNotNone(g_match)
             self.assertNotIn("hidden", g_match.group(0))
 
+    def test_dedicated_signup_page_and_invite_signup_links(self):
+        """
+        Verifies the dedicated Sign Up page ('view-signup' at /signup and /#/signup) and invitation links:
+        1. 'view-signup' is a full-page section (not a cramped modal) with a spacious 2-column form grid
+           keeping Email, Username, Password, Phone, Avatar, and Bio visible alongside a Copy Sign-Up Link button.
+        2. Direct HTTP GET /signup serves index.html (200 OK), and app.js normalizes /signup pathnames and
+           routes /#/signup with query parameter prefilling (?email=, ?invited_by=, ?group_id=).
+        3. Website invitations (POST /api/invitations/site) and new-user Space invitations
+           (POST /api/groups/<id>/invite) point directly to /signup with personalized query parameters.
+        """
+        import database
+        import threading
+        import urllib.request
+        from http.server import ThreadingHTTPServer
+        import server
 
+        base_dir = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+        with open(os.path.join(base_dir, "static", "index.html"), "r", encoding="utf-8") as fh:
+            html = fh.read()
+        with open(os.path.join(base_dir, "static", "app.js"), "r", encoding="utf-8") as fj:
+            js = fj.read()
 
+        # 1. Dedicated view-signup section & 2-column visible fields
+        self.assertIn('<section id="view-signup"', html)
+        self.assertNotIn('<dialog id="modal-signup"', html)
+        self.assertIn("grid-cols-1 md:grid-cols-2", html)
+        for required_id in (
+            'id="sup-email"',
+            'id="sup-username"',
+            'id="sup-pw"',
+            'id="sup-phone"',
+            'id="sup-avatar"',
+            'id="sup-bio"',
+            'id="btn-google-signup"',
+            'id="signup-email-tip"',
+            'id="signup-invite-banner"',
+            'id="btn-copy-signup-url"',
+            'id="nav-signup-link"',
+            'id="landing-signup-link"',
+        ):
+            self.assertIn(required_id, html, f"Missing {required_id} on dedicated Sign Up page")
 
+        # 2. Routing & helper bindings in app.js + HTTP GET /signup SPA fallback
+        self.assertIn('"view-signup"', js)
+        self.assertIn("function openSignupPage(", js)
+        self.assertIn("window.openSignupPage = openSignupPage", js)
+        self.assertIn("function populateSignupPage(", js)
+        self.assertIn("async function copySignupShareUrl()", js)
+        self.assertIn('rawPathname === "/signup"', js)
+        self.assertIn('path === "/signup"', js)
 
+        with ThreadingHTTPServer(("127.0.0.1", 0), server.GoodDeedsServerHandler) as httpd:
+            t = threading.Thread(target=httpd.serve_forever, daemon=True)
+            t.start()
+            try:
+                with urllib.request.urlopen(f"http://127.0.0.1:{httpd.server_port}/signup?email=test%40example.org") as resp:
+                    self.assertEqual(resp.status, 200)
+                    served_html = resp.read().decode("utf-8")
+                    self.assertIn('<section id="view-signup"', served_html)
+            finally:
+                httpd.shutdown()
 
+        # 3. Website invitations point to /signup?email=...&invited_by=...
+        headers_maya = self.get_auth_headers(self.get_token("maya@gooddeeds.space"))
+        st_site, _, _ = self.make_request(
+            "POST",
+            "/api/invitations/site",
+            headers=headers_maya,
+            body={"emails": "priya.signup@example.org", "message": "Join us on GoodDeeds!"},
+        )
+        self.assertEqual(st_site, 200)
 
+        conn = database.get_db()
+        cur = conn.cursor()
+        cur.execute(
+            "SELECT body, html_body FROM email_outbox WHERE recipient_email = ? ORDER BY id DESC LIMIT 1",
+            ("priya.signup@example.org",),
+        )
+        site_mail = cur.fetchone()
+        self.assertIsNotNone(site_mail)
+        self.assertIn("/signup?email=priya.signup%40example.org&invited_by=Maya_Lin", site_mail["body"])
+        self.assertIn("/signup?email=priya.signup%40example.org&amp;invited_by=Maya_Lin", site_mail["html_body"])
 
+        # 4. Space invitation to a new user points to /signup?group_id=2&email=...; existing user points to /#/group/2?invite=yes
+        st_sp_new, _, _ = self.make_request(
+            "POST",
+            "/api/groups/2/invite",
+            headers=headers_maya,
+            body={"emails": "new.space.member@example.org", "message": "Join Space 2!"},
+        )
+        self.assertEqual(st_sp_new, 200)
+        cur.execute(
+            "SELECT body, html_body FROM email_outbox WHERE recipient_email = ? ORDER BY id DESC LIMIT 1",
+            ("new.space.member@example.org",),
+        )
+        sp_new_mail = cur.fetchone()
+        self.assertIsNotNone(sp_new_mail)
+        self.assertIn("/signup?group_id=2&email=new.space.member%40example.org&invited_by=Maya_Lin", sp_new_mail["body"])
+        self.assertIn("/signup?group_id=2&amp;email=new.space.member%40example.org&amp;invited_by=Maya_Lin", sp_new_mail["html_body"])
 
+        st_sp_ex, _, _ = self.make_request(
+            "POST",
+            "/api/groups/2/invite",
+            headers=headers_maya,
+            body={"emails": "Elena_Wellness", "message": "Join Space 2, Elena!"},
+        )
+        self.assertEqual(st_sp_ex, 200)
+        cur.execute(
+            "SELECT body FROM email_outbox WHERE recipient_email = ? ORDER BY id DESC LIMIT 1",
+            ("elena@gooddeeds.space",),
+        )
+        sp_ex_mail = cur.fetchone()
+        conn.close()
+        self.assertIsNotNone(sp_ex_mail)
+        self.assertIn("/#/group/2?invite=yes", sp_ex_mail["body"])
 
+    def test_dedicated_give_kudos_page_and_shareable_url(self):
+        """
+        Verifies that Giving Public Kudos lives on its own dedicated spacious full-page view
+        ('view-give-kudos' at /give-kudos and /#/give-kudos) rather than a cramped dialog modal:
+        1. 'view-give-kudos' is a full-page section with a 2-column layout (recipient search + rich
+           gratitude editor on left, Space tagging + publish actions on right) and a Copy Kudos Link button.
+        2. State variables ('kudosComposerReturnHash', 'kudosComposerOriginGroupId', 'pendingKudosRecipient',
+           'signupReturnHash') are declared above 'async function initApp()' to prevent TDZ startup errors.
+        3. Direct HTTP GET /give-kudos serves index.html (200 OK), and app.js normalizes /give-kudos
+           (/send-kudos) pathnames, delegates openModal('modal-kudos') -> openGiveKudosPage(), and
+           supports ?group_id=, ?recipient_id=, and ?recipient= query prefilling.
+        """
+        import threading
+        import urllib.request
+        from http.server import ThreadingHTTPServer
+        import server
 
+        base_dir = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+        with open(os.path.join(base_dir, "static", "index.html"), "r", encoding="utf-8") as fh:
+            html = fh.read()
+        with open(os.path.join(base_dir, "static", "app.js"), "r", encoding="utf-8") as fj:
+            js = fj.read()
 
+        # 1. Dedicated view-give-kudos full-page section & removal of old cramped dialog modal
+        self.assertIn('<section id="view-give-kudos"', html)
+        self.assertNotIn('<dialog id="modal-kudos"', html)
+        for required_id in (
+            'id="btn-back-give-kudos"',
+            'id="btn-back-give-kudos-label"',
+            'id="give-kudos-space-context-badge"',
+            'id="btn-copy-kudos-url"',
+            'id="btn-dismiss-give-kudos"',
+            'id="give-kudos-form"',
+            'id="kudos-recipient-id"',
+            'id="kudos-recipient-input"',
+            'id="kudos-recipient-suggestions"',
+            'id="kudos-rich-editor-frame"',
+            'id="kudos-format-toolbar"',
+            'id="kudos-content"',
+            'id="kudos-groups-list"',
+        ):
+            self.assertIn(required_id, html, f"Missing {required_id} on dedicated Give Kudos page")
 
+        # 2. TDZ-safe top-level state declarations before initApp()
+        init_pos = js.index("async function initApp()")
+        for state_decl in (
+            "let kudosComposerReturnHash =",
+            "let kudosComposerOriginGroupId =",
+            "let pendingKudosRecipient =",
+            "let signupReturnHash =",
+            "let signupInviteGroupId =",
+            "let pendingAfterAuthRoute =",
+        ):
+            self.assertIn(state_decl, js)
+            self.assertLess(js.index(state_decl), init_pos, f"{state_decl} must be declared before initApp()")
 
+        # 3. Routing, delegation & share URL helpers in app.js
+        self.assertIn('"view-give-kudos"', js)
+        self.assertIn("function openGiveKudosPage(", js)
+        self.assertIn("window.openGiveKudosPage = openGiveKudosPage", js)
+        self.assertIn("function cancelGiveKudos()", js)
+        self.assertIn("window.cancelGiveKudos = cancelGiveKudos", js)
+        self.assertIn("async function copyGiveKudosShareUrl()", js)
+        self.assertIn("window.copyGiveKudosShareUrl = copyGiveKudosShareUrl", js)
+        self.assertIn('rawPathname === "/give-kudos"', js)
+        self.assertIn('path === "/give-kudos"', js)
+        self.assertIn('window.location.hash.startsWith("#/give-kudos")', js)
 
-
-
+        # 4. Direct HTTP GET /give-kudos (with optional query params) serves index.html cleanly
+        with ThreadingHTTPServer(("127.0.0.1", 0), server.GoodDeedsServerHandler) as httpd:
+            t = threading.Thread(target=httpd.serve_forever, daemon=True)
+            t.start()
+            try:
+                with urllib.request.urlopen(f"http://127.0.0.1:{httpd.server_port}/give-kudos?recipient=Arthur_Pendelton&group_id=1") as resp:
+                    self.assertEqual(resp.status, 200)
+                    served_html = resp.read().decode("utf-8")
+                    self.assertIn('<section id="view-give-kudos"', served_html)
+            finally:
+                httpd.shutdown()
 

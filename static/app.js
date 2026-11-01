@@ -309,9 +309,15 @@ let adminTestEmailPanelOpen = false;
 let lastEmailTransportStatus = null;
 window._outboxHtmlCache = {};
 
-// Full-Page Post Composer & Kudos Rich Editor State (declared before startup to prevent TDZ errors)
+// Full-Page Post Composer, Give Kudos & Sign-Up State (declared before startup to prevent TDZ errors)
 let postComposerReturnHash = "#/feed";
 let postComposerOriginGroupId = null;
+let kudosComposerReturnHash = "#/feed";
+let kudosComposerOriginGroupId = null;
+let pendingKudosRecipient = null;
+let signupReturnHash = "#/";
+let signupInviteGroupId = null;
+let pendingAfterAuthRoute = null;
 let pendingGroupTab = null;
 let _kudosSavedLinkSelection = { start: 0, end: 0 };
 
@@ -492,6 +498,19 @@ async function handleRoute() {
   if (sessionPromise) {
     try { await sessionPromise; } catch (_) {}
   }
+  const rawPathname = (window.location.pathname || "/").replace(/\/+$/, "") || "/";
+  if ((!window.location.hash || window.location.hash === "#" || window.location.hash === "#/") &&
+      (rawPathname === "/signup" || rawPathname === "/join" || rawPathname === "/register" ||
+       rawPathname === "/give-kudos" || rawPathname === "/send-kudos")) {
+    const routeBase = (rawPathname === "/give-kudos" || rawPathname === "/send-kudos") ? "/give-kudos" : "/signup";
+    const searchQs = (window.location.search || "").replace(/^\?/, "");
+    const normalizedHash = searchQs ? `#${routeBase}?${searchQs}` : `#${routeBase}`;
+    try {
+      window.history.replaceState(null, "", "/" + normalizedHash);
+    } catch (_) {
+      window.location.hash = normalizedHash;
+    }
+  }
   const hash = window.location.hash || "#/";
   const rawRoute = hash.replace(/^#/, "");
   const qIdx = rawRoute.indexOf("?");
@@ -584,6 +603,35 @@ async function handleRoute() {
     const qSubtype = (hashParams.get("subtype") || "").trim().toUpperCase();
     showView("view-create-post");
     populatePostModal(qSubtype || null, postComposerOriginGroupId);
+  } else if (path === "/give-kudos" || path === "/send-kudos") {
+    if (!currentUser) {
+      pendingAfterAuthRoute = rawRoute || "/give-kudos";
+      showToast("Please log in or sign up to give Kudos.");
+      showView("view-landing");
+      loadLandingPreview();
+      populateGroupFilterDropdown();
+      loadPlatformStats();
+      openModal("modal-login");
+      return;
+    }
+    const qGroupId = hashParams.get("group_id") || hashParams.get("space");
+    kudosComposerOriginGroupId = (qGroupId && !isNaN(parseInt(qGroupId, 10))) ? parseInt(qGroupId, 10) : null;
+    showView("view-give-kudos");
+    await populateKudosModal(hashParams, kudosComposerOriginGroupId);
+  } else if (path === "/signup" || path === "/join" || path === "/register") {
+    const qGroupId = hashParams.get("group_id") || hashParams.get("space");
+    const parsedGroupId = (qGroupId && !isNaN(parseInt(qGroupId, 10))) ? parseInt(qGroupId, 10) : null;
+    signupInviteGroupId = parsedGroupId;
+    if (currentUser) {
+      if (parsedGroupId) {
+        navigateTo(`/group/${parsedGroupId}?invite=yes`);
+      } else {
+        navigateTo("/feed");
+      }
+      return;
+    }
+    showView("view-signup");
+    populateSignupPage(hashParams);
   } else if (path === "/moderation") {
     showView("view-moderation");
     loadModerationQueue();
@@ -609,7 +657,7 @@ function navigateTo(route) {
 }
 
 function hideAllViews() {
-  const views = ["view-landing", "view-feed", "view-single-item", "view-groups", "view-group-detail", "view-profile", "view-outbox", "view-moderation", "view-code", "view-spotlight", "view-create-post"];
+  const views = ["view-landing", "view-feed", "view-single-item", "view-groups", "view-group-detail", "view-profile", "view-outbox", "view-moderation", "view-code", "view-spotlight", "view-create-post", "view-signup", "view-give-kudos"];
   views.forEach(id => {
     const el = document.getElementById(id);
     if (el) el.classList.add("hidden");
@@ -677,10 +725,168 @@ function cancelCreatePost() {
 }
 window.cancelCreatePost = cancelCreatePost;
 
-function openModal(modalId) {
-  if (modalId === "modal-kudos" && !currentUser) {
+function openGiveKudosPage(options = {}) {
+  const params = new URLSearchParams();
+  const curHash = window.location.hash || "#/feed";
+  let groupId = options.groupId !== undefined ? options.groupId : null;
+  if (!groupId && curHash.startsWith("#/group/")) {
+    const parsed = parseInt(curHash.replace("#/group/", "").split("/")[0].split("?")[0], 10);
+    if (!isNaN(parsed)) groupId = parsed;
+  }
+  if (groupId) params.set("group_id", String(groupId));
+  if (options.recipientId) params.set("recipient_id", String(options.recipientId));
+  if (options.recipient) params.set("recipient", String(options.recipient).trim());
+  const qs = params.toString();
+  const targetRoute = qs ? `/give-kudos?${qs}` : "/give-kudos";
+
+  if (!currentUser) {
+    pendingAfterAuthRoute = targetRoute;
     showToast("Please log in to give Kudos.");
     openModal("modal-login");
+    return;
+  }
+  pendingKudosRecipient = null;
+  if (!curHash.startsWith("#/give-kudos") && !curHash.startsWith("#/send-kudos")) {
+    kudosComposerReturnHash = curHash;
+  }
+  navigateTo(targetRoute);
+}
+window.openGiveKudosPage = openGiveKudosPage;
+
+function cancelGiveKudos() {
+  pendingKudosRecipient = null;
+  const fallback = kudosComposerOriginGroupId ? `/group/${kudosComposerOriginGroupId}` : "/feed";
+  const target = (kudosComposerReturnHash && !kudosComposerReturnHash.startsWith("#/give-kudos") && !kudosComposerReturnHash.startsWith("#/send-kudos"))
+    ? kudosComposerReturnHash
+    : fallback;
+  navigateTo(target);
+}
+window.cancelGiveKudos = cancelGiveKudos;
+
+async function copyGiveKudosShareUrl() {
+  const params = new URLSearchParams();
+  const currentSpaceId = getCurrentSpaceContextId();
+  if (currentSpaceId) params.set("group_id", String(currentSpaceId));
+  const recipIdEl = document.getElementById("kudos-recipient-id");
+  const recipInpEl = document.getElementById("kudos-recipient-input");
+  if (recipIdEl && recipIdEl.value) {
+    params.set("recipient_id", String(recipIdEl.value));
+    if (recipInpEl && recipInpEl.value.trim()) {
+      params.set("recipient", recipInpEl.value.trim());
+    }
+  }
+  const qs = params.toString();
+  const shareUrl = qs ? `${window.location.origin}/give-kudos?${qs}` : `${window.location.origin}/give-kudos`;
+  try {
+    if (navigator.clipboard && navigator.clipboard.writeText) {
+      await navigator.clipboard.writeText(shareUrl);
+    } else {
+      const tmp = document.createElement("input");
+      tmp.value = shareUrl;
+      document.body.appendChild(tmp);
+      tmp.select();
+      document.execCommand("copy");
+      tmp.remove();
+    }
+    showToast(`🔗 Copied Give Kudos URL: ${shareUrl}`);
+  } catch (_) {
+    showToast(`🔗 Share Give Kudos URL: ${shareUrl}`);
+  }
+}
+window.copyGiveKudosShareUrl = copyGiveKudosShareUrl;
+
+function populateSignupPage(hashParams) {
+  const params = hashParams || new URLSearchParams();
+  const invitedEmail = (params.get("email") || "").trim();
+  const invitedBy = (params.get("invited_by") || "").trim();
+  const groupIdParam = (params.get("group_id") || params.get("space") || "").trim();
+
+  const emailEl = document.getElementById("sup-email");
+  if (emailEl && invitedEmail) {
+    emailEl.value = invitedEmail;
+  }
+
+  const bannerEl = document.getElementById("signup-invite-banner");
+  const bannerTxtEl = document.getElementById("signup-invite-banner-text");
+  if (bannerEl && bannerTxtEl) {
+    if (invitedBy || groupIdParam || invitedEmail) {
+      let msg = "Welcome! Complete your free account below to join GoodDeeds Community.";
+      if (invitedBy && groupIdParam) {
+        msg = `@${invitedBy} invited you to join a Community Space! Create your free account below and you'll go straight to your Space.`;
+      } else if (invitedBy) {
+        msg = `@${invitedBy} invited you to join GoodDeeds Community! Complete your free account below to jump right in.`;
+      } else if (groupIdParam) {
+        msg = "Create your free account below and you'll be taken straight to your invited Space!";
+      }
+      bannerTxtEl.textContent = msg;
+      bannerEl.classList.remove("hidden");
+    } else {
+      bannerEl.classList.add("hidden");
+    }
+  }
+  adjustPasskeyButtonsSupport();
+}
+window.populateSignupPage = populateSignupPage;
+
+function openSignupPage(options = {}) {
+  const loginDlg = document.getElementById("modal-login");
+  if (loginDlg && loginDlg.open) loginDlg.close();
+  if (currentUser) {
+    navigateTo("/feed");
+    return;
+  }
+  const curHash = window.location.hash || "#/";
+  if (!curHash.startsWith("#/signup")) {
+    signupReturnHash = curHash;
+  }
+  const params = new URLSearchParams();
+  if (options.email) params.set("email", String(options.email).trim());
+  let groupId = options.groupId !== undefined ? options.groupId : null;
+  if (!groupId && curHash.startsWith("#/group/")) {
+    const parsed = parseInt(curHash.replace("#/group/", "").split("/")[0].split("?")[0], 10);
+    if (!isNaN(parsed)) groupId = parsed;
+  }
+  if (groupId) params.set("group_id", String(groupId));
+  const qs = params.toString();
+  navigateTo(qs ? `/signup?${qs}` : "/signup");
+}
+window.openSignupPage = openSignupPage;
+
+function cancelSignupPage() {
+  const target = (signupReturnHash && !signupReturnHash.startsWith("#/signup"))
+    ? signupReturnHash
+    : "/";
+  navigateTo(target);
+}
+window.cancelSignupPage = cancelSignupPage;
+
+async function copySignupShareUrl() {
+  const shareUrl = `${window.location.origin}/signup`;
+  try {
+    if (navigator.clipboard && navigator.clipboard.writeText) {
+      await navigator.clipboard.writeText(shareUrl);
+    } else {
+      const tmp = document.createElement("input");
+      tmp.value = shareUrl;
+      document.body.appendChild(tmp);
+      tmp.select();
+      document.execCommand("copy");
+      tmp.remove();
+    }
+    showToast(`🔗 Copied Sign-Up URL: ${shareUrl}`);
+  } catch (_) {
+    showToast(`🔗 Share Sign-Up URL: ${shareUrl}`);
+  }
+}
+window.copySignupShareUrl = copySignupShareUrl;
+
+function openModal(modalId) {
+  if (modalId === "modal-signup") {
+    openSignupPage();
+    return;
+  }
+  if (modalId === "modal-kudos") {
+    openGiveKudosPage();
     return;
   }
   if (modalId === "modal-post") {
@@ -700,7 +906,6 @@ function openModal(modalId) {
 
   const dlg = document.getElementById(modalId);
   if (dlg) {
-    if (modalId === "modal-kudos") populateKudosModal();
     if (modalId === "modal-edit-profile") populateEditProfileModal();
     if (modalId === "modal-forgot-password") {
       const loginEmailEl = document.getElementById("login-email");
@@ -721,6 +926,14 @@ function openModal(modalId) {
 function closeModal(modalId) {
   if (modalId === "modal-post") {
     cancelCreatePost();
+    return;
+  }
+  if (modalId === "modal-kudos") {
+    cancelGiveKudos();
+    return;
+  }
+  if (modalId === "modal-signup") {
+    cancelSignupPage();
     return;
   }
   const dlg = document.getElementById(modalId);
@@ -856,6 +1069,16 @@ function updateAuthUI(user) {
   syncOutboxAdminControls();
 }
 
+function consumePostAuthDestination() {
+  const afterRoute = pendingAfterAuthRoute;
+  pendingAfterAuthRoute = null;
+  const destGroup = signupInviteGroupId;
+  signupInviteGroupId = null;
+  if (afterRoute) return afterRoute;
+  if (destGroup) return `/group/${destGroup}?invite=yes`;
+  return "/feed";
+}
+
 async function handleLogin(e) {
   e.preventDefault();
   const email = document.getElementById("login-email").value.trim();
@@ -876,7 +1099,7 @@ async function handleLogin(e) {
     closeModal("modal-login");
     showToast(`☀️ Welcome back, ${currentUser.username}!`);
     await loadQuickNavGroups();
-    navigateTo("/feed");
+    navigateTo(consumePostAuthDestination());
   } catch (err) {
     showToast("❌ " + err.message);
   }
@@ -900,14 +1123,24 @@ async function presetLogin(email) {
     closeModal("modal-login");
     showToast(`☀️ Welcome back, ${currentUser.username}!`);
     await loadQuickNavGroups();
-    navigateTo("/feed");
+    navigateTo(consumePostAuthDestination());
   } catch (err) {
     showToast("❌ " + err.message);
   }
 }
 
 function selectAvatar(url) {
-  document.getElementById("sup-avatar").value = url;
+  const avInput = document.getElementById("sup-avatar");
+  if (avInput) avInput.value = url;
+  const clickedBtn = arguments.length > 1 ? arguments[1] : null;
+  document.querySelectorAll(".signup-avatar-preset").forEach(btn => {
+    btn.classList.remove("border-amber-600", "ring-2", "ring-amber-400");
+    btn.classList.add("border-stone-300");
+  });
+  if (clickedBtn && clickedBtn.classList) {
+    clickedBtn.classList.remove("border-stone-300");
+    clickedBtn.classList.add("border-amber-600", "ring-2", "ring-amber-400");
+  }
 }
 
 async function triggerGoogleSignIn() {
@@ -931,7 +1164,8 @@ async function handleGoogleOauthResponse(response) {
     });
     if (data && data.token && data.user) {
       closeModal('modal-login');
-      closeModal('modal-signup');
+      const dlgSignup = document.getElementById("modal-signup");
+      if (dlgSignup && dlgSignup.close) dlgSignup.close();
       currentToken = data.token;
       localStorage.setItem("gd_token", currentToken);
       currentUser = data.user;
@@ -943,7 +1177,7 @@ async function handleGoogleOauthResponse(response) {
       if (typeof loadQuickNavGroups === "function") {
         await loadQuickNavGroups();
       }
-      navigateTo("/feed");
+      navigateTo(consumePostAuthDestination());
     }
   } catch (err) {
     showToast("❌ " + (err.message || "Google Sign-In failed"));
@@ -969,10 +1203,11 @@ async function handleSignup(e) {
     currentUser = data.user;
     sessionPromise = Promise.resolve();
     updateAuthUI(currentUser);
-    closeModal("modal-signup");
+    const dlgSignup = document.getElementById("modal-signup");
+    if (dlgSignup && dlgSignup.close) dlgSignup.close();
     showToast(`☀️ Welcome to gooddeeds.space, ${currentUser.username}! Check your inbox (or Spam folder) for your welcome email.`, 6500);
     await loadQuickNavGroups();
-    navigateTo("/feed");
+    navigateTo(consumePostAuthDestination());
   } catch (err) {
     showToast("❌ " + err.message);
   }
@@ -2515,6 +2750,15 @@ function getCurrentSpaceContextId() {
     }
     return postComposerOriginGroupId || null;
   }
+  if (window.location.hash && (window.location.hash.startsWith("#/give-kudos") || window.location.hash.startsWith("#/send-kudos"))) {
+    const qIdx = window.location.hash.indexOf("?");
+    if (qIdx !== -1) {
+      const params = new URLSearchParams(window.location.hash.slice(qIdx + 1));
+      const gid = parseInt(params.get("group_id") || params.get("space") || "", 10);
+      if (!isNaN(gid)) return gid;
+    }
+    return kudosComposerOriginGroupId || null;
+  }
   if (window.location.hash && window.location.hash.startsWith("#/group/")) {
     const raw = window.location.hash.replace("#/group/", "").split("/")[0].split("?")[0];
     const id = parseInt(raw);
@@ -2530,23 +2774,46 @@ function getCurrentSpaceContextId() {
   return null;
 }
 
-/* Give Kudos Modal Autocomplete (Req #4) */
-async function populateKudosModal() {
+/* Give Kudos Dedicated Page & Autocomplete (Req #4) */
+async function populateKudosModal(hashParams = null, explicitGroupId = null) {
   switchKudosEditorMode("write");
   const kPopover = document.getElementById("kudos-insert-link-popover");
   if (kPopover) kPopover.classList.add("hidden");
   const recipInput = document.getElementById("kudos-recipient-input");
   const recipIdHidden = document.getElementById("kudos-recipient-id");
+  const sugBox = document.getElementById("kudos-recipient-suggestions");
   if (recipInput) recipInput.value = "";
   if (recipIdHidden) recipIdHidden.value = "";
+  if (sugBox) sugBox.classList.add("hidden");
+
   const container = document.getElementById("kudos-groups-list");
-  const currentSpaceId = getCurrentSpaceContextId();
-  const spaceName = (typeof activeGroupData !== "undefined" && activeGroupData && activeGroupData.name) ? activeGroupData.name : "this Space";
+  const currentSpaceId = explicitGroupId || getCurrentSpaceContextId();
+  const matchedSpaceName = (typeof activeGroupData !== "undefined" && activeGroupData && Number(activeGroupData.id) === Number(currentSpaceId))
+    ? activeGroupData.name
+    : "";
+  const spaceName = matchedSpaceName || "this Space";
+
+  const backLabel = document.getElementById("btn-back-give-kudos-label");
+  const spaceBadge = document.getElementById("give-kudos-space-context-badge");
+  if (currentSpaceId) {
+    if (backLabel) backLabel.textContent = "← Back to Space";
+    if (spaceBadge) {
+      spaceBadge.textContent = matchedSpaceName ? `👥 Space: ${matchedSpaceName}` : `👥 Space #${currentSpaceId}`;
+      spaceBadge.classList.remove("hidden");
+    }
+  } else {
+    if (backLabel) backLabel.textContent = "← Back to Feed";
+    if (spaceBadge) {
+      spaceBadge.textContent = "";
+      spaceBadge.classList.add("hidden");
+    }
+  }
+
   if (container) {
     if (currentSpaceId) {
-      container.innerHTML = `<p class="text-stone-500 font-medium text-sm p-2">Select a recipient to tag <strong>${spaceName}</strong>.</p>`;
+      container.innerHTML = `<p class="text-stone-500 font-medium text-sm p-2">Select a recipient to tag <strong>${escapeHtml(spaceName)}</strong>.</p>`;
     } else {
-      container.innerHTML = `<p class="text-stone-500 font-medium text-sm p-2">Select a recipient to see shared groups.</p>`;
+      container.innerHTML = `<p class="text-stone-500 font-medium text-sm p-2">Select a recipient to see shared Spaces.</p>`;
     }
   }
 
@@ -2554,6 +2821,33 @@ async function populateKudosModal() {
     const data = await apiFetch("/users");
     allUsersCache = data.users || [];
   } catch (err) {}
+
+  let presetRecip = pendingKudosRecipient;
+  pendingKudosRecipient = null;
+  if (!presetRecip && hashParams) {
+    const qRecipId = parseInt(hashParams.get("recipient_id") || "", 10);
+    const qRecipName = (hashParams.get("recipient") || "").trim();
+    if (!isNaN(qRecipId) && qRecipId > 0) {
+      const found = allUsersCache.find(u => Number(u.id) === qRecipId);
+      if (found && (!currentUser || Number(found.id) !== Number(currentUser.id))) {
+        presetRecip = { id: found.id, username: found.username, email: found.email || "" };
+      } else if (qRecipName) {
+        presetRecip = { id: qRecipId, username: qRecipName, email: "" };
+      }
+    } else if (qRecipName) {
+      const lower = qRecipName.toLowerCase();
+      const found = allUsersCache.find(u =>
+        (!currentUser || Number(u.id) !== Number(currentUser.id)) &&
+        ((u.username && u.username.toLowerCase() === lower) || (u.email && u.email.toLowerCase() === lower))
+      );
+      if (found) {
+        presetRecip = { id: found.id, username: found.username, email: found.email || "" };
+      }
+    }
+  }
+  if (presetRecip && presetRecip.id) {
+    selectKudosRecipient(presetRecip.id, presetRecip.username, presetRecip.email || "");
+  }
 }
 
 function handleKudosRecipientSearch(query) {
@@ -2598,10 +2892,18 @@ function selectKudosRecipient(id, username, email) {
   updateKudosGroupCheckboxes();
 }
 function presetKudosRecipient(id, username, email = "") {
+  pendingKudosRecipient = { id, username, email };
   selectKudosRecipient(id, username, email);
-  setTimeout(() => {
-    selectKudosRecipient(id, username, email);
-  }, 50);
+  if (window.location.hash && window.location.hash.startsWith("#/give-kudos")) {
+    const qIdx = window.location.hash.indexOf("?");
+    const params = new URLSearchParams(qIdx === -1 ? "" : window.location.hash.slice(qIdx + 1));
+    if (id) params.set("recipient_id", String(id));
+    if (username) params.set("recipient", String(username));
+    const newHash = `#/give-kudos?${params.toString()}`;
+    try {
+      window.history.replaceState(null, "", "/" + newHash);
+    } catch (_) {}
+  }
 }
 window.handleKudosRecipientSearch = handleKudosRecipientSearch;
 window.selectKudosRecipient = selectKudosRecipient;
@@ -2626,7 +2928,7 @@ async function updateKudosGroupCheckboxes() {
     if (currentSpaceId) {
       container.innerHTML = `<p class="text-stone-500 font-medium text-sm p-2">Select a recipient to tag <strong>${spaceName}</strong>.</p>`;
     } else {
-      container.innerHTML = `<p class="text-stone-500 font-medium text-sm p-2">Select a recipient to see shared groups.</p>`;
+      container.innerHTML = `<p class="text-stone-500 font-medium text-sm p-2">Select a recipient to see shared Spaces.</p>`;
     }
     return;
   }
@@ -2634,7 +2936,7 @@ async function updateKudosGroupCheckboxes() {
     const data = await apiFetch(`/groups/joined?target_user_id=${targetId}`);
     const groups = data.groups || [];
     if (groups.length === 0) {
-      container.innerHTML = `<p class="text-stone-500 font-medium text-sm p-2">You and this member do not share any common groups yet.</p>`;
+      container.innerHTML = `<p class="text-stone-500 font-medium text-sm p-2">You and this member do not share any common Spaces yet.</p>`;
     } else {
       container.innerHTML = groups.map(g => {
         const isChecked = (currentSpaceId && parseInt(currentSpaceId) === g.id) ? "checked" : "";
@@ -2647,7 +2949,7 @@ async function updateKudosGroupCheckboxes() {
       }).join("");
     }
   } catch (err) {
-    container.innerHTML = `<p class="text-stone-500 font-medium text-sm p-2">Failed to load common groups.</p>`;
+    container.innerHTML = `<p class="text-stone-500 font-medium text-sm p-2">Failed to load common Spaces.</p>`;
   }
 }
 
@@ -2663,11 +2965,13 @@ async function handleGiveKudos(e) {
   }
 
   try {
+    const originSpaceId = getCurrentSpaceContextId();
     const data = await apiFetch("/kudos", {
       method: "POST",
       body: JSON.stringify({ recipient_id, content, group_ids })
     });
-    closeModal("modal-kudos");
+    kudosComposerOriginGroupId = null;
+    pendingKudosRecipient = null;
     trackAnalyticsEvent("give_kudos", { recipient_id });
     document.getElementById("kudos-content").value = "";
     document.getElementById("kudos-recipient-input").value = "";
@@ -2676,12 +2980,16 @@ async function handleGiveKudos(e) {
     const kPopover = document.getElementById("kudos-insert-link-popover");
     if (kPopover) kPopover.classList.add("hidden");
     showToast("🌟 Public Kudos sent & email alert triggered!");
-    if (window.location.hash.startsWith("#/group/")) {
+    if (originSpaceId) {
+      pendingGroupTab = "kudos";
+      navigateTo(`/group/${originSpaceId}`);
+    } else if (window.location.hash.startsWith("#/group/")) {
       loadGroupDetail(activeGroupId);
     } else if (window.location.hash.includes("/feed") || window.location.hash === "#/") {
       loadFeed();
     } else {
       navigateTo("/feed");
+      loadFeed();
     }
   } catch (err) {
     showToast("❌ " + err.message);

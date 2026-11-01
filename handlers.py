@@ -3859,6 +3859,7 @@ def handle_api_request(method, path, headers, body_bytes):
                     is_existing_user=is_existing_u,
                     unsubscribe_url=inv_unsub,
                     base_url=base_url,
+                    recipient_email=rec_email,
                 ),
                 unsubscribe_url=inv_unsub or None,
             )
@@ -3905,7 +3906,6 @@ def handle_api_request(method, path, headers, body_bytes):
             )
 
         note_text = message or "Join me on GoodDeeds.space to recognize everyday kindness with public Kudos and share local community resources & events!"
-        site_invite_tpl = build_site_invitation_email(user["username"], user["email"], note_text, base_url)
 
         for rec_email in invited_emails:
             cursor.execute("""
@@ -3921,6 +3921,13 @@ def handle_api_request(method, path, headers, body_bytes):
         conn.close()
 
         for rec_email in invited_emails:
+            site_invite_tpl = build_site_invitation_email(
+                user["username"],
+                user["email"],
+                note_text,
+                base_url,
+                recipient_email=rec_email,
+            )
             dispatch_email_template(rec_email, site_invite_tpl)
 
         msg_parts = [f"Sent {len(invited_emails)} invitation email(s) to join GoodDeeds.space!"]

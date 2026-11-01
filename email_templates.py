@@ -485,9 +485,21 @@ def build_security_alert_email(username: str, event_label: str, base_url: str = 
 # 2. INVITATIONS & VIRAL GROWTH TEMPLATES
 # ==============================================================================
 
-def build_site_invitation_email(sender_username: str, sender_email: str, note_text: str, base_url: str = "http://localhost:8080") -> dict:
+def build_site_invitation_email(
+    sender_username: str,
+    sender_email: str,
+    note_text: str,
+    base_url: str = "http://localhost:8080",
+    recipient_email: str = "",
+) -> dict:
     clean_base = (base_url or "http://localhost:8080").rstrip("/")
-    join_url = f"{clean_base}/#/"
+    params = {}
+    if recipient_email and "@" in recipient_email:
+        params["email"] = recipient_email.strip()
+    if sender_username:
+        params["invited_by"] = sender_username.strip()
+    qs = urlencode(params)
+    join_url = f"{clean_base}/signup?{qs}" if qs else f"{clean_base}/signup"
     note = note_text or "Join me on GoodDeeds Community to recognize everyday kindness with public Kudos and share local community resources & events!"
     subject = f"{sender_username} invited you to join GoodDeeds Community"
     text_body = (
@@ -496,7 +508,7 @@ def build_site_invitation_email(sender_username: str, sender_email: str, note_te
         f"a community platform built to celebrate everyday kindness with public Kudos and share helpful community events and resources.\n\n"
         f"Personal Note from {sender_username}:\n"
         f"\"{note}\"\n\n"
-        f"Join the community today:\n"
+        f"Create your free account today:\n"
         f"{join_url}\n\n"
         f"Become the best version of yourself — one good deed at a time."
     )
@@ -510,7 +522,7 @@ def build_site_invitation_email(sender_username: str, sender_email: str, note_te
         ],
         quote_block=f"\"{note}\"",
         quote_caption=f"— Personal note from @{sender_username}",
-        cta_label="Join GoodDeeds Community ↗",
+        cta_label="Create Your Free Account ↗",
         cta_url=join_url,
         base_url=clean_base,
     )
@@ -532,16 +544,27 @@ def build_space_invitation_email(
     is_existing_user: bool = False,
     unsubscribe_url: str = "",
     base_url: str = "http://localhost:8080",
+    recipient_email: str = "",
 ) -> dict:
     clean_base = (base_url or "http://localhost:8080").rstrip("/")
-    space_url = f"{clean_base}/#/group/{group_id}"
+    if is_existing_user:
+        space_url = f"{clean_base}/#/group/{group_id}?invite=yes"
+        cta_label = f"Open \"{group_name}\" Space ↗"
+    else:
+        params = {"group_id": str(group_id)}
+        if recipient_email and "@" in recipient_email:
+            params["email"] = recipient_email.strip()
+        if sender_username:
+            params["invited_by"] = sender_username.strip()
+        space_url = f"{clean_base}/signup?{urlencode(params)}"
+        cta_label = f"Sign Up & Join \"{group_name}\" ↗"
     note = note_text or "Join us in promoting goodness and building meaningful community connections!"
     # Preserve 'invited to join' substring for test compatibility
     subject = f"You've been invited to join \"{group_name}\" on GoodDeeds Community"
     action_hint = (
         "Log in to accept your invitation and collaborate with Space members:"
         if is_existing_user
-        else "Create your account or log in to join this Space today:"
+        else "Create your free account to join this Space right away:"
     )
     text_body = (
         f"Hello!\n\n"
@@ -563,7 +586,7 @@ def build_space_invitation_email(
         ],
         quote_block=f"\"{note}\"",
         quote_caption=f"— Invited by @{sender_username}",
-        cta_label=f"Open \"{group_name}\" Space ↗",
+        cta_label=cta_label,
         cta_url=space_url,
         base_url=clean_base,
         unsubscribe_url=unsubscribe_url,
