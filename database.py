@@ -78,19 +78,946 @@ def verify_password(plain_password: str, stored_hash: str) -> bool:
     legacy_hex = hashlib.sha256(plain_password.encode("utf-8")).hexdigest()
     return hmac.compare_digest(legacy_hex, stored_hash)
 
-def extract_resource_text(resource_url) -> str:
+import html as html_lib
+import io
+import ipaddress
+import shutil
+import socket
+import subprocess
+import urllib.parse
+import urllib.request
+import xml.etree.ElementTree as ET
+import zipfile
+
+
+MAX_EXTRACTED_TEXT_CHARS = 250000
+MAX_ZIP_EXTRACT_BYTES = 15 * 1024 * 1024
+MAX_REMOTE_DOC_BYTES = 8 * 1024 * 1024
+
+
+def _sanitize_extracted_text(text: str) -> str:
+    if not text:
+        return ""
+    cleaned = re.sub(r"[\x00-\x08\x0b\x0c\x0e-\x1f\x7f-\x9f]", " ", text)
+    cleaned = re.sub(r"\s+", " ", cleaned).strip()
+    if len(cleaned) > MAX_EXTRACTED_TEXT_CHARS:
+        cleaned = cleaned[:MAX_EXTRACTED_TEXT_CHARS].rsplit(" ", 1)[0]
+    return cleaned
+
+
+def _humanize_filename_tokens(name_or_url: str) -> str:
+    if not name_or_url:
+        return ""
+    try:
+        decoded = urllib.parse.unquote(name_or_url).strip()
+    except Exception:
+        decoded = name_or_url.strip()
+    spaced = re.sub(r"[_\-+/.()\[\]]+", " ", decoded)
+    spaced = re.sub(r"\s+", " ", spaced).strip()
+    if spaced and spaced.lower() != decoded.lower():
+        return f"{decoded} {spaced}"
+    return decoded
+
+
+def strip_base64_payloads(resource_url) -> str:
     """
-    Extracts text content from resource URLs, JSON arrays/objects, or base64 data URLs (plain text, JSON, PDF).
-    Recursively parses JSON collections and decodes base64 Data URIs to extract printable tokens and PDF text.
+    Removes raw ';base64,<payload>' blocks from data URIs while preserving URLs and ';name=...' metadata.
+    Prevents random Base64 character sequences from causing false-positive search or moderation matches.
     """
     if not resource_url:
         return ""
-    
     if isinstance(resource_url, (list, tuple)):
-        sub_texts = [extract_resource_text(item) for item in resource_url]
+        return " ".join(filter(None, (strip_base64_payloads(x) for x in resource_url)))
+    if isinstance(resource_url, dict):
+        return " ".join(filter(None, (strip_base64_payloads(v) for v in resource_url.values())))
+    raw = str(resource_url).strip()
+    if not raw:
+        return ""
+    if raw.startswith("[") or raw.startswith("{"):
+        try:
+            parsed = json.loads(raw)
+            if isinstance(parsed, (list, tuple, dict)):
+                return strip_base64_payloads(parsed)
+        except Exception:
+            pass
+    cleaned = re.sub(r";base64,[A-Za-z0-9+/=%\s]+", ";base64,", raw, flags=re.IGNORECASE)
+    try:
+        cleaned = urllib.parse.unquote(cleaned)
+    except Exception:
+        pass
+    return cleaned
+
+
+def _decode_pdf_literal_string(raw_s: str) -> str:
+    out = []
+    i = 0
+    n = len(raw_s)
+    while i < n:
+        ch = raw_s[i]
+        if ch == "\\" and i + 1 < n:
+            nxt = raw_s[i + 1]
+            if nxt == "n":
+                out.append("\n")
+                i += 2
+            elif nxt == "r":
+                out.append("\r")
+                i += 2
+            elif nxt == "t":
+                out.append("\t")
+                i += 2
+            elif nxt == "b":
+                out.append("\b")
+                i += 2
+            elif nxt == "f":
+                out.append("\f")
+                i += 2
+            elif nxt in ("(", ")", "\\"):
+                out.append(nxt)
+                i += 2
+            elif nxt == "\r":
+                i += 3 if (i + 2 < n and raw_s[i + 2] == "\n") else 2
+            elif nxt == "\n":
+                i += 2
+            elif "0" <= nxt <= "7":
+                oct_digits = nxt
+                i += 2
+                for _ in range(2):
+                    if i < n and "0" <= raw_s[i] <= "7":
+                        oct_digits += raw_s[i]
+                        i += 1
+                    else:
+                        break
+                out.append(chr(int(oct_digits, 8) & 0xFF))
+            else:
+                out.append(nxt)
+                i += 2
+        else:
+            out.append(ch)
+            i += 1
+
+    res_bytes = "".join(out).encode("latin1", errors="ignore")
+    if res_bytes.startswith(b"\xfe\xff"):
+        return res_bytes[2:].decode("utf-16-be", errors="ignore")
+    if res_bytes.startswith(b"\xff\xfe"):
+        return res_bytes[2:].decode("utf-16-le", errors="ignore")
+    return res_bytes.decode("cp1252", errors="ignore")
+
+
+def _decode_cmap_target_hex(dst_hex: str) -> str:
+    if not dst_hex:
+        return ""
+    if len(dst_hex) % 2 == 1:
+        dst_hex = "0" + dst_hex
+    try:
+        raw = bytes.fromhex(dst_hex)
+        if len(raw) >= 2 and len(raw) % 2 == 0:
+            return raw.decode("utf-16-be", errors="ignore")
+        return raw.decode("latin1", errors="ignore")
+    except Exception:
+        return ""
+
+
+def _parse_pdf_cmap(s_lat: str, cmap: dict):
+    for bm in re.finditer(r"beginbfchar(.*?)endbfchar", s_lat, re.DOTALL):
+        for src, dst in re.findall(r"<([0-9A-Fa-f]+)>\s*<([0-9A-Fa-f]+)>", bm.group(1)):
+            val = _decode_cmap_target_hex(dst)
+            if val:
+                cmap[src.upper()] = val
+
+    for rm in re.finditer(r"beginbfrange(.*?)endbfrange", s_lat, re.DOTALL):
+        body = rm.group(1)
+        # Form 1: <start> <end> [<dst1> <dst2> ...]
+        for s_hex, e_hex, arr_body in re.findall(
+            r"<([0-9A-Fa-f]+)>\s*<([0-9A-Fa-f]+)>\s*\[(.*?)\]", body, re.DOTALL
+        ):
+            try:
+                start_code = int(s_hex, 16)
+                end_code = int(e_hex, 16)
+                kl = len(s_hex)
+                targets = re.findall(r"<([0-9A-Fa-f]+)>", arr_body)
+                for offset, t_hex in enumerate(targets[: max(0, end_code - start_code + 1)]):
+                    val = _decode_cmap_target_hex(t_hex)
+                    if val:
+                        cmap[f"{start_code + offset:0{kl}X}"] = val
+            except Exception:
+                pass
+
+        # Form 2: <start> <end> <dstStart>
+        body_no_arrays = re.sub(r"\[.*?\]", " ", body, flags=re.DOTALL)
+        for s_hex, e_hex, d_hex in re.findall(
+            r"<([0-9A-Fa-f]+)>\s*<([0-9A-Fa-f]+)>\s*<([0-9A-Fa-f]+)>", body_no_arrays
+        ):
+            try:
+                start_code = int(s_hex, 16)
+                end_code = int(e_hex, 16)
+                kl = len(s_hex)
+                base_str = _decode_cmap_target_hex(d_hex)
+                if not base_str:
+                    continue
+                for offset in range(min(max(0, end_code - start_code + 1), 512)):
+                    k_str = f"{start_code + offset:0{kl}X}"
+                    if len(base_str) == 1:
+                        cp = ord(base_str) + offset
+                        if 0 <= cp <= 0x10FFFF:
+                            cmap[k_str] = chr(cp)
+                    else:
+                        cp = ord(base_str[-1]) + offset
+                        if 0 <= cp <= 0x10FFFF:
+                            cmap[k_str] = base_str[:-1] + chr(cp)
+            except Exception:
+                pass
+
+
+def _decode_pdf_hex_string(hex_str: str, cmap: dict) -> str:
+    if not hex_str:
+        return ""
+    if len(hex_str) % 2 == 1:
+        hex_str += "0"
+    upper_hex = hex_str.upper()
+    if upper_hex.startswith("FEFF") and len(upper_hex) >= 4:
+        try:
+            return bytes.fromhex(upper_hex[4:]).decode("utf-16-be", errors="ignore")
+        except Exception:
+            pass
+    if cmap:
+        key_lens = sorted({len(k) for k in cmap.keys() if k}, reverse=True)
+        for kl in key_lens:
+            if kl > 0 and len(upper_hex) % kl == 0:
+                chunks = [upper_hex[k : k + kl] for k in range(0, len(upper_hex), kl)]
+                if any(c in cmap for c in chunks):
+                    out = []
+                    for c in chunks:
+                        if c in cmap:
+                            out.append(cmap[c])
+                        else:
+                            try:
+                                raw_c = bytes.fromhex(c)
+                                out.append(
+                                    raw_c.decode("utf-16-be" if kl == 4 else "cp1252", errors="ignore")
+                                )
+                            except Exception:
+                                pass
+                    return "".join(out)
+    try:
+        raw = bytes.fromhex(upper_hex)
+        if len(raw) >= 2 and len(raw) % 2 == 0 and raw[0] == 0:
+            return raw.decode("utf-16-be", errors="ignore")
+        return raw.decode("cp1252", errors="ignore")
+    except Exception:
+        return ""
+
+
+def _parse_pdf_tj_array(arr_content: str, cmap: dict) -> str:
+    parts = []
+    i = 0
+    n = len(arr_content)
+    while i < n:
+        ch = arr_content[i]
+        if ch == "(":
+            depth = 1
+            j = i + 1
+            while j < n and depth > 0:
+                if arr_content[j] == "\\":
+                    j += 2
+                    continue
+                if arr_content[j] == "(":
+                    depth += 1
+                elif arr_content[j] == ")":
+                    depth -= 1
+                j += 1
+            parts.append(_decode_pdf_literal_string(arr_content[i + 1 : max(i + 1, j - 1)]))
+            i = j
+        elif ch == "<":
+            end = arr_content.find(">", i + 1)
+            if end == -1:
+                break
+            hex_str = re.sub(r"\s+", "", arr_content[i + 1 : end])
+            parts.append(_decode_pdf_hex_string(hex_str, cmap))
+            i = end + 1
+        elif ch in "-+.0123456789":
+            m = re.match(r"[-+]?(?:\d+\.?\d*|\.\d+)", arr_content[i:])
+            if m:
+                try:
+                    val = float(m.group(0))
+                    # ISO 32000-1 §9.4.3: negative values >= 120 thousandths of text space shift right -> word space
+                    if val <= -120:
+                        if parts and not parts[-1].endswith((" ", "\n", "\t")):
+                            parts.append(" ")
+                except ValueError:
+                    pass
+                i += len(m.group(0))
+            else:
+                i += 1
+        else:
+            i += 1
+    return "".join(parts)
+
+
+def _extract_pdf_text_stdlib(pdf_bytes: bytes) -> str:
+    """
+    Pure-Python ISO-32000 PDF text extractor supporting FlateDecode streams, Object Streams (/ObjStm),
+    /ToUnicode CMaps (beginbfchar & beginbfrange), TJ kerning arrays, Tj/'/\" operators, UTF-16BE strings,
+    and AcroForm field values (/V).
+    """
+    if not pdf_bytes:
+        return ""
+
+    decoded_streams = []
+    for m in re.finditer(rb"stream(?:\r\n|\n)", pdf_bytes):
+        dict_window = pdf_bytes[max(0, m.start() - 320) : m.start()]
+        start = m.end()
+        end = -1
+        len_m = re.search(rb"/Length\s+(\d+)(?!\s+\d+\s+R)", dict_window)
+        if len_m:
+            declared_len = int(len_m.group(1))
+            cand_end = start + declared_len
+            if cand_end <= len(pdf_bytes) and b"endstream" in pdf_bytes[cand_end : cand_end + 32]:
+                end = cand_end
+        if end == -1:
+            end = pdf_bytes.find(b"endstream", start)
+        if end == -1:
+            continue
+        raw_stream = pdf_bytes[start:end].rstrip(b"\r\n")
+        dec = None
+        for wb in (zlib.MAX_WBITS, -zlib.MAX_WBITS, 16 + zlib.MAX_WBITS):
+            try:
+                dec = zlib.decompress(raw_stream, wb)
+                break
+            except Exception:
+                pass
+        decoded_streams.append((dict_window, dec if dec is not None else raw_stream))
+
+    cmap = {}
+    all_stream_texts = []
+    for dict_window, dec in decoded_streams:
+        s_lat = dec.decode("latin1", errors="ignore")
+        all_stream_texts.append(s_lat)
+        if "beginbfchar" in s_lat or "beginbfrange" in s_lat:
+            _parse_pdf_cmap(s_lat, cmap)
+
+    lines_out = []
+    for s_lat in all_stream_texts:
+        if "BT" not in s_lat:
+            continue
+        for bt in re.finditer(r"(?<![A-Za-z0-9/])BT(?![A-Za-z0-9])(.*?)(?<![A-Za-z0-9/])ET(?![A-Za-z0-9])", s_lat, re.DOTALL):
+            blk = bt.group(1)
+            blk_parts = []
+            moved_since_last_text = False
+            i = 0
+            n = len(blk)
+            while i < n:
+                ch = blk[i]
+                if ch == "%":
+                    nl = blk.find("\n", i)
+                    i = n if nl == -1 else nl + 1
+                    continue
+                if ch == "[":
+                    j = i + 1
+                    while j < n and blk[j] != "]":
+                        if blk[j] == "(":
+                            d = 1
+                            j += 1
+                            while j < n and d > 0:
+                                if blk[j] == "\\":
+                                    j += 2
+                                    continue
+                                if blk[j] == "(":
+                                    d += 1
+                                elif blk[j] == ")":
+                                    d -= 1
+                                j += 1
+                        else:
+                            j += 1
+                    after = blk[j + 1 : j + 12].lstrip()
+                    if after.startswith("TJ"):
+                        seg = _parse_pdf_tj_array(blk[i + 1 : j], cmap)
+                        if seg:
+                            if moved_since_last_text and blk_parts and not blk_parts[-1].endswith((" ", "\n", "\t")):
+                                blk_parts.append(" ")
+                            blk_parts.append(seg)
+                            moved_since_last_text = False
+                    i = j + 1
+                elif ch == "(":
+                    d = 1
+                    j = i + 1
+                    while j < n and d > 0:
+                        if blk[j] == "\\":
+                            j += 2
+                            continue
+                        if blk[j] == "(":
+                            d += 1
+                        elif blk[j] == ")":
+                            d -= 1
+                        j += 1
+                    after = blk[j : j + 12].lstrip()
+                    if after.startswith(("Tj", "'", '"')):
+                        seg = _decode_pdf_literal_string(blk[i + 1 : max(i + 1, j - 1)])
+                        if seg:
+                            if (moved_since_last_text or after.startswith(("'", '"'))) and blk_parts and not blk_parts[-1].endswith((" ", "\n", "\t")):
+                                blk_parts.append(" ")
+                            blk_parts.append(seg)
+                            moved_since_last_text = False
+                    i = j
+                elif ch == "<" and (i + 1 < n and blk[i + 1] != "<"):
+                    end = blk.find(">", i + 1)
+                    if end == -1:
+                        break
+                    after = blk[end + 1 : end + 12].lstrip()
+                    if after.startswith(("Tj", "'", '"')):
+                        seg = _decode_pdf_hex_string(re.sub(r"\s+", "", blk[i + 1 : end]), cmap)
+                        if seg:
+                            if (moved_since_last_text or after.startswith(("'", '"'))) and blk_parts and not blk_parts[-1].endswith((" ", "\n", "\t")):
+                                blk_parts.append(" ")
+                            blk_parts.append(seg)
+                            moved_since_last_text = False
+                    i = end + 1
+                elif ch in ("T", "'"):
+                    op_m = re.match(r"(?:Td|TD|Tm|T\*)(?![A-Za-z0-9])", blk[i:])
+                    if op_m:
+                        moved_since_last_text = True
+                        i += len(op_m.group(0))
+                    else:
+                        i += 1
+                else:
+                    i += 1
+            joined = "".join(blk_parts).strip()
+            if joined:
+                lines_out.append(re.sub(r"\s+", " ", joined))
+
+    # Extract AcroForm text field values (/V (...)) if present
+    raw_no_streams = re.sub(rb"stream(?:\r\n|\n).*?endstream", b" ", pdf_bytes, flags=re.DOTALL)
+    header_lat = raw_no_streams.decode("latin1", errors="ignore")
+    for vm in re.finditer(r"/V\s*\(((?:\\.|[^\\)])+)\)", header_lat):
+        val = _decode_pdf_literal_string(vm.group(1)).strip()
+        if val and val not in ("Off", "Yes"):
+            lines_out.append(val)
+
+    # Fallback for minimal uncompressed/synthetic PDFs without BT..ET operators
+    if not lines_out:
+        stripped_meta = re.sub(
+            r"/(?:Author|Creator|Producer|CreationDate|ModDate|Lang|Title|Subject|Keywords)\s*\((?:\\.|[^\\)])*\)",
+            " ",
+            header_lat,
+        )
+        for pm in re.finditer(r"\(((?:\\.|[^\\)]){2,})\)", stripped_meta):
+            val = _decode_pdf_literal_string(pm.group(1)).strip()
+            if val and any(c.isalpha() for c in val):
+                lines_out.append(val)
+
+    return _sanitize_extracted_text(" ".join(lines_out))
+
+
+def _extract_pdf_text(pdf_bytes: bytes) -> str:
+    """
+    Multi-tier PDF text extraction:
+      1. pypdf (pure-Python library installed via requirements.txt in production)
+      2. pdftotext CLI (Poppler C++ binary when installed on host OS)
+      3. _extract_pdf_text_stdlib (zero-dependency pure-Python ISO-32000 parser)
+    """
+    if not pdf_bytes:
+        return ""
+
+    # Tier 1: pypdf
+    try:
+        import pypdf  # type: ignore
+        reader = pypdf.PdfReader(io.BytesIO(pdf_bytes), strict=False)
+        chunks = []
+        for page in reader.pages:
+            try:
+                t = page.extract_text() or ""
+                if t.strip():
+                    chunks.append(t)
+            except Exception:
+                pass
+        try:
+            fields = reader.get_form_text_fields() or {}
+            for fv in fields.values():
+                if fv and str(fv).strip():
+                    chunks.append(str(fv).strip())
+        except Exception:
+            pass
+        joined = _sanitize_extracted_text(" ".join(chunks))
+        if joined:
+            return joined
+    except Exception:
+        pass
+
+    # Tier 2: pdftotext CLI (via stdin/stdout, zero temp files)
+    pdftotext_bin = shutil.which("pdftotext")
+    if pdftotext_bin:
+        try:
+            proc = subprocess.run(
+                [pdftotext_bin, "-enc", "UTF-8", "-nopgbrk", "-", "-"],
+                input=pdf_bytes,
+                capture_output=True,
+                timeout=6,
+            )
+            if proc.returncode == 0 and proc.stdout:
+                cli_text = _sanitize_extracted_text(proc.stdout.decode("utf-8", errors="ignore"))
+                if cli_text:
+                    return cli_text
+        except Exception:
+            pass
+
+    # Tier 3: Built-in pure-Python stdlib parser
+    return _extract_pdf_text_stdlib(pdf_bytes)
+
+
+def _local_xml_tag(tag: str) -> str:
+    return tag.rsplit("}", 1)[-1] if "}" in tag else tag
+
+
+def _extract_docx_xml_text(xml_bytes: bytes) -> str:
+    root = ET.fromstring(xml_bytes)
+    paragraphs = []
+    for elem in root.iter():
+        if _local_xml_tag(elem.tag) == "p":
+            parts = []
+            for sub in elem.iter():
+                stag = _local_xml_tag(sub.tag)
+                if stag == "t" and sub.text:
+                    parts.append(sub.text)
+                elif stag == "tab":
+                    parts.append(" ")
+                elif stag in ("br", "cr"):
+                    parts.append("\n")
+            line = "".join(parts).strip()
+            if line:
+                paragraphs.append(line)
+    return "\n".join(paragraphs)
+
+
+def _extract_pptx_xml_text(xml_bytes: bytes) -> str:
+    root = ET.fromstring(xml_bytes)
+    paragraphs = []
+    for elem in root.iter():
+        if _local_xml_tag(elem.tag) == "p":
+            parts = [sub.text for sub in elem.iter() if _local_xml_tag(sub.tag) == "t" and sub.text]
+            line = "".join(parts).strip()
+            if line:
+                paragraphs.append(line)
+    return "\n".join(paragraphs)
+
+
+def _extract_xlsx_text(zf: zipfile.ZipFile, names_set: set) -> str:
+    shared_strings = []
+    if "xl/sharedStrings.xml" in names_set:
+        try:
+            ss_bytes = zf.read("xl/sharedStrings.xml")
+            if len(ss_bytes) <= MAX_ZIP_EXTRACT_BYTES:
+                ss_root = ET.fromstring(ss_bytes)
+                for si in ss_root:
+                    if _local_xml_tag(si.tag) == "si":
+                        val = "".join(t.text for t in si.iter() if _local_xml_tag(t.tag) == "t" and t.text)
+                        shared_strings.append(val)
+        except Exception:
+            pass
+
+    sheet_names = sorted(
+        n for n in names_set if n.startswith("xl/worksheets/sheet") and n.endswith(".xml")
+    )
+    rows_out = []
+    total_read = 0
+    for sname in sheet_names:
+        try:
+            info = zf.getinfo(sname)
+            if total_read + info.file_size > MAX_ZIP_EXTRACT_BYTES:
+                break
+            total_read += info.file_size
+            s_root = ET.fromstring(zf.read(sname))
+            for row_el in s_root.iter():
+                if _local_xml_tag(row_el.tag) != "row":
+                    continue
+                row_vals = []
+                for c_el in row_el:
+                    if _local_xml_tag(c_el.tag) != "c":
+                        continue
+                    c_type = c_el.attrib.get("t", "")
+                    if c_type == "inlineStr":
+                        txt = "".join(t.text for t in c_el.iter() if _local_xml_tag(t.tag) == "t" and t.text)
+                        if txt.strip():
+                            row_vals.append(txt.strip())
+                    else:
+                        v_text = ""
+                        for ch in c_el:
+                            if _local_xml_tag(ch.tag) == "v" and ch.text:
+                                v_text = ch.text.strip()
+                                break
+                        if v_text:
+                            if c_type == "s" and v_text.isdigit():
+                                idx = int(v_text)
+                                if 0 <= idx < len(shared_strings) and shared_strings[idx].strip():
+                                    row_vals.append(shared_strings[idx].strip())
+                            else:
+                                row_vals.append(v_text)
+                if row_vals:
+                    rows_out.append(" ".join(row_vals))
+        except Exception:
+            pass
+
+    if not rows_out and shared_strings:
+        rows_out.extend(s for s in shared_strings if s.strip())
+    return "\n".join(rows_out)
+
+
+def _extract_zip_document_text(zip_bytes: bytes, filename: str = "", mime_type: str = "") -> str:
+    """
+    Extracts searchable text from ZIP-packaged Office & OpenDocument files
+    (.docx, .xlsx, .pptx, .odt, .ods, .odp) as well as plain .zip archives of documents.
+    """
+    try:
+        with zipfile.ZipFile(io.BytesIO(zip_bytes)) as zf:
+            names = zf.namelist()
+            names_set = set(names)
+            chunks = []
+
+            # 1. Microsoft Word (.docx)
+            if "word/document.xml" in names_set:
+                docx_parts = ["word/document.xml"] + sorted(
+                    n for n in names
+                    if n.startswith(("word/header", "word/footer", "word/footnotes", "word/endnotes", "word/comments"))
+                    and n.endswith(".xml")
+                )
+                total = 0
+                for part in docx_parts:
+                    info = zf.getinfo(part)
+                    if total + info.file_size > MAX_ZIP_EXTRACT_BYTES:
+                        break
+                    total += info.file_size
+                    try:
+                        txt = _extract_docx_xml_text(zf.read(part))
+                        if txt:
+                            chunks.append(txt)
+                    except Exception:
+                        pass
+                return _sanitize_extracted_text("\n".join(chunks))
+
+            # 2. Microsoft Excel (.xlsx)
+            if any(n.startswith("xl/") for n in names):
+                return _sanitize_extracted_text(_extract_xlsx_text(zf, names_set))
+
+            # 3. Microsoft PowerPoint (.pptx)
+            if any(n.startswith("ppt/slides/slide") and n.endswith(".xml") for n in names):
+                slide_parts = sorted(
+                    (n for n in names if (n.startswith("ppt/slides/slide") or n.startswith("ppt/notesSlides/notesSlide")) and n.endswith(".xml")),
+                    key=lambda s: [int(x) if x.isdigit() else x for x in re.split(r"(\d+)", s)],
+                )
+                total = 0
+                for part in slide_parts:
+                    info = zf.getinfo(part)
+                    if total + info.file_size > MAX_ZIP_EXTRACT_BYTES:
+                        break
+                    total += info.file_size
+                    try:
+                        txt = _extract_pptx_xml_text(zf.read(part))
+                        if txt:
+                            chunks.append(txt)
+                    except Exception:
+                        pass
+                return _sanitize_extracted_text("\n".join(chunks))
+
+            # 4. OpenDocument (.odt, .ods, .odp)
+            if "content.xml" in names_set:
+                info = zf.getinfo("content.xml")
+                if info.file_size <= MAX_ZIP_EXTRACT_BYTES:
+                    root = ET.fromstring(zf.read("content.xml"))
+                    odt_blocks = []
+                    for elem in root.iter():
+                        if _local_xml_tag(elem.tag) in ("p", "h"):
+                            t = "".join(elem.itertext()).strip()
+                            if t:
+                                odt_blocks.append(t)
+                    if odt_blocks:
+                        return _sanitize_extracted_text("\n".join(odt_blocks))
+                    return _sanitize_extracted_text(" ".join(root.itertext()))
+
+            # 5. Plain .zip archive containing readable documents/text files
+            total = 0
+            for member in names[:15]:
+                if member.endswith("/"):
+                    continue
+                low_m = member.lower()
+                if low_m.endswith((".txt", ".md", ".csv", ".tsv", ".json", ".html", ".htm", ".rtf", ".pdf", ".docx", ".xlsx", ".pptx", ".odt")):
+                    info = zf.getinfo(member)
+                    if total + info.file_size > MAX_ZIP_EXTRACT_BYTES:
+                        break
+                    total += info.file_size
+                    sub_txt = _extract_text_from_bytes(zf.read(member), filename=member)
+                    if sub_txt:
+                        chunks.append(sub_txt)
+            return _sanitize_extracted_text("\n".join(chunks))
+    except Exception:
+        return ""
+
+
+def _extract_rtf_text(rtf_bytes: bytes) -> str:
+    raw = rtf_bytes.decode("latin1", errors="ignore")
+    skip_dests = {
+        "fonttbl", "colortbl", "stylesheet", "info", "pict", "object",
+        "fldinst", "header", "footer", "themedata", "colorschememapping",
+        "datastore", "latentstyles", "xmlopen",
+    }
+    out = []
+    stack = []
+    ignorable = False
+    uc_skip = 1
+    skip_chars = 0
+    i = 0
+    n = len(raw)
+    while i < n:
+        ch = raw[i]
+        if ch == "{":
+            stack.append((ignorable, uc_skip))
+            i += 1
+        elif ch == "}":
+            if stack:
+                ignorable, uc_skip = stack.pop()
+            i += 1
+        elif ch == "\\":
+            i += 1
+            if i >= n:
+                break
+            nxt = raw[i]
+            if nxt in ("\\", "{", "}"):
+                if not ignorable and skip_chars == 0:
+                    out.append(nxt)
+                i += 1
+            elif nxt == "*":
+                ignorable = True
+                i += 1
+            elif nxt in ("~", "_"):
+                if not ignorable and skip_chars == 0:
+                    out.append(" " if nxt == "~" else "-")
+                i += 1
+            elif nxt == "'" and i + 2 < n:
+                hex_pair = raw[i + 1 : i + 3]
+                i += 3
+                if skip_chars > 0:
+                    skip_chars -= 1
+                elif not ignorable:
+                    try:
+                        out.append(bytes.fromhex(hex_pair).decode("cp1252", errors="ignore"))
+                    except Exception:
+                        pass
+            elif nxt in ("\r", "\n"):
+                if not ignorable:
+                    out.append("\n")
+                i += 1
+            else:
+                m = re.match(r"([a-zA-Z]+)(-?\d*) ?", raw[i:])
+                if m:
+                    word = m.group(1).lower()
+                    arg = m.group(2)
+                    i += len(m.group(0))
+                    if word in skip_dests:
+                        ignorable = True
+                    elif word == "uc" and arg.lstrip("-").isdigit():
+                        uc_skip = max(0, int(arg))
+                    elif word == "u" and arg.lstrip("-").isdigit():
+                        if not ignorable:
+                            code = int(arg)
+                            if code < 0:
+                                code += 65536
+                            if 0 <= code <= 0x10FFFF:
+                                out.append(chr(code))
+                        skip_chars = uc_skip
+                    elif not ignorable:
+                        if word in ("par", "pard", "sect", "page", "line", "row"):
+                            out.append("\n")
+                        elif word in ("tab", "cell"):
+                            out.append(" ")
+                else:
+                    i += 1
+        elif ch in ("\r", "\n"):
+            i += 1
+        else:
+            if skip_chars > 0:
+                skip_chars -= 1
+            elif not ignorable:
+                out.append(ch)
+            i += 1
+    return _sanitize_extracted_text("".join(out))
+
+
+def _extract_html_text(html_bytes: bytes) -> str:
+    raw = html_bytes.decode("utf-8", errors="ignore")
+    raw = re.sub(r"<(script|style|noscript)\b[^>]*>.*?</\1>", " ", raw, flags=re.IGNORECASE | re.DOTALL)
+    raw = re.sub(r"<[^>]+>", " ", raw)
+    return _sanitize_extracted_text(html_lib.unescape(raw))
+
+
+def _is_non_text_binary(data_bytes: bytes, mime_type: str = "", filename: str = "") -> bool:
+    mime_l = (mime_type or "").lower()
+    fn_l = (filename or "").lower()
+    if mime_l.startswith(("image/", "audio/", "video/", "font/")) and "svg" not in mime_l:
+        return True
+    if fn_l.endswith((
+        ".png", ".jpg", ".jpeg", ".gif", ".webp", ".bmp", ".ico", ".tiff",
+        ".mp3", ".wav", ".ogg", ".mp4", ".mov", ".webm", ".avi",
+        ".woff", ".woff2", ".ttf", ".otf", ".exe", ".dll", ".bin", ".dmg",
+    )):
+        return True
+    head = data_bytes[:16]
+    if head.startswith((b"\x89PNG\r\n\x1a\n", b"\xff\xd8\xff", b"GIF87a", b"GIF89a", b"BM", b"\x00\x00\x01\x00", b"wOFF", b"wOF2")):
+        return True
+    if head.startswith(b"RIFF") and b"WEBP" in head:
+        return True
+    if data_bytes.startswith((b"\xfe\xff", b"\xff\xfe")):
+        return False
+    sample = data_bytes[:2048]
+    if not sample:
+        return True
+    null_or_ctrl = sum(
+        1 for b in sample if b == 0 or (b < 32 and b not in (9, 10, 13, 12))
+    )
+    return (null_or_ctrl / len(sample)) > 0.10
+
+
+def _extract_legacy_doc_strings(doc_bytes: bytes) -> str:
+    """Best-effort printable ASCII & UTF-16LE run extraction for legacy binary .doc/.xls/.ppt OLE2 files."""
+    chunks = []
+    for m in re.finditer(rb"(?:[\x20-\x7e]\x00){5,}", doc_bytes):
+        txt = m.group(0).decode("utf-16-le", errors="ignore").strip()
+        if txt and any(c.isalpha() for c in txt):
+            chunks.append(txt)
+    for m in re.finditer(rb"[\x20-\x7e\r\n\t]{8,}", doc_bytes):
+        txt = m.group(0).decode("latin1", errors="ignore").strip()
+        if txt and any(c.isalpha() for c in txt) and not txt.startswith(("Root Entry", "WordDocument", "CompObj")):
+            chunks.append(txt)
+    return _sanitize_extracted_text(" ".join(chunks))
+
+
+def _extract_text_from_bytes(data_bytes: bytes, mime_type: str = "", filename: str = "") -> str:
+    if not data_bytes:
+        return ""
+    mime_l = (mime_type or "").lower()
+    fn_l = (filename or "").lower()
+
+    # 1. PDF Document (ISO 32000-1 §7.5.2: PDF header '%PDF-' within first 1024 bytes)
+    if b"%PDF-" in data_bytes[:1024]:
+        return _extract_pdf_text(data_bytes)
+
+    # 2. ZIP-based Office / OpenDocument (.docx, .xlsx, .pptx, .odt, .ods, .odp, .zip)
+    if data_bytes[:4] == b"PK\x03\x04":
+        return _extract_zip_document_text(data_bytes, filename=filename, mime_type=mime_type)
+
+    # 3. Legacy OLE2 binary Office (.doc, .xls, .ppt)
+    if data_bytes[:8] == b"\xd0\xcf\x11\xe0\xa1\xb1\x1a\xe1":
+        return _extract_legacy_doc_strings(data_bytes)
+
+    # 4. Rich Text Format (.rtf)
+    if data_bytes.lstrip()[:5].startswith(b"{\\rtf") or "rtf" in mime_l or fn_l.endswith(".rtf"):
+        return _extract_rtf_text(data_bytes)
+
+    # 5. HTML / SVG
+    head_ascii = data_bytes[:512].lstrip().lower()
+    if (
+        "html" in mime_l
+        or fn_l.endswith((".html", ".htm"))
+        or head_ascii.startswith((b"<!doctype html", b"<html", b"<body"))
+    ):
+        return _extract_html_text(data_bytes)
+
+    # 6. Skip binary images/audio/video/executables cleanly (never dump raw binary garbage!)
+    if _is_non_text_binary(data_bytes, mime_type=mime_type, filename=filename):
+        return ""
+
+    # 7. Plain Text / CSV / TSV / Markdown / JSON
+    if data_bytes.startswith(b"\xef\xbb\xbf"):
+        decoded = data_bytes[3:].decode("utf-8", errors="ignore")
+    elif data_bytes.startswith(b"\xfe\xff"):
+        decoded = data_bytes[2:].decode("utf-16-be", errors="ignore")
+    elif data_bytes.startswith(b"\xff\xfe"):
+        decoded = data_bytes[2:].decode("utf-16-le", errors="ignore")
+    else:
+        try:
+            decoded = data_bytes.decode("utf-8")
+        except UnicodeDecodeError:
+            decoded = data_bytes.decode("cp1252", errors="ignore")
+
+    if fn_l.endswith(".json") or "json" in mime_l or decoded.lstrip().startswith(("{", "[")):
+        try:
+            parsed_j = json.loads(decoded)
+            if isinstance(parsed_j, (list, dict)):
+                return _sanitize_extracted_text(json.dumps(parsed_j, ensure_ascii=False))
+        except Exception:
+            pass
+    return _sanitize_extracted_text(decoded)
+
+
+class _SafePublicRedirectHandler(urllib.request.HTTPRedirectHandler):
+    def redirect_request(self, req, fp, code, msg, headers, newurl):
+        if not _is_safe_public_doc_url(newurl, check_extension=False):
+            return None
+        return super().redirect_request(req, fp, code, msg, headers, newurl)
+
+
+def _is_safe_public_doc_url(url: str, check_extension: bool = True) -> bool:
+    try:
+        parsed = urllib.parse.urlparse(url)
+        if parsed.scheme not in ("http", "https"):
+            return False
+        host = (parsed.hostname or "").strip().lower()
+        if not host or host in ("localhost", "example.com", "example.org", "example.net"):
+            return False
+        if host.endswith((".localhost", ".local", ".internal", ".test", ".invalid", ".example.com", ".example.org")):
+            return False
+        if check_extension:
+            path_l = (parsed.path or "").lower()
+            if not path_l.endswith((".pdf", ".docx", ".xlsx", ".pptx", ".odt", ".ods", ".odp", ".rtf", ".txt", ".csv", ".tsv", ".md")):
+                return False
+        infos = socket.getaddrinfo(host, parsed.port or (443 if parsed.scheme == "https" else 80), proto=socket.IPPROTO_TCP)
+        if not infos:
+            return False
+        for info in infos:
+            ip_obj = ipaddress.ip_address(info[4][0])
+            if not ip_obj.is_global:
+                return False
+        return True
+    except Exception:
+        return False
+
+
+def _fetch_remote_document_text(url: str) -> str:
+    if os.environ.get("GOODDEEDS_DISABLE_REMOTE_DOC_FETCH") == "1":
+        return ""
+    if not _is_safe_public_doc_url(url, check_extension=True):
+        return ""
+    try:
+        opener = urllib.request.build_opener(_SafePublicRedirectHandler)
+        req = urllib.request.Request(
+            url,
+            headers={"User-Agent": "GoodDeedsSpace-DocIndexer/1.0"},
+            method="GET",
+        )
+        with opener.open(req, timeout=3.5) as resp:
+            ctype = resp.headers.get("Content-Type", "") or ""
+            raw = resp.read(MAX_REMOTE_DOC_BYTES + 1)
+            if len(raw) > MAX_REMOTE_DOC_BYTES:
+                return ""
+            fn = urllib.parse.urlparse(url).path.rsplit("/", 1)[-1]
+            return _extract_text_from_bytes(raw, mime_type=ctype, filename=fn)
+    except Exception:
+        return ""
+
+
+def extract_resource_text(resource_url, allow_remote_fetch: bool = False) -> str:
+    """
+    Extracts searchable text content from attached documents and resource URLs:
+    - JSON arrays/objects of attachments or URLs
+    - Base64 Data URIs (.pdf, .docx, .xlsx, .pptx, .odt, .rtf, .html, .csv, .txt, .md, .json)
+    - Decoded attachment filenames (;name=...) and URL path tokens
+    - Optional SSRF-guarded remote public document URLs when allow_remote_fetch=True
+    Never outputs raw Base64 strings or unparsed binary headers (e.g. '%PDF-1.5', 'PK\\x03\\x04').
+    """
+    if not resource_url:
+        return ""
+
+    if isinstance(resource_url, (list, tuple)):
+        sub_texts = [extract_resource_text(item, allow_remote_fetch=allow_remote_fetch) for item in resource_url]
         return " ".join([t for t in sub_texts if t]).strip()
     if isinstance(resource_url, dict):
-        sub_texts = [extract_resource_text(v) for v in resource_url.values()]
+        sub_texts = [extract_resource_text(v, allow_remote_fetch=allow_remote_fetch) for v in resource_url.values()]
         return " ".join([t for t in sub_texts if t]).strip()
     if not isinstance(resource_url, str):
         return str(resource_url)
@@ -103,76 +1030,84 @@ def extract_resource_text(resource_url) -> str:
         try:
             parsed = json.loads(url)
             if isinstance(parsed, (list, tuple, dict)):
-                extracted_json_text = extract_resource_text(parsed)
-                if extracted_json_text:
-                    return extracted_json_text
+                return extract_resource_text(parsed, allow_remote_fetch=allow_remote_fetch)
         except Exception:
             pass
 
-    extracted_chunks = []
-    b64_data = None
+    if "\n" in url and not url.startswith("data:"):
+        lines = [ln.strip() for ln in url.splitlines() if ln.strip()]
+        if len(lines) > 1:
+            return extract_resource_text(lines, allow_remote_fetch=allow_remote_fetch)
 
+    # Case 1: Base64 / inline Data URI ('data:<mime>;name=<fn>;base64,<payload>')
     if url.startswith("data:"):
         parts = url.split(",", 1)
-        if len(parts) == 2:
-            content = parts[1].strip().replace(" ", "").replace("\n", "").replace("\r", "")
+        if len(parts) != 2:
+            return ""
+        header, payload = parts[0], parts[1]
+        header_body = header[5:]  # after 'data:'
+        header_tokens = [tok.strip() for tok in header_body.split(";") if tok.strip()]
+        mime_type = header_tokens[0] if header_tokens and "=" not in header_tokens[0] else ""
+        filename = ""
+        is_base64 = False
+        for tok in header_tokens:
+            low_tok = tok.lower()
+            if low_tok == "base64":
+                is_base64 = True
+            elif low_tok.startswith("name=") or low_tok.startswith("filename="):
+                filename = urllib.parse.unquote(tok.split("=", 1)[1].strip().strip('"\''))
+
+        data_bytes = b""
+        if is_base64:
+            compact = re.sub(r"\s+", "", payload)
+            pad = len(compact) % 4
+            if pad:
+                compact += "=" * (4 - pad)
             try:
-                pad = len(content) % 4
-                if pad:
-                    content += "=" * (4 - pad)
-                b64_data = base64.b64decode(content)
+                data_bytes = base64.b64decode(compact)
             except Exception:
                 try:
-                    import urllib.parse
-                    b64_data = urllib.parse.unquote_to_bytes(parts[1])
+                    data_bytes = base64.urlsafe_b64decode(compact)
                 except Exception:
-                    b64_data = parts[1].encode("utf-8", errors="ignore")
-    else:
-        try:
-            if not (url.startswith("http://") or url.startswith("https://") or url.startswith("/")):
-                pad = len(url) % 4
-                padded_url = url + ("=" * (4 - pad) if pad else "")
-                b64_data = base64.b64decode(padded_url)
-        except Exception:
-            b64_data = None
+                    data_bytes = b""
+        else:
+            try:
+                data_bytes = urllib.parse.unquote_to_bytes(payload)
+            except Exception:
+                data_bytes = payload.encode("utf-8", errors="ignore")
 
-    if b64_data:
-        try:
-            utf_text = b64_data.decode("utf-8", errors="ignore").strip()
-            if utf_text and any(c.isalnum() for c in utf_text):
-                extracted_chunks.append(utf_text)
-        except Exception:
-            pass
+        chunks = []
+        if filename:
+            chunks.append(_humanize_filename_tokens(filename))
+        doc_text = _extract_text_from_bytes(data_bytes, mime_type=mime_type, filename=filename)
+        if doc_text:
+            chunks.append(doc_text)
+        return _sanitize_extracted_text(" ".join(chunks))
 
+    # Case 2: Standard Web / Path URL ('https://...', 'http://...', '/...')
+    if url.startswith(("http://", "https://", "/")):
+        chunks = [_humanize_filename_tokens(url)]
+        if allow_remote_fetch and url.startswith(("http://", "https://")):
+            remote_txt = _fetch_remote_document_text(url)
+            if remote_txt:
+                chunks.append(remote_txt)
+        return _sanitize_extracted_text(" ".join(chunks))
+
+    # Case 3: Raw Base64 string without 'data:' prefix
+    if len(url) >= 16 and re.fullmatch(r"[A-Za-z0-9+/=\s]+", url):
         try:
-            stream_matches = re.findall(rb'stream[\r\n]+(.*?)[\r\n]+endstream', b64_data, re.DOTALL)
-            for s in stream_matches:
-                dec = None
-                for wbits in [zlib.MAX_WBITS, -zlib.MAX_WBITS, 16 + zlib.MAX_WBITS]:
-                    try:
-                        dec = zlib.decompress(s, wbits)
-                        break
-                    except Exception:
-                        pass
-                if dec:
-                    try:
-                        dec_str = dec.decode("latin1", errors="ignore")
-                        pts = re.findall(r"\((.*?)\)", dec_str)
-                        if pts:
-                            extracted_chunks.append(" ".join([p for p in pts if p.strip()]))
-                        words = re.findall(r"[A-Za-z0-9_.:/-]{2,}", dec_str)
-                        if words:
-                            extracted_chunks.append(" ".join(words))
-                    except Exception:
-                        pass
+            compact = re.sub(r"\s+", "", url)
+            pad = len(compact) % 4
+            if pad:
+                compact += "=" * (4 - pad)
+            raw_b = base64.b64decode(compact, validate=True)
+            doc_text = _extract_text_from_bytes(raw_b)
+            if doc_text:
+                return doc_text
         except Exception:
             pass
 
-    if extracted_chunks:
-        full_text = "\n".join(extracted_chunks)
-        sanitized = re.sub(r'[\x00-\x08\x0b\x0c\x0e-\x1f\x7f-\x9f]', ' ', full_text)
-        return re.sub(r'\s+', ' ', sanitized).strip()
-    return url
+    return _sanitize_extracted_text(url)
 
 def init_db():
     """
@@ -560,18 +1495,37 @@ def init_db():
             clean_title = re.sub(r'[^\w\s.-]', '', title).strip().replace(' ', '_')
             res_url = row["resource_url"]
             if res_url and ("data:" in res_url) and ("name=" not in res_url):
+                def _guess_data_ext(uri_str: str) -> str:
+                    head_l = uri_str[:120].lower()
+                    if "pdf" in head_l:
+                        return ".pdf"
+                    if "wordprocessingml" in head_l:
+                        return ".docx"
+                    if "spreadsheetml" in head_l:
+                        return ".xlsx"
+                    if "presentationml" in head_l:
+                        return ".pptx"
+                    if "rtf" in head_l:
+                        return ".rtf"
+                    if "csv" in head_l:
+                        return ".csv"
+                    if "html" in head_l:
+                        return ".html"
+                    if "text/plain" in head_l:
+                        return ".txt"
+                    return ".dat"
                 try:
                     if res_url.startswith("["):
                         u_list = json.loads(res_url)
                         for i in range(len(u_list)):
                             if "data:" in u_list[i] and "name=" not in u_list[i]:
-                                ext = ".pdf" if "pdf" in u_list[i] else ".dat"
+                                ext = _guess_data_ext(u_list[i])
                                 fn = clean_title + ext if not clean_title.endswith(ext) else clean_title
                                 u_list[i] = re.sub(r'data:([^;,]+)', rf'data:\1;name={fn}', u_list[i])
                         cursor.execute("UPDATE feed_items SET resource_url = ? WHERE id = ?", (json.dumps(u_list), row_id))
                         res_url = json.dumps(u_list)
                     else:
-                        ext = ".pdf" if "pdf" in res_url else ".dat"
+                        ext = _guess_data_ext(res_url)
                         fn = clean_title + ext if not clean_title.endswith(ext) else clean_title
                         res_url = re.sub(r'data:([^;,]+)', rf'data:\1;name={fn}', res_url)
                         cursor.execute("UPDATE feed_items SET resource_url = ? WHERE id = ?", (res_url, row_id))
@@ -579,7 +1533,7 @@ def init_db():
                     pass
             ext_str = str(row["extracted_text"] or "").strip()
             new_text = extract_resource_text(res_url)
-            if new_text and new_text != ext_str:
+            if new_text != ext_str and (new_text or "data:" in str(res_url)):
                 cursor.execute("UPDATE feed_items SET extracted_text = ? WHERE id = ?", (new_text, row_id))
     except Exception:
         pass

@@ -22,7 +22,7 @@ from email.utils import formatdate, make_msgid
 from urllib.parse import parse_qs, urlencode, urlparse
 import urllib.error
 import urllib.request
-from database import get_db, hash_password, verify_password, get_user_stats, extract_resource_text, get_platform_stats
+from database import get_db, hash_password, verify_password, get_user_stats, extract_resource_text, strip_base64_payloads, get_platform_stats
 from email_templates import (
     DEFAULT_EMAIL_PREFS,
     load_dotenv_file,
@@ -1118,9 +1118,25 @@ def _try_gemini_rag_answer(user_message, history, matched_items, matched_spaces)
             aud_str = f" | Audience: {it.get('target_audience')}" if it.get("target_audience") else ""
             geo_str = f" | Geography: {it.get('target_geography')}" if it.get("target_geography") else ""
             body_snip = re.sub(r"\s+", " ", (it.get("content") or ""))[:360]
+            ext_raw = re.sub(r"\s+", " ", (it.get("extracted_text") or "")).strip()
+            doc_str = ""
+            if ext_raw:
+                q_words = [w.lower() for w in re.findall(r"[A-Za-z0-9-]{3,}", user_message or "")]
+                ext_low = ext_raw.lower()
+                hit_pos = -1
+                for qw in q_words:
+                    p = ext_low.find(qw)
+                    if p != -1:
+                        hit_pos = p
+                        break
+                if hit_pos != -1:
+                    s_idx = max(0, hit_pos - 80)
+                    doc_str = f" | Attached Document Excerpt: {ext_raw[s_idx : s_idx + 420]}"
+                else:
+                    doc_str = f" | Attached Document Excerpt: {ext_raw[:320]}"
             context_lines.append(
                 f"{idx}. [POST #{it['id']} | Types: {subtypes_str} | Space: {spaces_str} | Category: {it.get('category') or it.get('theme') or 'General'}"
-                f"{ev_str}{contact_str}{aud_str}{geo_str}] Title: {it.get('title') or 'Untitled'} — {body_snip}"
+                f"{ev_str}{contact_str}{aud_str}{geo_str}] Title: {it.get('title') or 'Untitled'} — {body_snip}{doc_str}"
             )
 
     for sp in matched_spaces[:3]:
@@ -1301,7 +1317,7 @@ def run_conversational_search(raw_message, history=None, user=None, scope=""):
             item.get("author_name") or "",
             item.get("recipient_name") or "",
         ]).lower()
-        ext_l = ((item.get("extracted_text") or "") + " " + (item.get("resource_url") or "")).lower()
+        ext_l = ((item.get("extracted_text") or "") + " " + strip_base64_payloads(item.get("resource_url") or "")).lower()
 
         topical_score = 0
         if tokens:
@@ -1309,6 +1325,8 @@ def run_conversational_search(raw_message, history=None, user=None, scope=""):
                 topical_score += 25
             elif len(tokens) > 1 and phrase_lower in content_l:
                 topical_score += 15
+            elif len(tokens) > 1 and phrase_lower in ext_l:
+                topical_score += 14
 
             for tok in tokens:
                 stem = _stem_token(tok)
@@ -1333,7 +1351,7 @@ def run_conversational_search(raw_message, history=None, user=None, scope=""):
                         topical_score += 7
                         matched_primary = True
                     if cand in ext_l:
-                        topical_score += 5
+                        topical_score += 8
                         matched_primary = True
 
                 if not matched_primary:
@@ -2651,7 +2669,7 @@ def handle_api_request(method, path, headers, body_bytes):
         target_geography = str(body.get("target_geography") or body.get("target_geographical_areas") or "").strip() or None
         contact_info = str(body.get("contact_info") or body.get("key_contact_info") or "").strip() or None
         category = str(body.get("category") or body.get("subject") or "").strip() or None
-        extracted_text = extract_resource_text(resource_url)
+        extracted_text = extract_resource_text(resource_url, allow_remote_fetch=True)
 
         cursor.execute("""
             UPDATE feed_items
@@ -2842,10 +2860,15 @@ def handle_api_request(method, path, headers, body_bytes):
                     pass
 
         if search:
+            clean_res_url_sql = (
+                "CASE WHEN f.resource_url LIKE '%base64,%' "
+                "THEN SUBSTR(f.resource_url, 1, INSTR(f.resource_url, 'base64,')) "
+                "ELSE COALESCE(f.resource_url, '') END"
+            )
             searchable_row_expr = (
                 "(COALESCE(f.title, '') || ' ' || COALESCE(f.content, '') || ' ' || COALESCE(f.theme, '') || ' ' || "
                 "COALESCE(f.category, '') || ' ' || "
-                "COALESCE(f.extracted_text, '') || ' ' || COALESCE(f.resource_url, '') || ' ' || "
+                f"COALESCE(f.extracted_text, '') || ' ' || ({clean_res_url_sql}) || ' ' || "
                 "COALESCE(f.target_audience, '') || ' ' || COALESCE(f.target_geography, '') || ' ' || "
                 "COALESCE(f.contact_info, '') || ' ' || COALESCE(f.post_subtype, '') || ' ' || "
                 "COALESCE(f.event_date, '') || ' ' || COALESCE(f.event_time, '') || ' ' || "
@@ -2873,19 +2896,25 @@ def handle_api_request(method, path, headers, body_bytes):
                 clean_search = search.lstrip("@").strip()
                 like_q = f"%{search}%"
                 like_clean = f"%{clean_search}%"
-                tokens = [t.lstrip("@").strip() for t in clean_search.split() if t.lstrip("@").strip()]
+                tokens = [
+                    t.strip(".,;:!?\"'()[]{}").lstrip("@").strip()
+                    for t in clean_search.split()
+                ]
+                tokens = [t for t in tokens if t]
                 if len(tokens) > 1:
                     token_clauses = " AND ".join([f"{searchable_row_expr} LIKE ?" for _ in tokens])
                     where_parts.append(f"({searchable_row_expr} LIKE ? OR ({token_clauses}))")
                     params.append(like_q)
                     params.extend([f"%{t}%" for t in tokens])
                 else:
+                    single_tok = tokens[0] if tokens else clean_search
+                    like_single = f"%{single_tok}%"
                     where_parts.append(
                         "(f.title LIKE ? OR f.content LIKE ? OR f.theme LIKE ? OR f.category LIKE ? OR f.extracted_text LIKE ? "
-                        "OR f.resource_url LIKE ? OR f.target_audience LIKE ? OR f.target_geography LIKE ? "
+                        f"OR ({clean_res_url_sql}) LIKE ? OR f.target_audience LIKE ? OR f.target_geography LIKE ? "
                         "OR f.contact_info LIKE ? OR f.event_date LIKE ? OR f.event_time LIKE ? OR u.username LIKE ? OR ru.username LIKE ?)"
                     )
-                    params.extend([like_q, like_q, like_q, like_q, like_q, like_q, like_q, like_q, like_q, like_q, like_q, like_clean, like_clean])
+                    params.extend([like_single, like_single, like_single, like_single, like_single, like_single, like_single, like_single, like_single, like_single, like_single, like_clean, like_clean])
 
         where_clause = ""
         if where_parts:
@@ -3038,7 +3067,11 @@ def handle_api_request(method, path, headers, body_bytes):
         if not title or not content:
             return error_response("Title and content are required.")
 
-        ok, mod_err = check_content_moderation(user, [title, content, resource_url, target_audience, target_geography, contact_info, category, event_time])
+        extracted_text = extract_resource_text(resource_url, allow_remote_fetch=True)
+        ok, mod_err = check_content_moderation(
+            user,
+            [title, content, strip_base64_payloads(resource_url), extracted_text, target_audience, target_geography, contact_info, category, event_time],
+        )
         if not ok:
             return error_response(mod_err, 400)
 
@@ -3054,7 +3087,6 @@ def handle_api_request(method, path, headers, body_bytes):
 
         conn = get_db()
         cursor = conn.cursor()
-        extracted_text = extract_resource_text(resource_url)
         cursor.execute("""
             INSERT INTO feed_items (item_type, author_id, title, theme, content, resource_url, post_subtype, event_date, event_time, extracted_text, target_audience, target_geography, contact_info, category)
             VALUES ('POST', ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
@@ -4101,7 +4133,7 @@ def handle_api_request(method, path, headers, body_bytes):
             edate = (item.get("event_date") or "").strip() or None
             etime = (item.get("event_time") or "").strip() or None
             if desc and url:
-                extracted_text = extract_resource_text(url)
+                extracted_text = extract_resource_text(url, allow_remote_fetch=True)
                 cursor.execute("INSERT INTO group_resources (group_id, title, url, resource_type, theme, event_date, event_time, added_by, extracted_text) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)",
                                (gid, desc, url, rtype, rtheme, edate, etime, user["id"], extracted_text))
                 inserted_count += 1

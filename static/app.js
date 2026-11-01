@@ -1408,7 +1408,7 @@ function highlightSearchMatches(text, rawQuery) {
   }
 }
 
-function extractMatchingSnippet(text, rawQuery, maxLen = 150) {
+function extractMatchingSnippet(text, rawQuery, maxLen = 150, preferredToken = "") {
   if (!text) return "";
   const tokens = getSearchTokens(rawQuery);
   if (tokens.length > 0) {
@@ -1416,11 +1416,16 @@ function extractMatchingSnippet(text, rawQuery, maxLen = 150) {
     if (!clean) return "";
     const lower = clean.toLowerCase();
     let matchIdx = -1;
-    for (const tok of tokens) {
-      const idx = lower.indexOf(tok.toLowerCase());
-      if (idx !== -1) {
-        matchIdx = idx;
-        break;
+    if (preferredToken) {
+      matchIdx = lower.indexOf(preferredToken.toLowerCase());
+    }
+    if (matchIdx === -1) {
+      for (const tok of tokens) {
+        const idx = lower.indexOf(tok.toLowerCase());
+        if (idx !== -1) {
+          matchIdx = idx;
+          break;
+        }
       }
     }
     if (matchIdx !== -1) {
@@ -1451,21 +1456,36 @@ function buildSearchMatchInfo(item, searchContext) {
 
   const reasons = [];
   let matchedInExtractedFile = false;
+  let preferredFileToken = "";
   if (tokens.length > 0) {
     const checkField = (val) => {
       if (!val) return false;
       const lower = String(val).toLowerCase();
       return tokens.some(t => lower.includes(t.toLowerCase()));
     };
+    const stripDataPayloads = (val) => {
+      if (!val) return "";
+      const cleaned = String(val).replace(/;base64,[A-Za-z0-9+/=%\s]+/gi, ";base64,");
+      try {
+        return decodeURIComponent(cleaned);
+      } catch (_) {
+        return cleaned;
+      }
+    };
+    const cleanResUrl = stripDataPayloads(item.resource_url);
     if (checkField(item.title)) reasons.push("Matched in Title");
     if (checkField(item.category)) reasons.push(`🏷️ Category: ${escapeHtml(item.category)}`);
     if (checkField(item.target_audience)) reasons.push("👥 Target Audience");
     if (checkField(item.target_geography)) reasons.push("📍 Geography");
     if (checkField(item.contact_info)) reasons.push("📇 Key Contact");
-    if (checkField(item.resource_url) || checkField(item.extracted_text)) {
+    if (checkField(cleanResUrl) || checkField(item.extracted_text)) {
       reasons.push("📎 Attached Resource / File");
-      if (checkField(item.extracted_text) && !checkField(item.content)) {
+      const extLower = String(item.extracted_text || "").toLowerCase();
+      const contentLower = String(item.content || "").toLowerCase();
+      const fileOnlyTok = tokens.find(t => extLower.includes(t.toLowerCase()) && !contentLower.includes(t.toLowerCase()));
+      if (fileOnlyTok) {
         matchedInExtractedFile = true;
+        preferredFileToken = fileOnlyTok;
       }
     }
     if (checkField(item.content)) reasons.push("Matched in Description");
@@ -1483,7 +1503,7 @@ function buildSearchMatchInfo(item, searchContext) {
 
   const cleanContent = String(item.content || "").replace(/^📅\s*Event Date:[^\n]*\n+/i, "");
   const snippetSource = matchedInExtractedFile ? item.extracted_text : cleanContent;
-  const snippetHtml = extractMatchingSnippet(snippetSource, query, 145);
+  const snippetHtml = extractMatchingSnippet(snippetSource, query, 145, preferredFileToken);
 
   return {
     reasons,

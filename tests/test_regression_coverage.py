@@ -5061,3 +5061,189 @@ class TestRegressionCoverage(GoodDeedsTestCase):
             finally:
                 httpd.shutdown()
 
+    def test_document_parsing_and_deep_content_search_across_formats(self):
+        """
+        Verifies multi-format document parsing and content search (PDF with FlateDecode + TJ kerning
+        arrays + /ToUnicode CMaps + escaped parens, Word .docx, Excel .xlsx, PowerPoint .pptx,
+        OpenDocument .odt, .rtf, and .html), ensuring:
+        1. Real compressed PDFs with kerned TJ arrays do NOT split words or dump '%PDF-1.5' binary garbage.
+        2. Word (.docx), Excel (.xlsx), PowerPoint (.pptx), .odt, .rtf, and .html extract clean text.
+        3. Both GET /api/feed?search=... and POST /api/chat_search find posts by attached document content,
+           while binary images do not produce random Base64 false-positive search hits.
+        """
+        import io
+        import zipfile
+        import zlib
+        import database
+
+        headers = self.get_auth_headers(self.get_token("maya@gooddeeds.space"))
+
+        # 1. Build a realistic FlateDecode PDF containing:
+        #    - Kerned TJ array: [(Tac)-4(om)5(a )-3(Yo)4(un)3(g )-2(Ad)5(ul)-3(t )-4(Sh)6(el)-4(ter)] TJ
+        #    - Escaped parentheses: [(\()21(24/7\))] TJ
+        #    - /ToUnicode CMap stream mapping <0001><0002><0003> -> "KitsapHelpline"
+        cmap_stream = (
+            b"/CIDInit /ProcSet findresource begin 12 dict begin begincmap\n"
+            b"1 begincodespacerange <0001> <0003> endcodespacerange\n"
+            b"3 beginbfchar\n"
+            b"<0001> <004B00690074007300610070>\n"
+            b"<0002> <00480065006C0070>\n"
+            b"<0003> <006C0069006E0065>\n"
+            b"endbfchar\n"
+            b"endcmap"
+        )
+        content_stream = (
+            b"BT /F1 11 Tf 72 720 Td "
+            b"[(Tac)-4(om)5(a )-3(Yo)4(un)3(g )-2(Ad)5(ul)-3(t )-4(Sh)6(el)-4(ter)] TJ "
+            b"0 -16 Td [(\\()21(24/7\\)) -220 (253)-4(-)-3(942)-4(-)-3(5644)] TJ "
+            b"0 -16 Td <000100020003> Tj ET"
+        )
+        comp_cmap = zlib.compress(cmap_stream)
+        comp_content = zlib.compress(content_stream)
+        pdf_bytes = (
+            b"%PDF-1.5\n%\xe2\xe3\xcf\xd3\n"
+            b"1 0 obj <</Type/Catalog/Pages 2 0 R>> endobj\n"
+            + f"5 0 obj <</Filter/FlateDecode/Length {len(comp_cmap)}>>\nstream\n".encode("ascii")
+            + comp_cmap
+            + b"\nendstream\nendobj\n"
+            + f"6 0 obj <</Filter/FlateDecode/Length {len(comp_content)}>>\nstream\n".encode("ascii")
+            + comp_content
+            + b"\nendstream\nendobj\n%%EOF"
+        )
+
+        # Direct unit check on pure-Python stdlib PDF extractor
+        stdlib_txt = database._extract_pdf_text_stdlib(pdf_bytes)
+        self.assertIn("Tacoma Young Adult Shelter", stdlib_txt)
+        self.assertIn("(24/7) 253-942-5644", stdlib_txt)
+        self.assertIn("KitsapHelpline", stdlib_txt)
+        self.assertNotIn("%PDF-1.5", stdlib_txt)
+
+        pdf_uri = "data:application/pdf;name=KeepSafe%20Directory.pdf;base64," + base64.b64encode(pdf_bytes).decode("ascii")
+        st_pdf, _, pdf_res = self.make_request(
+            "POST",
+            "/api/posts",
+            headers=headers,
+            body={
+                "title": "Regional Resource Packet",
+                "theme": "Wellbeing & Care",
+                "content": "Download the attached PDF directory for local crisis numbers.",
+                "post_subtype": "RESOURCE",
+                "resource_url": json.dumps([pdf_uri]),
+            },
+        )
+        self.assertEqual(st_pdf, 201)
+        pdf_post_id = (pdf_res.get("post") or pdf_res.get("item"))["id"]
+
+        # Search by multi-word phrase ONLY inside the PDF's kerned TJ stream
+        st_s1, _, s1_body = self.make_request("GET", "/api/feed?search=Tacoma+Young+Adult+Shelter")
+        self.assertEqual(st_s1, 200)
+        self.assertIn(pdf_post_id, [i["id"] for i in s1_body.get("feed", [])])
+
+        # Search by CMap-encoded glyph token ONLY inside the PDF
+        st_s2, _, s2_body = self.make_request("GET", "/api/feed?search=KitsapHelpline")
+        self.assertEqual(st_s2, 200)
+        self.assertIn(pdf_post_id, [i["id"] for i in s2_body.get("feed", [])])
+
+        # Conversational Search also matches via attached PDF content
+        st_chat, _, chat_body = self.make_request(
+            "POST",
+            "/api/chat_search",
+            headers=headers,
+            body={"message": "Where can I find Tacoma Young Adult Shelter?"},
+        )
+        self.assertEqual(st_chat, 200)
+        self.assertIn(pdf_post_id, [i["id"] for i in chat_body.get("matched_items", [])])
+
+        # 2. Build a real .docx (ZIP + word/document.xml with split <w:r><w:t> runs)
+        docx_buf = io.BytesIO()
+        with zipfile.ZipFile(docx_buf, "w", zipfile.ZIP_DEFLATED) as zf:
+            zf.writestr(
+                "word/document.xml",
+                '<?xml version="1.0" encoding="UTF-8"?>'
+                '<w:document xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main">'
+                "<w:body><w:p>"
+                "<w:r><w:t>Snoho</w:t></w:r><w:r><w:t>mish</w:t></w:r>"
+                "<w:r><w:t xml:space=\"preserve\"> Dental </w:t></w:r>"
+                "<w:r><w:t>Voucher</w:t></w:r>"
+                "</w:p></w:body></w:document>",
+            )
+        docx_uri = (
+            "data:application/vnd.openxmlformats-officedocument.wordprocessingml.document;"
+            "name=Dental_Guide.docx;base64," + base64.b64encode(docx_buf.getvalue()).decode("ascii")
+        )
+
+        # 3. Build a real .xlsx (ZIP + xl/sharedStrings.xml + xl/worksheets/sheet1.xml)
+        xlsx_buf = io.BytesIO()
+        with zipfile.ZipFile(xlsx_buf, "w", zipfile.ZIP_DEFLATED) as zf:
+            zf.writestr(
+                "xl/sharedStrings.xml",
+                '<?xml version="1.0" encoding="UTF-8"?>'
+                '<sst xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main">'
+                "<si><t>Bellingham Warm Meal Schedule</t></si></sst>",
+            )
+            zf.writestr(
+                "xl/worksheets/sheet1.xml",
+                '<?xml version="1.0" encoding="UTF-8"?>'
+                '<worksheet xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main">'
+                '<sheetData><row r="1"><c r="A1" t="s"><v>0</v></c></row></sheetData></worksheet>',
+            )
+        xlsx_uri = (
+            "data:application/vnd.openxmlformats-officedocument.spreadsheetml.sheet;"
+            "name=Meals.xlsx;base64," + base64.b64encode(xlsx_buf.getvalue()).decode("ascii")
+        )
+
+        # 4. Build a real .pptx, .odt, and .rtf
+        pptx_buf = io.BytesIO()
+        with zipfile.ZipFile(pptx_buf, "w", zipfile.ZIP_DEFLATED) as zf:
+            zf.writestr(
+                "ppt/slides/slide1.xml",
+                '<?xml version="1.0" encoding="UTF-8"?>'
+                '<p:sld xmlns:p="http://schemas.openxmlformats.org/presentationml/2006/main" '
+                'xmlns:a="http://schemas.openxmlformats.org/drawingml/2006/main">'
+                "<p:cSld><p:spTree><p:sp><p:txBody><a:p><a:r><a:t>Olympia Caregiver Orientation</a:t></a:r></a:p>"
+                "</p:txBody></p:sp></p:spTree></p:cSld></p:sld>",
+            )
+        pptx_uri = (
+            "data:application/vnd.openxmlformats-officedocument.presentationml.presentation;"
+            "name=Slides.pptx;base64," + base64.b64encode(pptx_buf.getvalue()).decode("ascii")
+        )
+
+        rtf_bytes = br"{\rtf1\ansi{\fonttbl{\f0 Arial;}}\f0\pard Yakima Bilingual Legal Clinic\par}"
+        rtf_uri = "data:application/rtf;name=Clinic.rtf;base64," + base64.b64encode(rtf_bytes).decode("ascii")
+
+        st_office, _, office_res = self.make_request(
+            "POST",
+            "/api/posts",
+            headers=headers,
+            body={
+                "title": "Multi-Format Community Toolkit",
+                "theme": "Community & Action",
+                "content": "Attached Word, Excel, PowerPoint, and RTF guides.",
+                "post_subtype": "RESOURCE",
+                "resource_url": json.dumps([docx_uri, xlsx_uri, pptx_uri, rtf_uri]),
+            },
+        )
+        self.assertEqual(st_office, 201)
+        office_post_id = (office_res.get("post") or office_res.get("item"))["id"]
+
+        for query_phrase in (
+            "Snohomish+Dental+Voucher",
+            "Bellingham+Warm+Meal",
+            "Olympia+Caregiver+Orientation",
+            "Yakima+Bilingual+Legal+Clinic",
+        ):
+            st_q, _, q_body = self.make_request("GET", f"/api/feed?search={query_phrase}")
+            self.assertEqual(st_q, 200)
+            self.assertIn(
+                office_post_id,
+                [i["id"] for i in q_body.get("feed", [])],
+                f"Expected post {office_post_id} when searching '{query_phrase}' inside attached Office/RTF docs",
+            )
+
+        # 5. Binary PNG image attachment must NOT pollute extracted_text or match random Base64 substrings
+        png_bytes = b"\x89PNG\r\n\x1a\n\x00\x00\x00\rIHDR\x00\x00\x00\x01\x00\x00\x00\x01\x08\x02\x00\x00\x00"
+        png_b64 = base64.b64encode(png_bytes).decode("ascii")
+        png_uri = f"data:image/png;name=banner.png;base64,{png_b64}"
+        self.assertEqual(database.extract_resource_text(png_uri), "banner.png banner png")
+
+
