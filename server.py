@@ -69,6 +69,9 @@ def get_allowed_cors_origins(host_header: str = "") -> set:
         allowed.add(f"http://127.0.0.1:{PORT}")
         if ":" in host_clean:
             allowed.add(f"http://{host_clean.lower()}")
+    elif host_only.endswith(".googlers.com"):
+        allowed.add(f"http://{host_clean.lower()}")
+        allowed.add(f"https://{host_clean.lower()}")
     return allowed
 
 
