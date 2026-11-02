@@ -21,7 +21,26 @@ if os.environ.get("GOODDEEDS_SKIP_DOTENV") != "1":
 from database import init_db
 from handlers import handle_api_request
 
-HOST = (os.environ.get("HOST") or "127.0.0.1").strip() or "127.0.0.1"
+def get_default_bind_host() -> str:
+    """
+    Returns the address to bind the HTTP server to:
+    - Uses explicit HOST env var when provided.
+    - Inside Render's isolated container runtime (RENDER=true / RENDER_EXTERNAL_URL),
+      binds 0.0.0.0 so Render's edge router & health check can reach $PORT even if
+      Blueprint env sync hasn't run yet.
+    - Otherwise defaults to 127.0.0.1 (for bare-metal/VM deployments behind Caddy).
+    """
+    explicit = (os.environ.get("HOST") or "").strip()
+    if explicit:
+        return explicit
+    if (os.environ.get("RENDER") or "").strip().lower() in ("1", "true", "yes") or (
+        os.environ.get("RENDER_EXTERNAL_URL") or ""
+    ).strip():
+        return "0.0.0.0"
+    return "127.0.0.1"
+
+
+HOST = get_default_bind_host()
 PORT = int(os.environ.get("PORT", 8080))
 STATIC_DIR = os.path.join(os.path.dirname(os.path.abspath(__file__)), "static")
 

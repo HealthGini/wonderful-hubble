@@ -5405,12 +5405,16 @@ class TestRegressionCoverage(GoodDeedsTestCase):
         self.assertEqual(st_exp2, 401)
 
         # --- 5, 6, 7. Security Headers, Origin-Restricted CORS, Generic 500s, Caddyfile & 127.0.0.1 Bind ---
-        with patch.dict(os.environ, {"HOST": ""}, clear=False):
+        with patch.dict(os.environ, {"HOST": "", "RENDER": "", "RENDER_EXTERNAL_URL": ""}, clear=False):
             os.environ.pop("HOST", None)
+            os.environ.pop("RENDER", None)
+            os.environ.pop("RENDER_EXTERNAL_URL", None)
             os.environ["GOODDEEDS_SKIP_DOTENV"] = "1"
             try:
                 importlib.reload(server)
                 self.assertEqual(server.HOST, "127.0.0.1")
+                with patch.dict(os.environ, {"RENDER": "true"}, clear=False):
+                    self.assertEqual(server.get_default_bind_host(), "0.0.0.0")
             finally:
                 os.environ.pop("GOODDEEDS_SKIP_DOTENV", None)
 

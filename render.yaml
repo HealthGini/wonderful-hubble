@@ -28,8 +28,6 @@ services:
         value: /var/data/gooddeeds.db
       - key: ALLOWED_HOSTS
         value: localhost,127.0.0.1,gooddeeds.space,www.gooddeeds.space
-      - key: GOOGLE_CLIENT_ID
-        sync: false
       - key: EMAIL_PROVIDER
         value: resend
       # Render prompts you securely for RESEND_API_KEY during Blueprint setup (never stored in Git):
@@ -46,9 +44,10 @@ services:
       # Dispatches emails in a background thread so HTTP responses stay <15ms:
       - key: EMAIL_ASYNC
         value: "true"
-      # Optional: set ADMIN_EMAIL to automatically grant Site Admin to your account:
-      - key: ADMIN_EMAIL
-        sync: false
+      # Optional secrets to set directly in Render Dashboard -> Service -> Environment
+      # (kept out of render.yaml so Blueprint auto-sync never pauses on blank values):
+      #   ADMIN_EMAIL=you@example.com
+      #   GOOGLE_CLIENT_ID=your-client-id.apps.googleusercontent.com
       # Demo accounts with known passwords are NEVER seeded unless SEED_DEMO=1 (keep 0 in prod):
       - key: SEED_DEMO
         value: "0"
