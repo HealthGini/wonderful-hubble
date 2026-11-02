@@ -27,11 +27,11 @@ STATIC_DIR = os.path.join(os.path.dirname(os.path.abspath(__file__)), "static")
 
 CONTENT_SECURITY_POLICY = (
     "default-src 'self'; "
-    "script-src 'self' 'unsafe-inline' https://cdn.tailwindcss.com https://www.googletagmanager.com https://accounts.google.com; "
+    "script-src 'self' 'unsafe-inline' https://cdn.tailwindcss.com https://accounts.google.com; "
     "style-src 'self' 'unsafe-inline' https://fonts.googleapis.com https://accounts.google.com; "
     "font-src 'self' data: https://fonts.gstatic.com; "
     "img-src 'self' data: blob: https:; "
-    "connect-src 'self' https://www.google-analytics.com https://analytics.google.com https://region1.google-analytics.com https://www.googletagmanager.com https://accounts.google.com https://oauth2.googleapis.com; "
+    "connect-src 'self' https://accounts.google.com https://oauth2.googleapis.com; "
     "frame-src 'self' blob: https://accounts.google.com; "
     "frame-ancestors 'none'; "
     "object-src 'none'; "

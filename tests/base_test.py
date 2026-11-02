@@ -21,6 +21,8 @@ class BaseTestCase(unittest.TestCase):
         cls.temp_db_dir = tempfile.mkdtemp()
         cls.temp_db_file = os.path.join(cls.temp_db_dir, "test_gooddeeds.db")
         os.environ["DB_PATH"] = cls.temp_db_file
+        cls._prev_seed_demo = os.environ.get("SEED_DEMO")
+        os.environ["SEED_DEMO"] = "1"
         
         # Import database and handlers after setting DB_PATH
         import database
@@ -39,6 +41,10 @@ class BaseTestCase(unittest.TestCase):
             shutil.rmtree(cls.temp_db_dir)
         if "DB_PATH" in os.environ:
             del os.environ["DB_PATH"]
+        if getattr(cls, "_prev_seed_demo", None) is None:
+            os.environ.pop("SEED_DEMO", None)
+        else:
+            os.environ["SEED_DEMO"] = cls._prev_seed_demo
         if hasattr(cls, "database"):
             cls.database.DB_PATH = cls.database.DEFAULT_DB
 

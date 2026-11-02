@@ -56,6 +56,36 @@ def hash_password(password: str) -> str:
     derived = hashlib.pbkdf2_hmac("sha256", password.encode("utf-8"), salt_bytes, iterations)
     return f"pbkdf2_sha256${iterations}${salt_hex}${derived.hex()}"
 
+DEMO_PERSONA_EMAILS = (
+    "maya@gooddeeds.space",
+    "marcus@gooddeeds.space",
+    "elena@gooddeeds.space",
+    "arthur@gooddeeds.space",
+    "priya@gooddeeds.space",
+    "samir@gooddeeds.space",
+    "rosa@gooddeeds.space",
+    "chloe@gooddeeds.space",
+)
+
+
+def is_demo_seed_enabled() -> bool:
+    """Returns True only when SEED_DEMO=1 (or true/yes) is explicitly enabled for dev/test."""
+    return (os.environ.get("SEED_DEMO") or "").strip().lower() in ("1", "true", "yes")
+
+
+def get_configured_admin_emails() -> list:
+    """Returns lowercased email addresses configured via ADMIN_EMAIL (comma-separated)."""
+    raw = (os.environ.get("ADMIN_EMAIL") or "").strip()
+    if not raw:
+        return []
+    return [addr.strip().lower() for addr in raw.split(",") if addr.strip()]
+
+
+def make_locked_account_hash(label: str = "DEMO_ACCOUNT") -> str:
+    """Generates a non-authenticatable password_hash marker for showcase/locked persona rows."""
+    return f"LOCKED_{label}${os.urandom(32).hex()}"
+
+
 def verify_password(plain_password: str, stored_hash: str) -> bool:
     """
     Verifies a plain text password against a stored salted PBKDF2 hash
@@ -63,6 +93,8 @@ def verify_password(plain_password: str, stored_hash: str) -> bool:
     """
     import hmac
     if not stored_hash or not plain_password:
+        return False
+    if str(stored_hash).startswith("LOCKED_"):
         return False
     if stored_hash.startswith("pbkdf2_sha256$"):
         try:
@@ -1501,8 +1533,47 @@ def init_db():
     """)
 
     cursor.execute("SELECT COUNT(*) as count FROM users")
-    if cursor.fetchone()["count"] == 0:
+    if cursor.fetchone()["count"] == 0 and is_demo_seed_enabled():
         seed_data(cursor)
+
+    # When SEED_DEMO is off, automatically lock any pre-existing demo persona accounts,
+    # strip demo Site Admin privileges, and revoke any active demo sessions/tokens.
+    admin_emails = get_configured_admin_emails()
+    if not is_demo_seed_enabled():
+        try:
+            placeholders = ",".join("?" for _ in DEMO_PERSONA_EMAILS)
+            cursor.execute(
+                f"SELECT id, email, password_hash, is_site_admin FROM users WHERE LOWER(email) IN ({placeholders})",
+                tuple(e.lower() for e in DEMO_PERSONA_EMAILS),
+            )
+            for demo_row in cursor.fetchall():
+                demo_email_l = str(demo_row["email"] or "").strip().lower()
+                if demo_email_l in admin_emails:
+                    continue
+                pw_h = str(demo_row["password_hash"] or "")
+                needs_lock = (
+                    not pw_h.startswith("LOCKED_")
+                    or demo_row["is_site_admin"] == 1
+                )
+                if needs_lock:
+                    cursor.execute(
+                        "UPDATE users SET password_hash = ?, is_site_admin = 0 WHERE id = ?",
+                        (make_locked_account_hash("DEMO_ACCOUNT"), demo_row["id"]),
+                    )
+                cursor.execute("DELETE FROM sessions WHERE user_id = ?", (demo_row["id"],))
+                cursor.execute("UPDATE auth_email_tokens SET used = 1 WHERE user_id = ? AND used = 0", (demo_row["id"],))
+        except Exception:
+            pass
+
+    if admin_emails:
+        try:
+            adm_placeholders = ",".join("?" for _ in admin_emails)
+            cursor.execute(
+                f"UPDATE users SET is_site_admin = 1 WHERE LOWER(email) IN ({adm_placeholders}) AND COALESCE(is_banned, 0) = 0",
+                tuple(admin_emails),
+            )
+        except Exception:
+            pass
 
     # Startup re-indexing step for feed_items and group_resources
     try:

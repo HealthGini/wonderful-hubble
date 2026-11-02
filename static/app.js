@@ -476,23 +476,23 @@ function setupEventListeners() {
   initKudosRichEditor();
 }
 
-function trackAnalyticsPageView(pagePath) {
-  if (typeof window.gtag === "function") {
-    window.gtag("event", "page_view", {
-      page_path: pagePath || "/",
-      page_location: window.location.href,
-      page_title: document.title
-    });
-  }
+let demoLoginEnabled = false;
+let demoLoginStatusChecked = false;
+
+function isLocalDevHostname() {
+  const h = ((typeof window !== "undefined" && window.location && window.location.hostname) || "").toLowerCase();
+  return h === "localhost" || h === "127.0.0.1" || h.endsWith(".googlers.com") || h.endsWith(".local");
 }
 
-function trackAnalyticsEvent(eventName, eventParams = {}) {
-  if (typeof window.gtag === "function") {
-    window.gtag("event", eventName, eventParams);
-  }
+function syncDemoLoginBanner() {
+  const banner = document.getElementById("demo-login-banner");
+  if (!banner) return;
+  const shouldShow = Boolean(demoLoginEnabled && isLocalDevHostname());
+  banner.hidden = !shouldShow;
+  banner.classList.toggle("hidden", !shouldShow);
 }
-window.trackAnalyticsPageView = trackAnalyticsPageView;
-window.trackAnalyticsEvent = trackAnalyticsEvent;
+window.isLocalDevHostname = isLocalDevHostname;
+window.syncDemoLoginBanner = syncDemoLoginBanner;
 
 async function handleRoute() {
   if (sessionPromise) {
@@ -517,7 +517,6 @@ async function handleRoute() {
   const path = qIdx === -1 ? rawRoute : rawRoute.slice(0, qIdx);
   const hashParams = new URLSearchParams(qIdx === -1 ? "" : rawRoute.slice(qIdx + 1));
 
-  trackAnalyticsPageView(path);
   hideAllViews();
 
   if (path === "" || path === "/") {
@@ -919,6 +918,12 @@ function openModal(modalId) {
     if (modalId === "modal-login" || modalId === "modal-signup") {
       adjustPasskeyButtonsSupport();
     }
+    if (modalId === "modal-login") {
+      syncDemoLoginBanner();
+      if (!demoLoginStatusChecked && isLocalDevHostname()) {
+        loadPlatformStats();
+      }
+    }
     dlg.showModal();
   }
 }
@@ -1106,6 +1111,10 @@ async function handleLogin(e) {
 }
 
 async function presetLogin(email) {
+  if (!demoLoginEnabled || !isLocalDevHostname()) {
+    showToast("❌ Instant Demo Login is disabled outside local development.");
+    return;
+  }
   document.getElementById("login-email").value = email;
   document.getElementById("login-pw").value = "password123";
   try {
@@ -2083,6 +2092,13 @@ function renderFeedCard(item, isProfileView = false, searchContext = null) {
 async function loadPlatformStats() {
   try {
     const res = await apiFetch("/stats");
+    if (res && res.success) {
+      demoLoginEnabled = Boolean(
+        res.demo_login_enabled || (res.stats && res.stats.demo_login_enabled)
+      );
+      demoLoginStatusChecked = true;
+      syncDemoLoginBanner();
+    }
     if (res && res.success && res.stats) {
       const elActs = document.getElementById("stat-acts-of-kindness");
       const elMembers = document.getElementById("stat-community-members");
@@ -2992,7 +3008,6 @@ async function handleGiveKudos(e) {
     });
     kudosComposerOriginGroupId = null;
     pendingKudosRecipient = null;
-    trackAnalyticsEvent("give_kudos", { recipient_id });
     document.getElementById("kudos-content").value = "";
     document.getElementById("kudos-recipient-input").value = "";
     document.getElementById("kudos-recipient-id").value = "";

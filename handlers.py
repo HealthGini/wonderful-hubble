@@ -22,7 +22,18 @@ from email.utils import formatdate, make_msgid
 from urllib.parse import parse_qs, urlencode, urlparse
 import urllib.error
 import urllib.request
-from database import get_db, hash_password, verify_password, get_user_stats, extract_resource_text, strip_base64_payloads, get_platform_stats
+from database import (
+    get_db,
+    hash_password,
+    verify_password,
+    get_user_stats,
+    extract_resource_text,
+    strip_base64_payloads,
+    get_platform_stats,
+    DEMO_PERSONA_EMAILS,
+    is_demo_seed_enabled,
+    get_configured_admin_emails,
+)
 from email_templates import (
     DEFAULT_EMAIL_PREFS,
     load_dotenv_file,
@@ -176,6 +187,26 @@ def get_fido_server(headers):
     return Fido2Server(rp)
 
 SESSION_TTL_DAYS = 30
+
+
+def _should_grant_site_admin_on_registration(cursor, email: str) -> int:
+    """
+    Determines whether a newly registering user should be granted Site Admin:
+    - If ADMIN_EMAIL is configured, grants Site Admin iff email matches ADMIN_EMAIL.
+    - Otherwise, when SEED_DEMO is off and zero Site Admins exist yet, grants Site Admin
+      to the first real (non-demo-persona) user who registers.
+    """
+    email_l = (email or "").strip().lower()
+    if not email_l:
+        return 0
+    admin_emails = get_configured_admin_emails()
+    if admin_emails:
+        return 1 if email_l in admin_emails else 0
+    if not is_demo_seed_enabled() and email_l not in DEMO_PERSONA_EMAILS:
+        cursor.execute("SELECT COUNT(*) FROM users WHERE is_site_admin = 1")
+        if cursor.fetchone()[0] == 0:
+            return 1
+    return 0
 
 
 def get_session_ttl_days() -> int:
@@ -1589,7 +1620,9 @@ def handle_api_request(method, path, headers, body_bytes):
     # ================== PLATFORM STATS ENDPOINTS ==================
     if path_only in ("/api/stats", "/api/landing_stats", "/stats", "/landing_stats") and method == "GET":
         stats = get_platform_stats()
-        return json_response({"success": True, "stats": stats})
+        demo_enabled = is_demo_seed_enabled()
+        stats["demo_login_enabled"] = demo_enabled
+        return json_response({"success": True, "stats": stats, "demo_login_enabled": demo_enabled})
 
     # ================== AUTH ENDPOINTS ==================
     # 1. WebAuthn Registration Challenge
@@ -1917,14 +1950,22 @@ def handle_api_request(method, path, headers, body_bytes):
         if not email or not username or not password:
             return error_response("Email, username, and password are required.")
 
+        if (
+            not is_demo_seed_enabled()
+            and email.lower() in DEMO_PERSONA_EMAILS
+            and email.lower() not in get_configured_admin_emails()
+        ):
+            return error_response("Reserved demo persona address cannot be registered.", 403)
+
         conn = get_db()
         cursor = conn.cursor()
         try:
+            grant_admin = _should_grant_site_admin_on_registration(cursor, email)
             pw_hash = hash_password(password)
             cursor.execute("""
-                INSERT INTO users (email, username, password_hash, phone, avatar_url, bio)
-                VALUES (?, ?, ?, ?, ?, ?)
-            """, (email, username, pw_hash, phone, avatar_url, bio))
+                INSERT INTO users (email, username, password_hash, phone, avatar_url, bio, is_site_admin)
+                VALUES (?, ?, ?, ?, ?, ?, ?)
+            """, (email, username, pw_hash, phone, avatar_url, bio, grant_admin))
             user_id = cursor.lastrowid
             ensure_user_unsubscribe_token(conn, user_id)
             verify_tok = issue_auth_email_token(conn, user_id, "VERIFY_EMAIL", ttl_minutes=24 * 60)
@@ -2019,6 +2060,11 @@ def handle_api_request(method, path, headers, body_bytes):
             WHERE LOWER(email) = LOWER(?) OR LOWER(username) = LOWER(?)
         """, (email, email))
         row = cursor.fetchone()
+        if row and not is_demo_seed_enabled():
+            row_email_l = str(row["email"] or "").strip().lower()
+            if row_email_l in DEMO_PERSONA_EMAILS and row_email_l not in get_configured_admin_emails():
+                conn.close()
+                return error_response("Invalid email or password.", 401)
         if not row or not verify_password(password, row["password_hash"]):
             conn.close()
             return error_response("Invalid email or password.", 401)
@@ -2026,6 +2072,9 @@ def handle_api_request(method, path, headers, body_bytes):
             conn.close()
             return error_response("Account suspended by site administration.", 403)
         user_dict = dict(row)
+        if str(user_dict.get("email") or "").strip().lower() in get_configured_admin_emails() and user_dict.get("is_site_admin") != 1:
+            cursor.execute("UPDATE users SET is_site_admin = 1 WHERE id = ?", (user_dict["id"],))
+            user_dict["is_site_admin"] = 1
         user_dict["email_prefs"] = parse_user_email_prefs(user_dict.get("email_prefs"))
         stored_pw_hash = user_dict.pop("password_hash", "")
         # Transparently upgrade legacy unsalted hashes to salted PBKDF2-HMAC-SHA256 on login
@@ -2086,6 +2135,8 @@ def handle_api_request(method, path, headers, body_bytes):
             return error_response("Invalid Google token or verification failed.", 401)
         email = str(email).strip()
         oauth_id = str(oauth_id).strip()
+        if not is_demo_seed_enabled() and email.lower() in DEMO_PERSONA_EMAILS and email.lower() not in get_configured_admin_emails():
+            return error_response("Invalid Google token or demo account disabled.", 401)
 
         name = payload.get("name") or payload.get("given_name") or email.split("@")[0]
         avatar_url = payload.get("picture") or ""
@@ -2105,20 +2156,21 @@ def handle_api_request(method, path, headers, body_bytes):
                     conn.close()
                     return error_response("Account suspended by site administration.", 403)
                 user_dict = dict(existing_row)
+                promote_admin = 1 if (email.lower() in get_configured_admin_emails() or user_dict.get("is_site_admin") == 1) else 0
                 new_avatar = user_dict.get("avatar_url") or ""
                 if (not new_avatar or not str(new_avatar).strip()) and avatar_url:
                     new_avatar = avatar_url
                     cursor.execute("""
                         UPDATE users
-                        SET oauth_provider = 'google', oauth_id = ?, avatar_url = ?, email_verified = 1
+                        SET oauth_provider = 'google', oauth_id = ?, avatar_url = ?, email_verified = 1, is_site_admin = ?
                         WHERE id = ?
-                    """, (oauth_id, new_avatar, user_dict["id"]))
+                    """, (oauth_id, new_avatar, promote_admin, user_dict["id"]))
                 else:
                     cursor.execute("""
                         UPDATE users
-                        SET oauth_provider = 'google', oauth_id = ?, email_verified = 1
+                        SET oauth_provider = 'google', oauth_id = ?, email_verified = 1, is_site_admin = ?
                         WHERE id = ?
-                    """, (oauth_id, user_dict["id"]))
+                    """, (oauth_id, promote_admin, user_dict["id"]))
                 conn.commit()
                 cursor.execute("""
                     SELECT id, email, username, phone, avatar_url, bio, is_site_admin, oauth_provider, oauth_id,
@@ -2129,6 +2181,7 @@ def handle_api_request(method, path, headers, body_bytes):
                 user_dict["email_prefs"] = parse_user_email_prefs(user_dict.get("email_prefs"))
             else:
                 is_new_google_user = True
+                grant_admin = _should_grant_site_admin_on_registration(cursor, email)
                 base_username = re.sub(r"[^a-zA-Z0-9_]", "_", str(name)).strip("_")
                 if not base_username:
                     base_username = re.sub(r"[^a-zA-Z0-9_]", "_", email.split("@")[0]).strip("_") or "user"
@@ -2143,9 +2196,9 @@ def handle_api_request(method, path, headers, body_bytes):
 
                 bio = "Google Sign-In user"
                 cursor.execute("""
-                    INSERT INTO users (email, username, password_hash, avatar_url, bio, oauth_provider, oauth_id, email_verified)
-                    VALUES (?, ?, 'OAUTH_GOOGLE', ?, ?, 'google', ?, 1)
-                """, (email, username, avatar_url, bio, oauth_id))
+                    INSERT INTO users (email, username, password_hash, avatar_url, bio, oauth_provider, oauth_id, email_verified, is_site_admin)
+                    VALUES (?, ?, 'OAUTH_GOOGLE', ?, ?, 'google', ?, 1, ?)
+                """, (email, username, avatar_url, bio, oauth_id, grant_admin))
                 user_id = cursor.lastrowid
                 ensure_user_unsubscribe_token(conn, user_id)
                 conn.commit()
@@ -2197,16 +2250,24 @@ def handle_api_request(method, path, headers, body_bytes):
         conn = get_db()
         cursor = conn.cursor()
         cursor.execute(
-            "SELECT id, username, email, is_banned FROM users WHERE LOWER(email) = LOWER(?)",
+            "SELECT id, username, email, is_banned, password_hash FROM users WHERE LOWER(email) = LOWER(?)",
             (email_in,),
         )
         u_row = cursor.fetchone()
         reset_dispatch = None
         if u_row and u_row["is_banned"] != 1:
-            tok = issue_auth_email_token(conn, u_row["id"], "PASSWORD_RESET", ttl_minutes=60)
-            conn.commit()
-            reset_url = f"{base_url}/#/reset-password?token={tok}"
-            reset_dispatch = (u_row["email"], u_row["username"], reset_url)
+            pw_h = str(u_row["password_hash"] or "")
+            u_email_l = str(u_row["email"] or "").strip().lower()
+            is_locked_persona = pw_h.startswith("LOCKED_") or (
+                not is_demo_seed_enabled()
+                and u_email_l in DEMO_PERSONA_EMAILS
+                and u_email_l not in get_configured_admin_emails()
+            )
+            if not is_locked_persona:
+                tok = issue_auth_email_token(conn, u_row["id"], "PASSWORD_RESET", ttl_minutes=60)
+                conn.commit()
+                reset_url = f"{base_url}/#/reset-password?token={tok}"
+                reset_dispatch = (u_row["email"], u_row["username"], reset_url)
         conn.close()
 
         if reset_dispatch:

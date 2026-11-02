@@ -24,7 +24,14 @@ ROOT_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 if ROOT_DIR not in sys.path:
     sys.path.insert(0, ROOT_DIR)
 
-from database import get_db, hash_password, init_db, extract_resource_text
+from database import (
+    get_db,
+    hash_password,
+    init_db,
+    extract_resource_text,
+    is_demo_seed_enabled,
+    make_locked_account_hash,
+)
 
 
 def make_text_attachment_data_uri(filename: str, text_content: str) -> str:
@@ -39,10 +46,41 @@ def seed_showcase():
     conn.row_factory = sqlite3.Row
     cur = conn.cursor()
 
-    pw_hash = hash_password("password123")
+    demo_mode = is_demo_seed_enabled()
 
-    # 1. Ensure 4 additional realistic community members exist (8 total personas)
+    # 1. Ensure non-interactive showcase author profiles exist for content foreign keys.
+    #    IMPORTANT: Unless SEED_DEMO=1 is explicitly set in local dev, showcase author rows
+    #    receive locked non-authenticatable password markers (never a known password) and
+    #    is_site_admin = 0 so nobody can ever log in as a showcase persona.
     demo_users = [
+        (
+            "maya@gooddeeds.space",
+            "Maya_Lin",
+            "555-0101",
+            "https://images.unsplash.com/photo-1534528741775-53994a69daeb?auto=format&fit=crop&w=200&q=80",
+            "Youth mentor & software engineer (28). Passionate about closing the STEM education gap and promoting community mental health wellness.",
+        ),
+        (
+            "marcus@gooddeeds.space",
+            "Marcus_Vance",
+            "555-0102",
+            "https://images.unsplash.com/photo-1507003211169-0a1dd7228f2d?auto=format&fit=crop&w=200&q=80",
+            "Neighborhood organizer and father of 3 (42). Organizing local weekend cleanups, community food pantries, and mutual aid networks.",
+        ),
+        (
+            "elena@gooddeeds.space",
+            "Elena_Wellness",
+            "555-0103",
+            "https://images.unsplash.com/photo-1573496359142-b8d87734a5a2?auto=format&fit=crop&w=200&q=80",
+            "Licensed mental health counselor (35). Hosting free weekly grounding circles and destigmatizing emotional support for all ages.",
+        ),
+        (
+            "arthur@gooddeeds.space",
+            "Arthur_74",
+            "",
+            "https://images.unsplash.com/photo-1500648767791-00dcc994a43e?auto=format&fit=crop&w=200&q=80",
+            "Retired history teacher (74) leading our senior center bootstrap pilot. Partnering with young volunteers for intergenerational friendship.",
+        ),
         (
             "priya@gooddeeds.space",
             "Dr_Priya_Nair",
@@ -74,24 +112,54 @@ def seed_showcase():
     ]
 
     for email_addr, uname, phone, avatar, bio in demo_users:
-        cur.execute("SELECT id FROM users WHERE email = ? OR username = ?", (email_addr, uname))
-        if not cur.fetchone():
+        cur.execute("SELECT id, password_hash, is_site_admin FROM users WHERE email = ? OR username = ?", (email_addr, uname))
+        existing_u = cur.fetchone()
+        if not existing_u:
+            pw_marker = (
+                hash_password("password123")
+                if demo_mode
+                else make_locked_account_hash("SHOWCASE_AUTHOR")
+            )
+            is_adm_flag = 1 if (demo_mode and email_addr == "maya@gooddeeds.space") else 0
             cur.execute(
                 """
                 INSERT INTO users (email, username, password_hash, phone, avatar_url, bio, is_site_admin, email_verified, unsubscribe_token)
-                VALUES (?, ?, ?, ?, ?, ?, 0, 1, ?)
+                VALUES (?, ?, ?, ?, ?, ?, ?, 1, ?)
                 """,
-                (email_addr, uname, pw_hash, phone, avatar, bio, secrets.token_urlsafe(24)),
+                (email_addr, uname, pw_marker, phone, avatar, bio, is_adm_flag, secrets.token_urlsafe(24)),
             )
+        elif not demo_mode:
+            if not str(existing_u["password_hash"] or "").startswith("LOCKED_") or existing_u["is_site_admin"] == 1:
+                cur.execute(
+                    "UPDATE users SET password_hash = ?, is_site_admin = 0 WHERE id = ?",
+                    (make_locked_account_hash("SHOWCASE_AUTHOR"), existing_u["id"]),
+                )
 
     user_id_by_name = {
         r["username"]: r["id"]
         for r in cur.execute("SELECT id, username FROM users").fetchall()
     }
 
-    # 2. Enrich existing Spaces (Lifewire, Medical Help, NAMI) & add 2 unjoined Spaces for Maya_Lin
-    #    so `#feed-group-select` showcases both "My Joined Spaces" and "Other Community Spaces"!
+    # 2. Ensure core & showcase Spaces exist
     space_specs = [
+        (
+            "🌱 Mental Health & Peer Listening",
+            "A safe, confidential space for emotional encouragement, stress reduction, and mental health wellness across all walks of life.",
+            ["Wellbeing & Care", "Community & Action"],
+            "https://images.unsplash.com/photo-1529156069898-49953e39b3ac?auto=format&fit=crop&w=200&q=80",
+        ),
+        (
+            "🎓 Education, Tutoring & Skill Share",
+            "Connecting experienced professionals, students, and retirees for academic tutoring, career advice, and mutual skill exchange.",
+            ["Skills & Learning", "Community & Action"],
+            "https://images.unsplash.com/photo-1517486808906-6ca8b3f04846?auto=format&fit=crop&w=200&q=80",
+        ),
+        (
+            "🤝 Community Action & Mutual Aid",
+            "Local mutual aid network organizing neighborhood cleanups, food pantries, senior center visits, and volunteer assistance.",
+            ["Community & Action", "Inspiring Stories"],
+            "https://images.unsplash.com/photo-1593113598332-cd288d649433?auto=format&fit=crop&w=200&q=80",
+        ),
         (
             "Lifewire",
             "Confidential survivor advocacy, safe housing navigation, legal aid referrals, and healing-centered support groups for families rebuilding safety and independence.",

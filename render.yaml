@@ -46,9 +46,15 @@ services:
       # Dispatches emails in a background thread so HTTP responses stay <15ms:
       - key: EMAIL_ASYNC
         value: "true"
-      # Populates rich showcase Spaces, Kudos & Posts idempotently on first boot:
+      # Optional: set ADMIN_EMAIL to automatically grant Site Admin to your account:
+      - key: ADMIN_EMAIL
+        sync: false
+      # Demo accounts with known passwords are NEVER seeded unless SEED_DEMO=1 (keep 0 in prod):
+      - key: SEED_DEMO
+        value: "0"
+      # Optional showcase content (uses locked non-loginable author profiles when SEED_DEMO=0):
       - key: SEED_SHOWCASE_DATA
-        value: "true"
+        value: "false"
       # Optional: set PUBLIC_BASE_URL=https://gooddeeds.space once custom domain DNS is live
       # (until set, GoodDeeds.space automatically uses RENDER_EXTERNAL_URL / request Host):
       - key: PUBLIC_BASE_URL

@@ -1962,27 +1962,38 @@ class TestRegressionCoverage(GoodDeedsTestCase):
 
     def test_google_analytics_integration(self):
         """
-        Verifies that Google Analytics (GA4 gtag.js) script tag is present in static/index.html,
-        and that SPA route pageview and custom event helpers (trackAnalyticsPageView, trackAnalyticsEvent)
-        are implemented and exported in static/app.js.
+        Verifies that Google Analytics (GA4 gtag.js / G-GOODDEEDS) is completely removed
+        from static/index.html, static/app.js, server.py CSP, and Caddyfile so GoodDeeds.space
+        strictly honors its 'No ad tracking' promise on the landing page.
         """
+        import server
+
         base_dir = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
         index_path = os.path.join(base_dir, "static", "index.html")
         app_path = os.path.join(base_dir, "static", "app.js")
+        caddy_path = os.path.join(base_dir, "Caddyfile")
         with open(index_path, "r", encoding="utf-8") as f:
             html = f.read()
         with open(app_path, "r", encoding="utf-8") as f:
             js = f.read()
+        with open(caddy_path, "r", encoding="utf-8") as f:
+            caddy = f.read()
 
-        self.assertIn("https://www.googletagmanager.com/gtag/js", html)
-        self.assertIn("window.GA_MEASUREMENT_ID", html)
-        self.assertIn("gtag('config'", html)
+        self.assertIn("No ad tracking", html)
+        self.assertNotIn("googletagmanager.com", html)
+        self.assertNotIn("google-analytics.com", html)
+        self.assertNotIn("G-GOODDEEDS", html)
+        self.assertNotIn("GA_MEASUREMENT_ID", html)
+        self.assertNotIn("gtag(", html)
 
-        self.assertIn("function trackAnalyticsPageView(", js)
-        self.assertIn("function trackAnalyticsEvent(", js)
-        self.assertIn("window.trackAnalyticsPageView = trackAnalyticsPageView", js)
-        self.assertIn("window.trackAnalyticsEvent = trackAnalyticsEvent", js)
-        self.assertIn("trackAnalyticsPageView(path)", js)
+        self.assertNotIn("trackAnalyticsPageView", js)
+        self.assertNotIn("trackAnalyticsEvent", js)
+        self.assertNotIn("G-GOODDEEDS", js)
+
+        self.assertNotIn("googletagmanager.com", server.CONTENT_SECURITY_POLICY)
+        self.assertNotIn("google-analytics.com", server.CONTENT_SECURITY_POLICY)
+        self.assertNotIn("googletagmanager.com", caddy)
+        self.assertNotIn("google-analytics.com", caddy)
 
     def test_comment_and_group_chat_deletion_integration(self):
         """
@@ -5470,6 +5481,224 @@ class TestRegressionCoverage(GoodDeedsTestCase):
                         self.assertIn(secret_err_text, captured_stderr.getvalue())
             finally:
                 httpd.shutdown()
+
+    def test_demo_seeding_gate_admin_bootstrap_ga_removal_and_showcase_lock(self):
+        """
+        Regression test for the 3 remaining security/privacy audit items:
+        1. Demo accounts & Instant Demo Login buttons:
+           - seed_data runs ONLY when SEED_DEMO=1.
+           - When SEED_DEMO!=1, pre-existing @gooddeeds.space demo accounts are auto-locked
+             (LOCKED_DEMO_ACCOUNT$...), Maya's is_site_admin is revoked to 0, active sessions
+             and reset tokens are invalidated, login returns 401, forgot_password issues no token,
+             and reserved demo emails cannot be newly registered.
+           - Site Admin bootstrap supports ADMIN_EMAIL env var and falls back to the first real
+             user signup when ADMIN_EMAIL is unset and SEED_DEMO!=1.
+           - #demo-login-banner is hidden by default in static/index.html and presetLogin() is
+             gated on demoLoginEnabled && isLocalDevHostname() in static/app.js.
+        2. Google Analytics removed while preserving 'No ad tracking' (also tested above).
+        3. Showcase seeding (scripts/seed_demo_showcase.py & render.yaml):
+           - render.yaml sets SEED_DEMO='0' and SEED_SHOWCASE_DATA='false'.
+           - Running seed_showcase() with SEED_DEMO=0 creates content with locked non-authenticatable
+             showcase author profiles (LOCKED_SHOWCASE_AUTHOR$...) and is_site_admin=0.
+        """
+        from unittest.mock import patch
+        import tempfile
+        import shutil
+        from scripts import seed_demo_showcase
+
+        base_dir = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+
+        # Verify static/index.html, static/app.js, and render.yaml static invariants
+        with open(os.path.join(base_dir, "static", "index.html"), "r", encoding="utf-8") as f:
+            html = f.read()
+        with open(os.path.join(base_dir, "static", "app.js"), "r", encoding="utf-8") as f:
+            js = f.read()
+        with open(os.path.join(base_dir, "render.yaml"), "r", encoding="utf-8") as f:
+            render_yaml = f.read()
+
+        self.assertIn('id="demo-login-banner" hidden class="hidden', html)
+        self.assertNotIn('placeholder="maya@gooddeeds.space"', html)
+        self.assertIn('placeholder="you@example.com"', html)
+        self.assertIn("function isLocalDevHostname()", js)
+        self.assertIn("function syncDemoLoginBanner()", js)
+        self.assertIn("if (!demoLoginEnabled || !isLocalDevHostname())", js)
+        self.assertIn('key: SEED_DEMO\n        value: "0"', render_yaml)
+        self.assertIn('key: SEED_SHOWCASE_DATA\n        value: "false"', render_yaml)
+
+        orig_db_path = self.database.DB_PATH
+        tmp_dir = tempfile.mkdtemp()
+        try:
+            # --- Case A: Fresh empty DB with SEED_DEMO=0 and ADMIN_EMAIL unset ---
+            fresh_db = os.path.join(tmp_dir, "fresh_prod.db")
+            self.database.DB_PATH = fresh_db
+            with patch.dict(os.environ, {"DB_PATH": fresh_db, "SEED_DEMO": "0", "ADMIN_EMAIL": ""}, clear=False):
+                self.database.init_db()
+                conn = self.database.get_db()
+                user_count = conn.execute("SELECT COUNT(*) FROM users").fetchone()[0]
+                conn.close()
+                self.assertEqual(user_count, 0, "Empty DB must NOT seed Maya/Marcus/Elena/Arthur when SEED_DEMO=0")
+
+                st_stats, _, body_stats = self.make_request("GET", "/api/stats")
+                self.assertEqual(st_stats, 200)
+                self.assertFalse(body_stats.get("demo_login_enabled"))
+                self.assertFalse(body_stats.get("stats", {}).get("demo_login_enabled"))
+
+                # Reserved demo persona email cannot be registered when SEED_DEMO=0
+                st_maya_reg, _, _ = self.make_request(
+                    "POST",
+                    "/api/auth/signup",
+                    body={"email": "maya@gooddeeds.space", "username": "MayaClaim", "password": "StrongPassword123!"},
+                )
+                self.assertEqual(st_maya_reg, 403)
+
+                # First real signup becomes Site Admin when ADMIN_EMAIL is unset and 0 admins exist
+                st_u1, _, body_u1 = self.make_request(
+                    "POST",
+                    "/api/auth/signup",
+                    body={"email": "firstreal@example.com", "username": "FirstFounder", "password": "StrongPassword123!"},
+                )
+                self.assertEqual(st_u1, 201)
+                self.assertEqual(body_u1["user"]["is_site_admin"], 1)
+
+                # Second real signup does NOT become Site Admin
+                st_u2, _, body_u2 = self.make_request(
+                    "POST",
+                    "/api/auth/signup",
+                    body={"email": "secondreal@example.com", "username": "SecondMember", "password": "StrongPassword123!"},
+                )
+                self.assertEqual(st_u2, 201)
+                self.assertEqual(body_u2["user"]["is_site_admin"], 0)
+
+            # --- Case B: ADMIN_EMAIL explicitly configured ---
+            admin_env_db = os.path.join(tmp_dir, "admin_env_prod.db")
+            self.database.DB_PATH = admin_env_db
+            with patch.dict(
+                os.environ,
+                {"DB_PATH": admin_env_db, "SEED_DEMO": "0", "ADMIN_EMAIL": "designated.admin@example.com"},
+                clear=False,
+            ):
+                self.database.init_db()
+                self.handlers._auth_rate_limit_timestamps.clear()
+
+                # Non-matching first signup is NOT granted Site Admin when ADMIN_EMAIL is set
+                st_early, _, body_early = self.make_request(
+                    "POST",
+                    "/api/auth/signup",
+                    body={"email": "earlybird@example.com", "username": "EarlyBird", "password": "StrongPassword123!"},
+                )
+                self.assertEqual(st_early, 201)
+                self.assertEqual(body_early["user"]["is_site_admin"], 0)
+
+                # Matching ADMIN_EMAIL signup IS granted Site Admin
+                st_desig, _, body_desig = self.make_request(
+                    "POST",
+                    "/api/auth/signup",
+                    body={"email": "designated.admin@example.com", "username": "DesignatedAdmin", "password": "StrongPassword123!"},
+                )
+                self.assertEqual(st_desig, 201)
+                self.assertEqual(body_desig["user"]["is_site_admin"], 1)
+
+            # --- Case C: Existing live DB previously seeded with password123 demo accounts ---
+            legacy_db = os.path.join(tmp_dir, "legacy_seeded.db")
+            self.database.DB_PATH = legacy_db
+            with patch.dict(os.environ, {"DB_PATH": legacy_db, "SEED_DEMO": "1", "ADMIN_EMAIL": ""}, clear=False):
+                self.database.init_db()
+                self.handlers._auth_rate_limit_timestamps.clear()
+                st_login_dev, _, body_login_dev = self.make_request(
+                    "POST",
+                    "/api/auth/login",
+                    body={"email": "maya@gooddeeds.space", "password": "password123"},
+                )
+                self.assertEqual(st_login_dev, 200)
+                maya_dev_token = body_login_dev["token"]
+                self.assertEqual(body_login_dev["user"]["is_site_admin"], 1)
+
+            # Rebooting with SEED_DEMO=0 auto-locks demo personas, revokes Maya's admin & session
+            with patch.dict(os.environ, {"DB_PATH": legacy_db, "SEED_DEMO": "0", "ADMIN_EMAIL": ""}, clear=False):
+                self.database.init_db()
+                self.handlers._auth_rate_limit_timestamps.clear()
+
+                conn = self.database.get_db()
+                demo_rows = conn.execute(
+                    "SELECT email, password_hash, is_site_admin FROM users WHERE email LIKE '%@gooddeeds.space'"
+                ).fetchall()
+                conn.close()
+                self.assertGreaterEqual(len(demo_rows), 4)
+                for r in demo_rows:
+                    self.assertTrue(
+                        str(r["password_hash"]).startswith("LOCKED_DEMO_ACCOUNT$"),
+                        f"Expected {r['email']} to be locked, got {r['password_hash']}",
+                    )
+                    self.assertEqual(r["is_site_admin"], 0, f"Expected {r['email']} is_site_admin=0")
+                    self.assertFalse(self.database.verify_password("password123", r["password_hash"]))
+
+                # Maya's previous session token is revoked
+                st_me, _, _ = self.make_request(
+                    "GET", "/api/auth/me", headers={"Authorization": f"Bearer {maya_dev_token}"}
+                )
+                self.assertEqual(st_me, 401)
+
+                # Password login as Maya fails with 401
+                st_maya_prod, _, _ = self.make_request(
+                    "POST",
+                    "/api/auth/login",
+                    body={"email": "maya@gooddeeds.space", "password": "password123"},
+                )
+                self.assertEqual(st_maya_prod, 401)
+
+                # Forgot-password for locked Maya does NOT issue any reset token
+                st_fp, _, _ = self.make_request(
+                    "POST", "/api/auth/forgot_password", body={"email": "maya@gooddeeds.space"}
+                )
+                self.assertEqual(st_fp, 200)
+                conn = self.database.get_db()
+                tok_cnt = conn.execute(
+                    """
+                    SELECT COUNT(*) FROM auth_email_tokens t
+                    JOIN users u ON u.id = t.user_id
+                    WHERE u.email = 'maya@gooddeeds.space' AND t.used = 0
+                    """
+                ).fetchone()[0]
+                conn.close()
+                self.assertEqual(tok_cnt, 0)
+
+            # --- Case D: Showcase seeding with SEED_DEMO=0 creates content without known passwords ---
+            showcase_db = os.path.join(tmp_dir, "showcase_prod.db")
+            self.database.DB_PATH = showcase_db
+            with patch.dict(os.environ, {"DB_PATH": showcase_db, "SEED_DEMO": "0", "ADMIN_EMAIL": ""}, clear=False):
+                seed_demo_showcase.seed_showcase()
+                self.handlers._auth_rate_limit_timestamps.clear()
+
+                conn = self.database.get_db()
+                s_users = conn.execute("SELECT email, password_hash, is_site_admin FROM users").fetchall()
+                post_cnt = conn.execute("SELECT COUNT(*) FROM feed_items WHERE item_type = 'POST'").fetchone()[0]
+                kudos_cnt = conn.execute("SELECT COUNT(*) FROM feed_items WHERE item_type = 'KUDOS'").fetchone()[0]
+                group_cnt = conn.execute("SELECT COUNT(*) FROM groups").fetchone()[0]
+                conn.close()
+
+                self.assertEqual(len(s_users), 8)
+                self.assertGreater(post_cnt, 0)
+                self.assertGreater(kudos_cnt, 0)
+                self.assertGreaterEqual(group_cnt, 8)
+                for su in s_users:
+                    self.assertTrue(
+                        str(su["password_hash"]).startswith("LOCKED_"),
+                        f"Showcase user {su['email']} must have locked hash, got {su['password_hash']}",
+                    )
+                    self.assertEqual(su["is_site_admin"], 0)
+                    self.assertFalse(self.database.verify_password("password123", su["password_hash"]))
+
+                for probe_email in ("maya@gooddeeds.space", "priya@gooddeeds.space"):
+                    st_probe, _, _ = self.make_request(
+                        "POST",
+                        "/api/auth/login",
+                        body={"email": probe_email, "password": "password123"},
+                    )
+                    self.assertEqual(st_probe, 401)
+        finally:
+            self.database.DB_PATH = orig_db_path
+            shutil.rmtree(tmp_dir, ignore_errors=True)
+
 
 
 
