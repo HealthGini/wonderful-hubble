@@ -1173,9 +1173,27 @@ def init_db():
         token TEXT PRIMARY KEY,
         user_id INTEGER NOT NULL,
         created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+        expires_at DATETIME,
         FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
     )
     """)
+    try:
+        cursor.execute("ALTER TABLE sessions ADD COLUMN expires_at DATETIME")
+    except Exception:
+        pass
+    try:
+        cursor.execute("""
+            UPDATE sessions
+            SET expires_at = datetime(COALESCE(created_at, CURRENT_TIMESTAMP), '+30 days')
+            WHERE expires_at IS NULL OR TRIM(expires_at) = ''
+        """)
+        cursor.execute("""
+            DELETE FROM sessions
+            WHERE (expires_at IS NOT NULL AND expires_at <= datetime('now'))
+               OR created_at <= datetime('now', '-30 days')
+        """)
+    except Exception:
+        pass
 
     cursor.execute("""
     CREATE TABLE IF NOT EXISTS groups (
@@ -1622,6 +1640,22 @@ def init_db():
             if cleaned_c and cleaned_c != r["content"]:
                 cursor.execute("UPDATE feed_items SET content = ? WHERE id = ?", (cleaned_c, r["id"]))
         cursor.execute("UPDATE users SET email_verified = 1 WHERE email IN ('maya@gooddeeds.space', 'marcus@gooddeeds.space', 'elena@gooddeeds.space', 'arthur@gooddeeds.space') AND COALESCE(email_verified, 0) = 0")
+    except Exception:
+        pass
+
+    # One-time security migration: rotate/invalidate any pre-existing unused reset/verification tokens
+    try:
+        cursor.execute("""
+            CREATE TABLE IF NOT EXISTS schema_migrations (
+                key TEXT PRIMARY KEY,
+                applied_at DATETIME DEFAULT CURRENT_TIMESTAMP
+            )
+        """)
+        mig_key = "2026_11_02_rotate_auth_email_tokens_v1"
+        cursor.execute("SELECT 1 FROM schema_migrations WHERE key = ?", (mig_key,))
+        if not cursor.fetchone():
+            cursor.execute("UPDATE auth_email_tokens SET used = 1 WHERE used = 0")
+            cursor.execute("INSERT INTO schema_migrations (key) VALUES (?)", (mig_key,))
     except Exception:
         pass
 

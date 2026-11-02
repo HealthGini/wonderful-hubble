@@ -2895,7 +2895,7 @@ function handleKudosRecipientSearch(query) {
       <img src="${u.avatar_url}" alt="${u.username}" class="w-8 h-8 rounded-full object-cover border border-slate-200 shrink-0">
       <div class="truncate text-left flex-1">
         <strong class="text-sm font-black text-slate-900 block truncate">${u.username}</strong>
-        <span class="text-xs font-semibold text-amber-700 block truncate">${u.email || ''}</span>
+        ${u.email ? `<span class="text-xs font-semibold text-amber-700 block truncate">${u.email}</span>` : ""}
       </div>
     </div>
   `).join("");
@@ -5541,7 +5541,9 @@ async function loadOutbox() {
       });
     }).join("");
     hydrateOutboxIframes(container);
-  } catch (err) {}
+  } catch (err) {
+    container.innerHTML = `<p class="text-amber-900 font-bold text-center py-8 text-base">🔒 Site Admin privileges are required to view the Email Outbox Audit Log.</p>`;
+  }
 }
 
 async function loadEmailTemplatesGallery(forceReload = false) {
@@ -5606,11 +5608,13 @@ async function handleSupportSubmit(e) {
     document.getElementById("supp-subject").value = "";
     document.getElementById("supp-message").value = "";
     showToast("✅ " + data.message);
-    setTimeout(() => {
-      if (confirm("Inquiry submitted! Would you like to view the simulated support alert in the Email Outbox Audit Log?")) {
-        navigateTo("/outbox");
-      }
-    }, 500);
+    if (currentUser && currentUser.is_site_admin) {
+      setTimeout(() => {
+        if (confirm("Inquiry submitted! Would you like to view the simulated support alert in the Email Outbox Audit Log?")) {
+          navigateTo("/outbox");
+        }
+      }, 500);
+    }
   } catch (err) {
     showToast("❌ " + err.message);
   }
@@ -5753,7 +5757,7 @@ function handleInviteAutocomplete(query) {
       <img src="${u.avatar_url}" alt="${u.username}" class="w-8 h-8 rounded-full object-cover border border-slate-200 shrink-0">
       <div class="truncate text-left flex-1">
         <strong class="text-sm font-black text-slate-900 block truncate">${u.username}</strong>
-        <span class="text-xs font-semibold text-indigo-600 block truncate">${u.email || ''}</span>
+        ${u.email ? `<span class="text-xs font-semibold text-indigo-600 block truncate">${u.email}</span>` : ""}
       </div>
     </div>
   `).join("");

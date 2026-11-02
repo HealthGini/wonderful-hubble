@@ -219,14 +219,20 @@ class TestRegressionCoverage(GoodDeedsTestCase):
         Tests GET /api/groups/joined?target_user_id=<id> returns mutual groups shared with target user.
         Tests frontend autocomplete attributes and container id across static/index.html and static/app.js.
         """
-        status, _, body = self.make_request("GET", "/api/users")
+        # Unauthenticated GET /api/users is rejected
+        status_anon, _, _ = self.make_request("GET", "/api/users")
+        self.assertEqual(status_anon, 401)
+
+        token = self.get_token("maya@gooddeeds.space")
+        headers = self.get_auth_headers(token)
+
+        status, _, body = self.make_request("GET", "/api/users", headers=headers)
         self.assertEqual(status, 200)
         self.assertIn("users", body)
         self.assertIsInstance(body["users"], list)
         self.assertGreater(len(body["users"]), 0)
-
-        token = self.get_token("maya@gooddeeds.space")
-        headers = self.get_auth_headers(token)
+        for u in body["users"]:
+            self.assertNotIn("email", u)
 
         status, _, body = self.make_request("GET", "/api/groups/joined?target_user_id=2", headers=headers)
         self.assertEqual(status, 200)
@@ -836,8 +842,12 @@ class TestRegressionCoverage(GoodDeedsTestCase):
         # 6. Verify valid token flow (mocked urllib.request.urlopen)
         import json
         from unittest.mock import patch, MagicMock
+        mock_client_id = "unit-test-google-client.apps.googleusercontent.com"
         mock_payload = {
+            "aud": mock_client_id,
+            "iss": "https://accounts.google.com",
             "email": "oauth_demo@gooddeeds.space",
+            "email_verified": "true",
             "sub": "google_sub_888",
             "name": "OAuth Demo",
             "picture": "https://example.com/demo.jpg"
@@ -846,22 +856,23 @@ class TestRegressionCoverage(GoodDeedsTestCase):
         mock_resp.read.return_value = json.dumps(mock_payload).encode("utf-8")
         mock_resp.__enter__.return_value = mock_resp
 
-        with patch("urllib.request.urlopen", return_value=mock_resp):
-            status, _, body = self.make_request("POST", "/api/auth/oauth/google", body={"credential": "valid_mock_token"})
-            self.assertEqual(status, 200)
-            self.assertTrue(body.get("success"))
-            self.assertIn("token", body)
-            self.assertEqual(body["user"]["email"], "oauth_demo@gooddeeds.space")
-            self.assertEqual(body["user"]["username"], "OAuth_Demo")
-            self.assertEqual(body["user"]["oauth_provider"], "google")
-            self.assertEqual(body["user"]["oauth_id"], "google_sub_888")
+        with patch.dict(os.environ, {"GOOGLE_CLIENT_ID": mock_client_id}, clear=False):
+            with patch("urllib.request.urlopen", return_value=mock_resp):
+                status, _, body = self.make_request("POST", "/api/auth/oauth/google", body={"credential": "valid_mock_token"})
+                self.assertEqual(status, 200)
+                self.assertTrue(body.get("success"))
+                self.assertIn("token", body)
+                self.assertEqual(body["user"]["email"], "oauth_demo@gooddeeds.space")
+                self.assertEqual(body["user"]["username"], "OAuth_Demo")
+                self.assertEqual(body["user"]["oauth_provider"], "google")
+                self.assertEqual(body["user"]["oauth_id"], "google_sub_888")
 
-            # Second call for existing user login
-            status, _, body = self.make_request("POST", "/api/auth/oauth/google", body={"credential": "valid_mock_token"})
-            self.assertEqual(status, 200)
-            self.assertTrue(body.get("success"))
-            self.assertEqual(body["user"]["email"], "oauth_demo@gooddeeds.space")
-            self.assertEqual(body["user"]["oauth_id"], "google_sub_888")
+                # Second call for existing user login
+                status, _, body = self.make_request("POST", "/api/auth/oauth/google", body={"credential": "valid_mock_token"})
+                self.assertEqual(status, 200)
+                self.assertTrue(body.get("success"))
+                self.assertEqual(body["user"]["email"], "oauth_demo@gooddeeds.space")
+                self.assertEqual(body["user"]["oauth_id"], "google_sub_888")
 
     def test_option_a_visual_hierarchy(self):
         """Verifies Option A (Distinct Visual Hierarchy) across static/index.html."""
@@ -5245,5 +5256,220 @@ class TestRegressionCoverage(GoodDeedsTestCase):
         png_b64 = base64.b64encode(png_bytes).decode("ascii")
         png_uri = f"data:image/png;name=banner.png;base64,{png_b64}"
         self.assertEqual(database.extract_resource_text(png_uri), "banner.png banner png")
+
+    def test_security_hardening_outbox_oauth_users_sessions_headers_cors_and_bind(self):
+        """
+        Comprehensive security regression test covering all 7 audit findings:
+        1. GET /api/outbox (/api/emails) & GET /api/support require Site Admin (401/403),
+           redact active auth tokens in HTTP responses, and rotate pre-existing tokens on migration.
+        2. Google Sign-In enforces GOOGLE_CLIENT_ID aud match and email_verified == 'true'.
+        3. GET /api/users requires authentication and never exposes user email addresses.
+        4. Sessions persist expires_at (30 days) and enforce age/expiry during token lookup.
+        5. HTTP security headers (CSP, HSTS, X-Content-Type-Options, X-Frame-Options) in both
+           server.py and Caddyfile, plus strict own-origin CORS (no wildcard '*').
+        6. Unhandled server exceptions return generic error messages without leaking str(e).
+        7. server.py defaults to binding 127.0.0.1 (not 0.0.0.0) behind Caddy.
+        """
+        import importlib
+        import io
+        import json
+        import threading
+        import urllib.error
+        import urllib.request
+        from http.server import ThreadingHTTPServer
+        from unittest.mock import MagicMock, patch
+        import server
+
+        maya_tok = self.get_token("maya@gooddeeds.space")
+        maya_hdr = self.get_auth_headers(maya_tok)
+        arthur_tok = self.get_token("arthur@gooddeeds.space")
+        arthur_hdr = self.get_auth_headers(arthur_tok)
+
+        # --- 1. Outbox & Support RBAC + Reset Token Redaction + Token Rotation Migration ---
+        self.make_request("POST", "/api/auth/forgot_password", body={"email": "arthur@gooddeeds.space"})
+
+        for protected_path in ("/api/outbox", "/api/emails", "/api/support", "/api/email/status"):
+            st_anon, _, _ = self.make_request("GET", protected_path)
+            self.assertEqual(st_anon, 401, f"{protected_path} must reject unauthenticated callers with 401")
+            st_non_admin, _, _ = self.make_request("GET", protected_path, headers=arthur_hdr)
+            self.assertEqual(st_non_admin, 403, f"{protected_path} must reject non-admin callers with 403")
+
+        st_admin_outbox, _, admin_outbox_body = self.make_request("GET", "/api/outbox", headers=maya_hdr)
+        self.assertEqual(st_admin_outbox, 200)
+        serialized_outbox = json.dumps(admin_outbox_body)
+        self.assertIn("reset-password?token=[REDACTED]", serialized_outbox)
+
+        # Verify one-time token rotation migration invalidates pre-existing unused reset tokens
+        conn = self.database.get_db()
+        conn.execute("DELETE FROM schema_migrations WHERE key = '2026_11_02_rotate_auth_email_tokens_v1'")
+        conn.execute(
+            "INSERT INTO auth_email_tokens (token, user_id, token_type, expires_at, used) VALUES (?, 4, 'PASSWORD_RESET', '2099-01-01 00:00:00', 0)",
+            ("legacy_leaked_reset_token_abc",),
+        )
+        conn.commit()
+        conn.close()
+        self.database.init_db()
+        st_rot, _, _ = self.make_request(
+            "POST",
+            "/api/auth/reset_password",
+            body={"token": "legacy_leaked_reset_token_abc", "new_password": "HackedPassword99!"},
+        )
+        self.assertEqual(st_rot, 400)
+
+        # --- 2. Google OAuth aud & email_verified == "true" checks ---
+        real_cid = "gooddeeds-prod-client.apps.googleusercontent.com"
+
+        def _mock_google_resp(payload_dict):
+            m = MagicMock()
+            m.read.return_value = json.dumps(payload_dict).encode("utf-8")
+            m.__enter__.return_value = m
+            return m
+
+        # Missing GOOGLE_CLIENT_ID rejects token
+        with patch.dict(os.environ, {"GOOGLE_CLIENT_ID": "", "GOOGLE_OAUTH_CLIENT_ID": ""}, clear=False):
+            st_no_cid, _, _ = self.make_request("POST", "/api/auth/oauth/google", body={"credential": "tok_any"})
+            self.assertEqual(st_no_cid, 401)
+
+        with patch.dict(os.environ, {"GOOGLE_CLIENT_ID": real_cid}, clear=False):
+            # Wrong aud -> 401
+            with patch("urllib.request.urlopen", return_value=_mock_google_resp({
+                "aud": "other-app-client-id.apps.googleusercontent.com",
+                "iss": "https://accounts.google.com",
+                "email": "maya@gooddeeds.space",
+                "email_verified": "true",
+                "sub": "attacker_sub_1",
+            })):
+                st_bad_aud, _, _ = self.make_request("POST", "/api/auth/oauth/google", body={"credential": "tok_bad_aud"})
+                self.assertEqual(st_bad_aud, 401)
+
+            # Unverified email -> 401 (blocks account-linking takeover)
+            for unverified_val in ("false", False, None, ""):
+                with patch("urllib.request.urlopen", return_value=_mock_google_resp({
+                    "aud": real_cid,
+                    "iss": "https://accounts.google.com",
+                    "email": "maya@gooddeeds.space",
+                    "email_verified": unverified_val,
+                    "sub": "attacker_sub_2",
+                })):
+                    st_unv, _, _ = self.make_request("POST", "/api/auth/oauth/google", body={"credential": "tok_unverified"})
+                    self.assertEqual(st_unv, 401)
+
+        # --- 3. GET /api/users requires auth & drops email; /api/users/<email> blocked ---
+        st_u_anon, _, _ = self.make_request("GET", "/api/users")
+        self.assertEqual(st_u_anon, 401)
+
+        st_u_auth, _, u_body = self.make_request("GET", "/api/users", headers=arthur_hdr)
+        self.assertEqual(st_u_auth, 200)
+        self.assertTrue(len(u_body["users"]) >= 4)
+        for usr in u_body["users"]:
+            self.assertNotIn("email", usr)
+            self.assertIn("username", usr)
+
+        st_enum, _, _ = self.make_request("GET", "/api/users/maya@gooddeeds.space")
+        self.assertEqual(st_enum, 404)
+
+        # --- 4. Session expiration (30 days) ---
+        fresh_tok = self.get_token("arthur@gooddeeds.space")
+        conn = self.database.get_db()
+        sess_row = conn.execute("SELECT created_at, expires_at FROM sessions WHERE token = ?", (fresh_tok,)).fetchone()
+        self.assertIsNotNone(sess_row)
+        self.assertTrue(bool(sess_row["expires_at"]))
+
+        # Expire via expires_at in the past -> rejected and purged on lookup
+        conn.execute("UPDATE sessions SET expires_at = '2020-01-01 00:00:00' WHERE token = ?", (fresh_tok,))
+        conn.commit()
+        conn.close()
+        st_exp1, _, _ = self.make_request("GET", "/api/auth/me", headers=self.get_auth_headers(fresh_tok))
+        self.assertEqual(st_exp1, 401)
+
+        # Legacy row with NULL expires_at and created_at > 30 days ago -> also rejected
+        conn = self.database.get_db()
+        conn.execute(
+            "INSERT INTO sessions (token, user_id, created_at, expires_at) VALUES (?, 4, datetime('now', '-31 days'), NULL)",
+            ("legacy_old_session_tok",),
+        )
+        conn.commit()
+        conn.close()
+        st_exp2, _, _ = self.make_request("GET", "/api/auth/me", headers=self.get_auth_headers("legacy_old_session_tok"))
+        self.assertEqual(st_exp2, 401)
+
+        # --- 5, 6, 7. Security Headers, Origin-Restricted CORS, Generic 500s, Caddyfile & 127.0.0.1 Bind ---
+        with patch.dict(os.environ, {"HOST": ""}, clear=False):
+            os.environ.pop("HOST", None)
+            os.environ["GOODDEEDS_SKIP_DOTENV"] = "1"
+            try:
+                importlib.reload(server)
+                self.assertEqual(server.HOST, "127.0.0.1")
+            finally:
+                os.environ.pop("GOODDEEDS_SKIP_DOTENV", None)
+
+        base_dir = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+        caddyfile_path = os.path.join(base_dir, "Caddyfile")
+        self.assertTrue(os.path.exists(caddyfile_path))
+        with open(caddyfile_path, "r", encoding="utf-8") as cf:
+            caddy_txt = cf.read()
+        for expected_directive in (
+            "Strict-Transport-Security",
+            "Content-Security-Policy",
+            "X-Content-Type-Options \"nosniff\"",
+            "X-Frame-Options \"DENY\"",
+            "reverse_proxy 127.0.0.1:8080",
+        ):
+            self.assertIn(expected_directive, caddy_txt)
+
+        with ThreadingHTTPServer(("127.0.0.1", 0), server.GoodDeedsServerHandler) as httpd:
+            t = threading.Thread(target=httpd.serve_forever, daemon=True)
+            t.start()
+            try:
+                port = httpd.server_port
+                # Trusted Origin gets exact Access-Control-Allow-Origin + all security headers
+                req_ok = urllib.request.Request(
+                    f"http://127.0.0.1:{port}/api/stats",
+                    headers={"Origin": "https://gooddeeds.space"},
+                )
+                with urllib.request.urlopen(req_ok, timeout=5) as resp_ok:
+                    hdrs = resp_ok.headers
+                    self.assertEqual(hdrs.get("Access-Control-Allow-Origin"), "https://gooddeeds.space")
+                    self.assertNotEqual(hdrs.get("Access-Control-Allow-Origin"), "*")
+                    self.assertIn("default-src 'self'", hdrs.get("Content-Security-Policy", ""))
+                    self.assertIn("max-age=31536000", hdrs.get("Strict-Transport-Security", ""))
+                    self.assertEqual(hdrs.get("X-Content-Type-Options"), "nosniff")
+                    self.assertEqual(hdrs.get("X-Frame-Options"), "DENY")
+
+                # Untrusted Origin gets NO Access-Control-Allow-Origin header
+                req_evil = urllib.request.Request(
+                    f"http://127.0.0.1:{port}/api/stats",
+                    headers={"Origin": "https://evil.example.com"},
+                )
+                with urllib.request.urlopen(req_evil, timeout=5) as resp_evil:
+                    self.assertIsNone(resp_evil.headers.get("Access-Control-Allow-Origin"))
+
+                # Untrusted OPTIONS preflight is rejected with 403
+                req_opt = urllib.request.Request(
+                    f"http://127.0.0.1:{port}/api/stats",
+                    method="OPTIONS",
+                    headers={"Origin": "https://evil.example.com"},
+                )
+                with self.assertRaises(urllib.error.HTTPError) as opt_ctx:
+                    urllib.request.urlopen(req_opt, timeout=5)
+                self.assertEqual(opt_ctx.exception.code, 403)
+                opt_ctx.exception.close()
+
+                # Unhandled exception in API handler must NOT leak str(e) to client
+                secret_err_text = "SUPER_SECRET_SQL_PATH_/var/data/gooddeeds.db"
+                with patch.object(server, "handle_api_request", side_effect=RuntimeError(secret_err_text)):
+                    with patch("sys.stderr", new_callable=io.StringIO) as captured_stderr:
+                        req_boom = urllib.request.Request(f"http://127.0.0.1:{port}/api/stats")
+                        with self.assertRaises(urllib.error.HTTPError) as boom_ctx:
+                            urllib.request.urlopen(req_boom, timeout=5)
+                        self.assertEqual(boom_ctx.exception.code, 500)
+                        err_payload = boom_ctx.exception.read().decode("utf-8")
+                        boom_ctx.exception.close()
+                        self.assertNotIn(secret_err_text, err_payload)
+                        self.assertEqual(json.loads(err_payload), {"success": False, "error": "Internal Server Error"})
+                        self.assertIn(secret_err_text, captured_stderr.getvalue())
+            finally:
+                httpd.shutdown()
+
 
 

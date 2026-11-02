@@ -175,16 +175,53 @@ def get_fido_server(headers):
     rp = PublicKeyCredentialRpEntity(id=rp_id, name="GoodDeeds.space")
     return Fido2Server(rp)
 
+SESSION_TTL_DAYS = 30
+
+
+def get_session_ttl_days() -> int:
+    """Returns configured session lifetime in days (defaults to 30 days)."""
+    try:
+        val = int(os.environ.get("SESSION_TTL_DAYS", SESSION_TTL_DAYS))
+        return val if val > 0 else SESSION_TTL_DAYS
+    except ValueError:
+        return SESSION_TTL_DAYS
+
+
+def create_session(cursor, user_id: int, ttl_days: int = None) -> str:
+    """Creates a cryptographically strong session token with an explicit UTC expiration timestamp."""
+    ttl = ttl_days if (ttl_days is not None and ttl_days > 0) else get_session_ttl_days()
+    now_utc = datetime.datetime.now(datetime.timezone.utc).replace(tzinfo=None)
+    created_str = now_utc.strftime("%Y-%m-%d %H:%M:%S")
+    expires_str = (now_utc + datetime.timedelta(days=ttl)).strftime("%Y-%m-%d %H:%M:%S")
+    min_created_str = (now_utc - datetime.timedelta(days=ttl)).strftime("%Y-%m-%d %H:%M:%S")
+    token = secrets.token_urlsafe(32)
+    cursor.execute(
+        """
+        DELETE FROM sessions
+        WHERE user_id = ?
+          AND ((expires_at IS NOT NULL AND TRIM(expires_at) != '' AND expires_at <= ?)
+               OR created_at <= ?)
+        """,
+        (int(user_id), created_str, min_created_str),
+    )
+    cursor.execute(
+        "INSERT INTO sessions (token, user_id, created_at, expires_at) VALUES (?, ?, ?, ?)",
+        (token, int(user_id), created_str, expires_str),
+    )
+    return token
+
+
 def get_user_from_token(headers):
     """
-    Authenticates a user based on the Bearer token in the Authorization header.
+    Authenticates a user based on the Bearer token in the Authorization header,
+    enforcing session expiration (default 30 days).
 
     Args:
         headers: A dictionary-like object containing request headers.
 
     Returns:
         dict: A dictionary containing user details (id, email, username, phone, avatar_url, bio)
-              if authentication is successful; None otherwise.
+              if authentication is successful and session is not expired; None otherwise.
     """
     auth = ""
     if hasattr(headers, "get"):
@@ -197,24 +234,53 @@ def get_user_from_token(headers):
     if not auth or not auth.startswith("Bearer "):
         return None
     token = auth.split(" ")[1].strip()
+    if not token:
+        return None
+    ttl_days = get_session_ttl_days()
+    now_utc = datetime.datetime.now(datetime.timezone.utc).replace(tzinfo=None)
+    now_utc_str = now_utc.strftime("%Y-%m-%d %H:%M:%S")
+    min_created_str = (now_utc - datetime.timedelta(days=ttl_days)).strftime("%Y-%m-%d %H:%M:%S")
+
     conn = get_db()
     cursor = conn.cursor()
     cursor.execute("""
-        SELECT u.id, u.email, u.username, u.phone, u.avatar_url, u.bio, u.is_site_admin, u.is_banned, u.oauth_provider, u.oauth_id,
+        SELECT s.created_at as session_created_at, s.expires_at as session_expires_at,
+               u.id, u.email, u.username, u.phone, u.avatar_url, u.bio, u.is_site_admin, u.is_banned, u.oauth_provider, u.oauth_id,
                COALESCE(u.email_verified, 0) as email_verified, u.email_prefs
         FROM sessions s
         JOIN users u ON s.user_id = u.id
         WHERE s.token = ?
     """, (token,))
     row = cursor.fetchone()
+    if not row:
+        conn.close()
+        return None
+
+    exp_str = str(row["session_expires_at"] or "").strip()
+    created_str = str(row["session_created_at"] or "").strip()
+    is_expired = False
+    if exp_str and exp_str <= now_utc_str:
+        is_expired = True
+    elif created_str and created_str <= min_created_str:
+        is_expired = True
+
+    if is_expired:
+        try:
+            conn.execute("DELETE FROM sessions WHERE token = ?", (token,))
+            conn.commit()
+        except Exception:
+            pass
+        conn.close()
+        return None
+
     conn.close()
-    if row:
-        if row["is_banned"] == 1:
-            return None
-        udict = dict(row)
-        udict["email_prefs"] = parse_user_email_prefs(udict.get("email_prefs"))
-        return udict
-    return None
+    if row["is_banned"] == 1:
+        return None
+    udict = dict(row)
+    udict.pop("session_created_at", None)
+    udict.pop("session_expires_at", None)
+    udict["email_prefs"] = parse_user_email_prefs(udict.get("email_prefs"))
+    return udict
 
 def json_response(data, status=200):
     """Helper to generate a JSON response tuple."""
@@ -1560,8 +1626,9 @@ def handle_api_request(method, path, headers, body_bytes):
                 credentials=exclude_credentials
             )
         except Exception as e:
+            print(f"⚠️ WebAuthn register_begin failed: {e}", file=sys.stderr)
             conn.close()
-            return error_response(f"Failed to begin registration: {e}", 400)
+            return error_response("Failed to begin passkey registration.", 400)
         
         challenge_str = base64url_encode(options.public_key.challenge)
         state_bytes = pickle.dumps(state)
@@ -1573,8 +1640,9 @@ def handle_api_request(method, path, headers, body_bytes):
             """, (challenge_str, user["id"], state_bytes))
             conn.commit()
         except Exception as e:
+            print(f"⚠️ WebAuthn challenge insert failed: {e}", file=sys.stderr)
             conn.close()
-            return error_response(f"Database error: {e}", 500)
+            return error_response("Internal database error.", 500)
             
         conn.close()
         
@@ -1629,8 +1697,9 @@ def handle_api_request(method, path, headers, body_bytes):
             auth_data = server.register_complete(state, reg_resp)
             cred_data = auth_data.credential_data
         except Exception as e:
+            print(f"⚠️ WebAuthn register_complete failed: {e}", file=sys.stderr)
             conn.close()
-            return error_response(f"Verification failed: {str(e)}", 400)
+            return error_response("Verification failed.", 400)
             
         cred_id_str = base64url_encode(cred_data.credential_id)
         pub_key_bytes = bytes(cred_data)
@@ -1650,9 +1719,10 @@ def handle_api_request(method, path, headers, body_bytes):
             conn.close()
             return error_response("Credential already registered.", 400)
         except Exception as e:
+            print(f"⚠️ WebAuthn passkey insert failed: {e}", file=sys.stderr)
             conn.rollback()
             conn.close()
-            return error_response(f"Database error: {e}", 500)
+            return error_response("Internal database error.", 500)
             
         conn.close()
         dispatch_email_template(
@@ -1697,8 +1767,9 @@ def handle_api_request(method, path, headers, body_bytes):
         try:
             options, state = server.authenticate_begin(credentials=credentials)
         except Exception as e:
+            print(f"⚠️ WebAuthn authenticate_begin failed: {e}", file=sys.stderr)
             conn.close()
-            return error_response(f"Failed to begin authentication: {e}", 400)
+            return error_response("Failed to begin passkey authentication.", 400)
         
         challenge_str = base64url_encode(options.public_key.challenge)
         state_bytes = pickle.dumps(state)
@@ -1710,8 +1781,9 @@ def handle_api_request(method, path, headers, body_bytes):
             """, (challenge_str, user_id, state_bytes))
             conn.commit()
         except Exception as e:
+            print(f"⚠️ WebAuthn login challenge insert failed: {e}", file=sys.stderr)
             conn.close()
-            return error_response(f"Database error: {e}", 500)
+            return error_response("Internal database error.", 500)
             
         conn.close()
         
@@ -1790,8 +1862,9 @@ def handle_api_request(method, path, headers, body_bytes):
                 new_sign_count = auth_data.counter
                 
         except Exception as e:
+            print(f"⚠️ WebAuthn login verification failed: {e}", file=sys.stderr)
             conn.close()
-            return error_response(f"Verification failed: {str(e)}", 401)
+            return error_response("Verification failed.", 401)
             
         if new_sign_count > 0 and new_sign_count <= stored_sign_count:
             conn.close()
@@ -1803,8 +1876,7 @@ def handle_api_request(method, path, headers, body_bytes):
             """, (new_sign_count, cred_id_b64))
             cursor.execute("DELETE FROM webauthn_challenges WHERE challenge = ?", (challenge_str,))
             
-            token = str(uuid.uuid4())
-            cursor.execute("INSERT INTO sessions (token, user_id) VALUES (?, ?)", (token, target_user_id))
+            token = create_session(cursor, target_user_id)
             
             cursor.execute("""
                 SELECT id, email, username, phone, avatar_url, bio, is_site_admin, oauth_provider, oauth_id,
@@ -1816,9 +1888,10 @@ def handle_api_request(method, path, headers, body_bytes):
             
             conn.commit()
         except Exception as e:
+            print(f"⚠️ WebAuthn login database error: {e}", file=sys.stderr)
             conn.rollback()
             conn.close()
-            return error_response(f"Database error during login: {e}", 500)
+            return error_response("Internal database error during login.", 500)
             
         conn.close()
         return json_response({"token": token, "user": user_dict, "success": True})
@@ -1855,8 +1928,7 @@ def handle_api_request(method, path, headers, body_bytes):
             user_id = cursor.lastrowid
             ensure_user_unsubscribe_token(conn, user_id)
             verify_tok = issue_auth_email_token(conn, user_id, "VERIFY_EMAIL", ttl_minutes=24 * 60)
-            token = str(uuid.uuid4())
-            cursor.execute("INSERT INTO sessions (token, user_id) VALUES (?, ?)", (token, user_id))
+            token = create_session(cursor, user_id)
             inviter_notifications = []
             try:
                 cursor.execute("""
@@ -1923,8 +1995,9 @@ def handle_api_request(method, path, headers, body_bytes):
                 return error_response("This username is already taken. Please choose another.")
             return error_response("An account with these credentials already exists.")
         except Exception as e:
+            print(f"⚠️ Signup failed: {e}", file=sys.stderr)
             conn.close()
-            return error_response(f"Could not create account: {str(e)}")
+            return error_response("Could not create account.", 500)
 
     if path_only == "/api/auth/login" and method == "POST":
         email = body.get("email", "").strip()
@@ -1959,8 +2032,7 @@ def handle_api_request(method, path, headers, body_bytes):
         if not str(stored_pw_hash).startswith("pbkdf2_sha256$"):
             new_salted_hash = hash_password(password)
             cursor.execute("UPDATE users SET password_hash = ? WHERE id = ?", (new_salted_hash, user_dict["id"]))
-        token = str(uuid.uuid4())
-        cursor.execute("INSERT INTO sessions (token, user_id) VALUES (?, ?)", (token, user_dict["id"]))
+        token = create_session(cursor, user_dict["id"])
         conn.commit()
         conn.close()
         return json_response({"token": token, "user": user_dict})
@@ -1971,8 +2043,17 @@ def handle_api_request(method, path, headers, body_bytes):
             return error_response("Google ID token (credential) is required.", 400)
         token_str = str(token_str).strip()
 
+        raw_client_ids = (
+            os.environ.get("GOOGLE_CLIENT_ID")
+            or os.environ.get("GOOGLE_OAUTH_CLIENT_ID")
+            or ""
+        )
+        expected_client_ids = [cid.strip() for cid in raw_client_ids.split(",") if cid.strip()]
+        if not expected_client_ids:
+            return error_response("Invalid Google token or OAuth client configuration.", 401)
+
         try:
-            url = f"https://oauth2.googleapis.com/tokeninfo?id_token={token_str}"
+            url = f"https://oauth2.googleapis.com/tokeninfo?id_token={urllib.parse.quote(token_str, safe='')}"
             req = urllib.request.Request(url, headers={"User-Agent": "GoodDeeds/1.0"})
             with urllib.request.urlopen(req, timeout=10.0) as resp:
                 payload_bytes = resp.read()
@@ -1982,6 +2063,22 @@ def handle_api_request(method, path, headers, body_bytes):
 
         if not isinstance(payload, dict):
             return error_response("Invalid Google token or verification failed.", 401)
+
+        token_aud = str(payload.get("aud") or "").strip()
+        if not token_aud or token_aud not in expected_client_ids:
+            return error_response("Invalid Google token audience.", 401)
+
+        token_iss = payload.get("iss")
+        if token_iss is not None and str(token_iss).strip() not in ("accounts.google.com", "https://accounts.google.com"):
+            return error_response("Invalid Google token issuer.", 401)
+
+        raw_email_verified = payload.get("email_verified")
+        is_google_email_verified = (
+            raw_email_verified is True
+            or (isinstance(raw_email_verified, str) and raw_email_verified.strip().lower() == "true")
+        )
+        if not is_google_email_verified:
+            return error_response("Invalid Google token: email address is not verified by Google.", 401)
 
         email = payload.get("email")
         oauth_id = payload.get("sub")
@@ -1997,13 +2094,16 @@ def handle_api_request(method, path, headers, body_bytes):
         cursor = conn.cursor()
         try:
             cursor.execute("""
-                SELECT id, email, username, phone, avatar_url, bio, is_site_admin, oauth_provider, oauth_id
+                SELECT id, email, username, phone, avatar_url, bio, is_site_admin, COALESCE(is_banned, 0) as is_banned, oauth_provider, oauth_id
                 FROM users
                 WHERE (oauth_provider = 'google' AND oauth_id = ?) OR LOWER(email) = LOWER(?)
             """, (oauth_id, email))
             existing_row = cursor.fetchone()
             is_new_google_user = False
             if existing_row:
+                if existing_row["is_banned"] == 1:
+                    conn.close()
+                    return error_response("Account suspended by site administration.", 403)
                 user_dict = dict(existing_row)
                 new_avatar = user_dict.get("avatar_url") or ""
                 if (not new_avatar or not str(new_avatar).strip()) and avatar_url:
@@ -2057,16 +2157,16 @@ def handle_api_request(method, path, headers, body_bytes):
                 user_dict = dict(cursor.fetchone())
                 user_dict["email_prefs"] = parse_user_email_prefs(user_dict.get("email_prefs"))
 
-            token = str(uuid.uuid4())
-            cursor.execute("INSERT INTO sessions (token, user_id) VALUES (?, ?)", (token, user_dict["id"]))
+            token = create_session(cursor, user_dict["id"])
             conn.commit()
             conn.close()
             if is_new_google_user:
                 dispatch_email_template(email, build_welcome_email(user_dict["username"], "", base_url))
             return json_response({"success": True, "token": token, "user": user_dict})
         except Exception as e:
+            print(f"⚠️ Google OAuth authentication error: {e}", file=sys.stderr)
             conn.close()
-            return error_response(f"Authentication failed: {str(e)}", 500)
+            return error_response("Authentication failed.", 500)
 
     if path_only == "/api/auth/logout" and method == "POST":
         auth = headers.get("Authorization", "")
@@ -2274,6 +2374,10 @@ def handle_api_request(method, path, headers, body_bytes):
         })
 
     if path_only == "/api/email/status" and method == "GET":
+        if not user:
+            return error_response("Login required", 401)
+        if user.get("is_site_admin") != 1:
+            return error_response("Forbidden: Site Admin privileges required", 403)
         return json_response({
             "success": True,
             "transport": get_email_transport_config(headers),
@@ -2448,6 +2552,12 @@ def handle_api_request(method, path, headers, body_bytes):
         if password:
             pw_hash = hash_password(password)
             cursor.execute("UPDATE users SET avatar_url = ?, bio = ?, password_hash = ? WHERE id = ?", (avatar_url, bio, pw_hash, user["id"]))
+            auth_hdr = (headers.get("Authorization") or headers.get("authorization") or "") if hasattr(headers, "get") else ""
+            current_tok = auth_hdr.split(" ")[1].strip() if auth_hdr.startswith("Bearer ") else ""
+            if current_tok:
+                cursor.execute("DELETE FROM sessions WHERE user_id = ? AND token != ?", (user["id"], current_tok))
+            else:
+                cursor.execute("DELETE FROM sessions WHERE user_id = ?", (user["id"],))
         else:
             cursor.execute("UPDATE users SET avatar_url = ?, bio = ? WHERE id = ?", (avatar_url, bio, user["id"]))
         if isinstance(raw_prefs_update, dict):
@@ -2473,9 +2583,11 @@ def handle_api_request(method, path, headers, body_bytes):
         return json_response({"user": updated_user, "success": True})
 
     if path_only == "/api/users" and method == "GET":
+        if not user:
+            return error_response("Login required", 401)
         conn = get_db()
         cursor = conn.cursor()
-        cursor.execute("SELECT id, username, email, avatar_url, bio FROM users ORDER BY username")
+        cursor.execute("SELECT id, username, avatar_url, bio FROM users WHERE COALESCE(is_banned, 0) = 0 ORDER BY username")
         rows = [dict(r) for r in cursor.fetchall()]
         conn.close()
         return json_response({"users": rows})
@@ -2491,7 +2603,7 @@ def handle_api_request(method, path, headers, body_bytes):
         elif target_seg.lower() in ("profile", "me", "undefined", "null"):
             cursor.execute("SELECT id, username, avatar_url, bio, is_site_admin, is_banned, created_at FROM users WHERE id = 1")
         else:
-            cursor.execute("SELECT id, username, avatar_url, bio, is_site_admin, is_banned, created_at FROM users WHERE username = ? OR email = ?", (target_seg, target_seg))
+            cursor.execute("SELECT id, username, avatar_url, bio, is_site_admin, is_banned, created_at FROM users WHERE LOWER(username) = LOWER(?)", (target_seg,))
         u_row = cursor.fetchone()
         if not u_row:
             conn.close()
@@ -3401,8 +3513,9 @@ def handle_api_request(method, path, headers, body_bytes):
             conn.close()
             return error_response("A group with this name already exists.")
         except Exception as e:
+            print(f"⚠️ Create group failed: {e}", file=sys.stderr)
             conn.close()
-            return error_response(f"Could not create group: {str(e)}")
+            return error_response("Could not create group.", 500)
 
     # GROUP DETAIL & SUB-RESOURCES
     if path_only.startswith("/api/groups/") and method == "GET":
@@ -3618,8 +3731,9 @@ def handle_api_request(method, path, headers, body_bytes):
             conn.close()
             return error_response("A space with this name already exists.", 400)
         except Exception as e:
+            print(f"⚠️ Update space failed: {e}", file=sys.stderr)
             conn.close()
-            return error_response(f"Could not update space: {str(e)}", 400)
+            return error_response("Could not update space.", 500)
 
         cursor.execute("SELECT * FROM groups WHERE id = ?", (gid,))
         updated_row = dict(cursor.fetchone())
@@ -4617,12 +4731,24 @@ def handle_api_request(method, path, headers, body_bytes):
         return json_response({"success": True, "report_id": rid, "status": new_status, "action": action})
 
     # ================== EMAIL OUTBOX LOG VIEWER ==================
-    if path_only in ("/api/outbox", "/api/emails", "/api/notifications") and method == "GET":
+    if path_only in ("/api/outbox", "/api/emails") and method == "GET":
+        if not user:
+            return error_response("Login required", 401)
+        if user.get("is_site_admin") != 1:
+            return error_response("Forbidden: Site Admin privileges required", 403)
         conn = get_db()
         cursor = conn.cursor()
         cursor.execute("SELECT * FROM email_outbox ORDER BY sent_at DESC, id DESC")
-        rows = [dict(r) for r in cursor.fetchall()]
+        raw_rows = [dict(r) for r in cursor.fetchall()]
         conn.close()
+        token_redact_re = re.compile(r"((?:reset-password|verify-email|unsubscribe)\?token=)[A-Za-z0-9_\-]+")
+        rows = []
+        for r in raw_rows:
+            if r.get("body"):
+                r["body"] = token_redact_re.sub(r"\1[REDACTED]", str(r["body"]))
+            if r.get("html_body"):
+                r["html_body"] = token_redact_re.sub(r"\1[REDACTED]", str(r["html_body"]))
+            rows.append(r)
         return json_response({
             "emails": rows,
             "outbox": rows,
@@ -4661,6 +4787,10 @@ def handle_api_request(method, path, headers, body_bytes):
         return json_response({"success": True, "message": "Customer service inquiry submitted successfully."})
 
     if path_only in ("/api/support", "/api/customer_service", "/api/inquiry", "/api/inquiries") and method == "GET":
+        if not user:
+            return error_response("Login required", 401)
+        if user.get("is_site_admin") != 1:
+            return error_response("Forbidden: Site Admin privileges required", 403)
         conn = get_db()
         cursor = conn.cursor()
         cursor.execute("""

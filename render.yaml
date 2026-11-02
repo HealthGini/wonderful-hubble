@@ -20,10 +20,16 @@ services:
       sizeGB: 1
     envVars:
       # Render injects PORT and RENDER_EXTERNAL_URL automatically.
+      # Inside Render's isolated container network, bind 0.0.0.0 so the Render router reaches $PORT
+      # (on bare-metal/VM behind Caddy, server.py defaults to 127.0.0.1 when HOST is unset):
+      - key: HOST
+        value: 0.0.0.0
       - key: DB_PATH
         value: /var/data/gooddeeds.db
       - key: ALLOWED_HOSTS
         value: localhost,127.0.0.1,gooddeeds.space,www.gooddeeds.space
+      - key: GOOGLE_CLIENT_ID
+        sync: false
       - key: EMAIL_PROVIDER
         value: resend
       # Render prompts you securely for RESEND_API_KEY during Blueprint setup (never stored in Git):
