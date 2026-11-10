@@ -5813,6 +5813,136 @@ class TestRegressionCoverage(GoodDeedsTestCase):
         self.assertIn("clearLandingSearchInput()", js)
         self.assertIn("clearFeedSearchInput()", js)
 
+    def test_signup_button_labels_and_email_otp_verification_flow(self):
+        """Verify 'Free' is removed from signup CTAs and account signup requires 6-digit email OTP verification."""
+        base_dir = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+        with open(os.path.join(base_dir, "static", "index.html"), "r", encoding="utf-8") as f:
+            html = f.read()
+        with open(os.path.join(base_dir, "static", "app.js"), "r", encoding="utf-8") as f:
+            js = f.read()
+
+        # 1. Verify 'Free' removed from Sign Up CTAs
+        self.assertNotIn("Sign Up Free", html)
+        self.assertNotIn("Join Free Today", html)
+        self.assertNotIn("Create Free Account", html)
+        self.assertNotIn("free account", js.lower())
+        self.assertRegex(html, r'id="nav-signup-link"[^>]*>\s*Sign Up\s*</a>')
+        self.assertRegex(html, r'id="landing-signup-link"[^>]*>\s*Join Today\s*</a>')
+        self.assertIn("Create Account ↗", html)
+        self.assertIn('id="signup-otp-section"', html)
+        self.assertIn('id="sup-otp-code"', html)
+        self.assertIn("resetSignupOtpStep", js)
+        self.assertIn("resendSignupOtp", js)
+        self.assertIn("/auth/signup/send_otp", js)
+
+        # 2. Verify backend Email OTP verification in production mode (ALLOW_UNVERIFIED_TEST_SIGNUP="0")
+        from unittest import mock
+        with mock.patch.dict(os.environ, {"ALLOW_UNVERIFIED_TEST_SIGNUP": "0"}):
+            # Calling /api/auth/signup without otp_code is rejected with 400
+            st_no_otp, _, body_no_otp = self.make_request(
+                "POST",
+                "/api/auth/signup",
+                body={
+                    "username": "OtpVerifiedUser",
+                    "email": "otpuser@example.org",
+                    "password": "password123",
+                },
+            )
+            self.assertEqual(st_no_otp, 400)
+            self.assertIn("verification code", body_no_otp.get("error", "").lower())
+
+            # Calling /api/auth/signup/send_otp for an already registered email or username fails with 400
+            st_dup_email, _, _ = self.make_request(
+                "POST",
+                "/api/auth/signup/send_otp",
+                body={
+                    "username": "BrandNewUser",
+                    "email": "maya@gooddeeds.space",
+                    "password": "password123",
+                },
+            )
+            self.assertEqual(st_dup_email, 400)
+
+            st_dup_user, _, _ = self.make_request(
+                "POST",
+                "/api/auth/signup/send_otp",
+                body={
+                    "username": "Maya_Lin",
+                    "email": "brandnew@example.org",
+                    "password": "password123",
+                },
+            )
+            self.assertEqual(st_dup_user, 400)
+
+            # Calling /api/auth/signup/send_otp for a valid new user dispatches a 6-digit OTP email
+            st_send, _, body_send = self.make_request(
+                "POST",
+                "/api/auth/signup/send_otp",
+                body={
+                    "username": "OtpVerifiedUser",
+                    "email": "otpuser@example.org",
+                    "password": "password123",
+                },
+            )
+            self.assertEqual(st_send, 200)
+            self.assertTrue(body_send.get("otp_sent"))
+
+            import database
+            import re
+            conn = database.get_db()
+            outbox_row = conn.execute(
+                "SELECT subject, body FROM email_outbox WHERE recipient_email = 'otpuser@example.org' ORDER BY id DESC LIMIT 1"
+            ).fetchone()
+            otp_db_row = conn.execute(
+                "SELECT * FROM signup_email_otps WHERE email = 'otpuser@example.org'"
+            ).fetchone()
+            conn.close()
+            self.assertIsNotNone(outbox_row)
+            self.assertIsNotNone(otp_db_row)
+            m = re.search(r"\b(\d{6})\b", outbox_row["subject"] + " " + outbox_row["body"])
+            self.assertIsNotNone(m, "Expected 6-digit OTP code in email_outbox")
+            otp_code = m.group(1)
+
+            # Submitting wrong 6-digit OTP fails with 400 and increments attempts
+            wrong_code = "000000" if otp_code != "000000" else "999999"
+            st_wrong, _, body_wrong = self.make_request(
+                "POST",
+                "/api/auth/signup",
+                body={
+                    "username": "OtpVerifiedUser",
+                    "email": "otpuser@example.org",
+                    "password": "password123",
+                    "otp_code": wrong_code,
+                    "require_otp": True,
+                },
+            )
+            self.assertEqual(st_wrong, 400)
+            self.assertIn("invalid 6-digit verification code", body_wrong.get("error", "").lower())
+
+            # Submitting valid 6-digit OTP creates the user with email_verified = 1 and deletes the OTP row
+            st_ok, _, body_ok = self.make_request(
+                "POST",
+                "/api/auth/signup",
+                body={
+                    "username": "OtpVerifiedUser",
+                    "email": "otpuser@example.org",
+                    "password": "password123",
+                    "otp_code": otp_code,
+                    "require_otp": True,
+                },
+            )
+            self.assertEqual(st_ok, 201)
+            self.assertEqual(body_ok["user"]["username"], "OtpVerifiedUser")
+            self.assertEqual(body_ok["user"]["email_verified"], 1)
+
+            conn2 = database.get_db()
+            otp_after = conn2.execute(
+                "SELECT * FROM signup_email_otps WHERE email = 'otpuser@example.org'"
+            ).fetchone()
+            conn2.close()
+            self.assertIsNone(otp_after)
+
+
 
 
 

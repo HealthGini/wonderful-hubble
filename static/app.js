@@ -795,6 +795,7 @@ async function copyGiveKudosShareUrl() {
 window.copyGiveKudosShareUrl = copyGiveKudosShareUrl;
 
 function populateSignupPage(hashParams) {
+  if (typeof resetSignupOtpStep === "function") resetSignupOtpStep();
   const params = hashParams || new URLSearchParams();
   const invitedEmail = (params.get("email") || "").trim();
   const invitedBy = (params.get("invited_by") || "").trim();
@@ -809,13 +810,13 @@ function populateSignupPage(hashParams) {
   const bannerTxtEl = document.getElementById("signup-invite-banner-text");
   if (bannerEl && bannerTxtEl) {
     if (invitedBy || groupIdParam || invitedEmail) {
-      let msg = "Welcome! Complete your free account below to join GoodDeeds Community.";
+      let msg = "Welcome! Complete your account below to join GoodDeeds Community.";
       if (invitedBy && groupIdParam) {
-        msg = `@${invitedBy} invited you to join a Community Space! Create your free account below and you'll go straight to your Space.`;
+        msg = `@${invitedBy} invited you to join a Community Space! Create your account below and you'll go straight to your Space.`;
       } else if (invitedBy) {
-        msg = `@${invitedBy} invited you to join GoodDeeds Community! Complete your free account below to jump right in.`;
+        msg = `@${invitedBy} invited you to join GoodDeeds Community! Complete your account below to jump right in.`;
       } else if (groupIdParam) {
-        msg = "Create your free account below and you'll be taken straight to your invited Space!";
+        msg = "Create your account below and you'll be taken straight to your invited Space!";
       }
       bannerTxtEl.textContent = msg;
       bannerEl.classList.remove("hidden");
@@ -1193,20 +1194,123 @@ async function handleGoogleOauthResponse(response) {
   }
 }
 
+let signupOtpPendingEmail = "";
+
+function resetSignupOtpStep() {
+  signupOtpPendingEmail = "";
+  const otpSection = document.getElementById("signup-otp-section");
+  if (otpSection) otpSection.classList.add("hidden");
+  const otpInput = document.getElementById("sup-otp-code");
+  if (otpInput) otpInput.value = "";
+  const submitBtn = document.getElementById("btn-signup-submit");
+  if (submitBtn) submitBtn.textContent = "Create Account ↗";
+  const emailEl = document.getElementById("sup-email");
+  if (emailEl) {
+    emailEl.readOnly = false;
+    try { emailEl.focus(); } catch (_) {}
+  }
+}
+window.resetSignupOtpStep = resetSignupOtpStep;
+
+async function resendSignupOtp() {
+  const emailEl = document.getElementById("sup-email");
+  const usernameEl = document.getElementById("sup-username");
+  const pwEl = document.getElementById("sup-pw");
+  const bioEl = document.getElementById("sup-bio");
+  const email = emailEl ? emailEl.value.trim() : "";
+  const username = usernameEl ? usernameEl.value.trim() : "";
+  const password = pwEl ? pwEl.value : "";
+  const bio = bioEl ? bioEl.value.trim() : "";
+  if (!email || !username) {
+    showToast("❌ Please enter your email and username first.");
+    return;
+  }
+  try {
+    const res = await apiFetch("/auth/signup/send_otp", {
+      method: "POST",
+      body: JSON.stringify({ email, username, password, bio })
+    });
+    signupOtpPendingEmail = email;
+    const otpInput = document.getElementById("sup-otp-code");
+    if (otpInput) {
+      otpInput.value = "";
+      try { otpInput.focus(); } catch (_) {}
+    }
+    showToast("📧 " + (res.message || `Sent a fresh 6-digit verification code to ${email}.`));
+  } catch (err) {
+    showToast("❌ " + err.message);
+  }
+}
+window.resendSignupOtp = resendSignupOtp;
+
 async function handleSignup(e) {
   e.preventDefault();
-  const email = document.getElementById("sup-email").value.trim();
+  const emailEl = document.getElementById("sup-email");
+  const email = emailEl ? emailEl.value.trim() : "";
   const username = document.getElementById("sup-username").value.trim();
   const password = document.getElementById("sup-pw").value;
   const phone = document.getElementById("sup-phone").value.trim();
   const avatar_url = document.getElementById("sup-avatar").value.trim();
   const bio = document.getElementById("sup-bio").value.trim();
+  const otpSection = document.getElementById("signup-otp-section");
+  const otpInput = document.getElementById("sup-otp-code");
+  const submitBtn = document.getElementById("btn-signup-submit");
+
+  const isOtpStepVisible = Boolean(
+    otpSection &&
+    !otpSection.classList.contains("hidden") &&
+    signupOtpPendingEmail.toLowerCase() === email.toLowerCase()
+  );
+
+  if (!isOtpStepVisible) {
+    try {
+      const otpRes = await apiFetch("/auth/signup/send_otp", {
+        method: "POST",
+        body: JSON.stringify({ email, username, password, bio })
+      });
+      signupOtpPendingEmail = email;
+      const emailLabel = document.getElementById("signup-otp-email-label");
+      if (emailLabel) emailLabel.textContent = email;
+      if (otpSection) otpSection.classList.remove("hidden");
+      if (emailEl) emailEl.readOnly = true;
+      if (submitBtn) submitBtn.textContent = "Verify Code & Create Account ✓";
+      if (otpInput) {
+        otpInput.value = "";
+        setTimeout(() => {
+          try { otpInput.focus(); } catch (_) {}
+        }, 30);
+      }
+      showToast("📧 " + (otpRes.message || `We sent a 6-digit verification code to ${email}.`) + " Check your inbox or Spam folder!", 6500);
+    } catch (err) {
+      showToast("❌ " + err.message);
+    }
+    return;
+  }
+
+  const otp_code = (otpInput ? otpInput.value : "").replace(/\s+/g, "").trim();
+  if (!/^\d{6}$/.test(otp_code)) {
+    showToast("❌ Please enter the 6-digit verification code sent to your email.");
+    if (otpInput) {
+      try { otpInput.focus(); } catch (_) {}
+    }
+    return;
+  }
 
   try {
     const data = await apiFetch("/auth/signup", {
       method: "POST",
-      body: JSON.stringify({ email, username, password, phone, avatar_url, bio })
+      body: JSON.stringify({
+        email,
+        username,
+        password,
+        phone,
+        avatar_url,
+        bio,
+        otp_code,
+        require_otp: true
+      })
     });
+    resetSignupOtpStep();
     currentToken = data.token;
     localStorage.setItem("gd_token", currentToken);
     currentUser = data.user;
@@ -1214,7 +1318,7 @@ async function handleSignup(e) {
     updateAuthUI(currentUser);
     const dlgSignup = document.getElementById("modal-signup");
     if (dlgSignup && dlgSignup.close) dlgSignup.close();
-    showToast(`☀️ Welcome to gooddeeds.space, ${currentUser.username}! Check your inbox (or Spam folder) for your welcome email.`, 6500);
+    showToast(`☀️ Welcome to gooddeeds.space, ${currentUser.username}! Your email is verified.`, 6500);
     await loadQuickNavGroups();
     navigateTo(consumePostAuthDestination());
   } catch (err) {

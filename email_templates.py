@@ -415,6 +415,38 @@ def build_email_verification_email(username: str, verify_url: str, base_url: str
     }
 
 
+def build_signup_otp_email(username: str, otp_code: str, expires_minutes: int = 10, base_url: str = "http://localhost:8080") -> dict:
+    clean_base = (base_url or "http://localhost:8080").rstrip("/")
+    safe_user = username or "Neighbor"
+    subject = f"{otp_code} is your GoodDeeds Community verification code"
+    text_body = (
+        f"Hello {safe_user},\n\n"
+        f"Your 6-digit verification code to complete your GoodDeeds Community sign-up is:\n\n"
+        f"  {otp_code}\n\n"
+        f"This code expires in {expires_minutes} minutes. Enter it on the Sign-Up page to verify your email address and activate your account.\n\n"
+        f"If you did not request this code, you can safely ignore this email."
+    )
+    html_body = render_branded_email(
+        badge_text="Email OTP Verification",
+        accent_theme="teal",
+        heading="Your 6-Digit Verification Code",
+        greeting=f"Hello {safe_user},",
+        intro_paragraphs=[
+            "Enter the 6-digit verification code below on the GoodDeeds Community Sign-Up page to confirm you own this email address and finish creating your account:",
+        ],
+        quote_block=f" Verification Code:  {otp_code} ",
+        secondary_note=f"This code expires in {expires_minutes} minutes. If you didn't start a GoodDeeds Community sign-up, you can safely ignore this message.",
+        base_url=clean_base,
+    )
+    return {
+        "template_key": "signup_otp",
+        "category": "transactional",
+        "subject": subject,
+        "text_body": text_body,
+        "html_body": html_body,
+    }
+
+
 def build_password_reset_email(username: str, reset_url: str, expires_minutes: int = 60, base_url: str = "http://localhost:8080") -> dict:
     clean_base = (base_url or "http://localhost:8080").rstrip("/")
     subject = "Reset your GoodDeeds Community password"

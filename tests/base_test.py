@@ -23,6 +23,8 @@ class BaseTestCase(unittest.TestCase):
         os.environ["DB_PATH"] = cls.temp_db_file
         cls._prev_seed_demo = os.environ.get("SEED_DEMO")
         os.environ["SEED_DEMO"] = "1"
+        cls._prev_allow_unverified_signup = os.environ.get("ALLOW_UNVERIFIED_TEST_SIGNUP")
+        os.environ["ALLOW_UNVERIFIED_TEST_SIGNUP"] = "1"
         
         # Import database and handlers after setting DB_PATH
         import database
@@ -45,6 +47,10 @@ class BaseTestCase(unittest.TestCase):
             os.environ.pop("SEED_DEMO", None)
         else:
             os.environ["SEED_DEMO"] = cls._prev_seed_demo
+        if getattr(cls, "_prev_allow_unverified_signup", None) is None:
+            os.environ.pop("ALLOW_UNVERIFIED_TEST_SIGNUP", None)
+        else:
+            os.environ["ALLOW_UNVERIFIED_TEST_SIGNUP"] = cls._prev_allow_unverified_signup
         if hasattr(cls, "database"):
             cls.database.DB_PATH = cls.database.DEFAULT_DB
 

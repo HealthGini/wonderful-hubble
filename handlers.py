@@ -43,6 +43,7 @@ from email_templates import (
     build_unsubscribe_url,
     build_welcome_email,
     build_email_verification_email,
+    build_signup_otp_email,
     build_password_reset_email,
     build_security_alert_email,
     build_site_invitation_email,
@@ -2000,6 +2001,82 @@ def handle_api_request(method, path, headers, body_bytes):
         conn.close()
         return json_response({"token": token, "user": user_dict, "success": True})
 
+    if path_only in ("/api/auth/signup/send_otp", "/auth/signup/send_otp") and method == "POST":
+        client_ip = get_client_ip(headers)
+        is_allowed, err_msg = check_auth_rate_limit("signup_otp", client_ip, max_requests=5, window_seconds=60.0)
+        if not is_allowed:
+            return error_response(err_msg, 429)
+
+        email = str(body.get("email") or "").strip()
+        username = str(body.get("username") or "").strip()
+        password = str(body.get("password") or "")
+        bio = str(body.get("bio") or "").strip()
+
+        full_signup_text = f"{email} {username} {bio}".lower()
+        for keyword in BLOCKLISTED_KEYWORDS:
+            if keyword in full_signup_text:
+                return error_response(f"Registration blocked by automated safety filter (prohibited phrase: '{keyword}').", 400)
+
+        if not email or "@" not in email or "." not in email.split("@")[-1]:
+            return error_response("Please enter a valid email address.", 400)
+        if not username:
+            return error_response("Please choose a username.", 400)
+        if password and len(password) < 6:
+            return error_response("Password must be at least 6 characters long.", 400)
+
+        if (
+            not is_demo_seed_enabled()
+            and email.lower() in DEMO_PERSONA_EMAILS
+            and email.lower() not in get_configured_admin_emails()
+        ):
+            return error_response("Reserved demo persona address cannot be registered.", 403)
+
+        conn = get_db()
+        cursor = conn.cursor()
+        try:
+            cursor.execute("SELECT id FROM users WHERE LOWER(email) = LOWER(?)", (email,))
+            if cursor.fetchone():
+                conn.close()
+                return error_response("An account with this email address already exists.", 400)
+
+            cursor.execute("SELECT id FROM users WHERE LOWER(username) = LOWER(?)", (username,))
+            if cursor.fetchone():
+                conn.close()
+                return error_response("This username is already taken. Please choose another.", 400)
+
+            otp_code = f"{secrets.randbelow(900000) + 100000:06d}"
+            otp_hash = hash_password(otp_code)
+            now_utc = datetime.datetime.now(datetime.timezone.utc).replace(tzinfo=None)
+            expires_at_str = (now_utc + datetime.timedelta(minutes=10)).strftime("%Y-%m-%d %H:%M:%S")
+
+            cursor.execute(
+                """
+                INSERT INTO signup_email_otps (email, otp_hash, expires_at, attempts, created_at)
+                VALUES (LOWER(?), ?, ?, 0, ?)
+                ON CONFLICT(email) DO UPDATE SET
+                    otp_hash = excluded.otp_hash,
+                    expires_at = excluded.expires_at,
+                    attempts = 0,
+                    created_at = excluded.created_at
+                """,
+                (email, otp_hash, expires_at_str, now_utc.strftime("%Y-%m-%d %H:%M:%S")),
+            )
+            conn.commit()
+            conn.close()
+
+            dispatch_email_template(email, build_signup_otp_email(username, otp_code, 10, base_url))
+            return json_response({
+                "success": True,
+                "otp_sent": True,
+                "email": email,
+                "expires_in_minutes": 10,
+                "message": f"We sent a 6-digit verification code to {email}.",
+            })
+        except Exception as e:
+            print(f"⚠️ Signup OTP send failed: {e}")
+            conn.close()
+            return error_response("Could not send verification code.", 500)
+
     if path_only == "/api/auth/signup" and method == "POST":
         client_ip = get_client_ip(headers)
         is_allowed, err_msg = check_auth_rate_limit("signup", client_ip, max_requests=5, window_seconds=60.0)
@@ -2012,6 +2089,8 @@ def handle_api_request(method, path, headers, body_bytes):
         phone = body.get("phone", "").strip()
         avatar_url = body.get("avatar_url", "").strip() or "https://images.unsplash.com/photo-1534528741775-53994a69daeb?auto=format&fit=crop&w=200&q=80"
         bio = body.get("bio", "").strip()
+        otp_code = str(body.get("otp_code") or body.get("otp") or "").strip()
+        require_otp = bool(body.get("require_otp")) or bool(otp_code) or (os.environ.get("ALLOW_UNVERIFIED_TEST_SIGNUP") != "1")
 
         full_signup_text = f"{email} {username} {bio}".lower()
         for keyword in BLOCKLISTED_KEYWORDS:
@@ -2031,15 +2110,40 @@ def handle_api_request(method, path, headers, body_bytes):
         conn = get_db()
         cursor = conn.cursor()
         try:
+            email_verified_val = 0
+            if require_otp:
+                if not otp_code or not otp_code.isdigit() or len(otp_code) != 6:
+                    conn.close()
+                    return error_response("Please enter the 6-digit verification code sent to your email address.", 400)
+                now_utc_str = datetime.datetime.now(datetime.timezone.utc).replace(tzinfo=None).strftime("%Y-%m-%d %H:%M:%S")
+                cursor.execute(
+                    "SELECT email, otp_hash, expires_at, attempts FROM signup_email_otps WHERE LOWER(email) = LOWER(?)",
+                    (email,),
+                )
+                otp_row = cursor.fetchone()
+                if not otp_row or int(otp_row["attempts"] or 0) >= 5 or str(otp_row["expires_at"]) < now_utc_str:
+                    conn.close()
+                    return error_response("Verification code has expired or too many attempts were made. Please request a new code.", 400)
+                if not verify_password(otp_code, otp_row["otp_hash"]):
+                    cursor.execute(
+                        "UPDATE signup_email_otps SET attempts = COALESCE(attempts, 0) + 1 WHERE LOWER(email) = LOWER(?)",
+                        (email,),
+                    )
+                    conn.commit()
+                    conn.close()
+                    return error_response("Invalid 6-digit verification code. Please check your email and try again.", 400)
+                cursor.execute("DELETE FROM signup_email_otps WHERE LOWER(email) = LOWER(?)", (email,))
+                email_verified_val = 1
+
             grant_admin = _should_grant_site_admin_on_registration(cursor, email)
             pw_hash = hash_password(password)
             cursor.execute("""
-                INSERT INTO users (email, username, password_hash, phone, avatar_url, bio, is_site_admin)
-                VALUES (?, ?, ?, ?, ?, ?, ?)
-            """, (email, username, pw_hash, phone, avatar_url, bio, grant_admin))
+                INSERT INTO users (email, username, password_hash, phone, avatar_url, bio, is_site_admin, email_verified)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+            """, (email, username, pw_hash, phone, avatar_url, bio, grant_admin, email_verified_val))
             user_id = cursor.lastrowid
             ensure_user_unsubscribe_token(conn, user_id)
-            verify_tok = issue_auth_email_token(conn, user_id, "VERIFY_EMAIL", ttl_minutes=24 * 60)
+            verify_tok = "" if email_verified_val == 1 else issue_auth_email_token(conn, user_id, "VERIFY_EMAIL", ttl_minutes=24 * 60)
             token = create_session(cursor, user_id)
             inviter_notifications = []
             try:
@@ -2088,7 +2192,7 @@ def handle_api_request(method, path, headers, body_bytes):
             new_user["email_prefs"] = parse_user_email_prefs(new_user.get("email_prefs"))
             conn.close()
 
-            verify_url = f"{base_url}/#/verify-email?token={verify_tok}"
+            verify_url = f"{base_url}/#/verify-email?token={verify_tok}" if verify_tok else ""
             dispatch_email_template(email, build_welcome_email(username, verify_url, base_url))
             for inv_email, inv_uname, inv_unsub_url in inviter_notifications:
                 dispatch_email_template(
