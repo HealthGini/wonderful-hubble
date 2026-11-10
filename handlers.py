@@ -1080,11 +1080,15 @@ CHAT_STOP_WORDS = {
     "find", "search", "show", "list", "tell", "give", "get", "see", "looking", "look",
     "need", "want", "know", "for", "about", "related", "to", "in", "on", "at", "of",
     "from", "with", "by", "or", "and", "as", "into", "around", "near",
+    "but", "no", "not", "without", "except", "excluding", "exclude", "none", "never",
+    "only", "just", "also", "too", "yet", "still", "than", "then", "if", "while", "unless",
     "what", "where", "when", "who", "which", "how", "why",
     "please", "thanks", "thank", "hi", "hello", "hey", "gooddeeds", "good", "deeds",
     "community", "platform", "website", "site", "available", "current", "recent", "latest",
     "join", "joined", "joining", "explore", "browse"
 }
+
+CHAT_NEGATION_WORDS = {"no", "not", "without", "except", "excluding", "exclude", "never", "non"}
 
 CHAT_FOLLOWUP_PRONOUNS = {"that", "those", "it", "them", "same", "above", "previous"}
 
@@ -1121,6 +1125,32 @@ def _stem_token(tok):
     return tok
 
 
+def _word_boundary_match(term: str, text_lower: str) -> bool:
+    """
+    Matches a search token/stem or phrase against lowercased text using word boundaries
+    so short tokens (e.g. 'no', 'but', 'art') never match inside unrelated words
+    (e.g. 'donors', 'distribution', 'partner').
+    - Short terms (<= 3 chars) or multi-word phrases require full word boundaries (\\bterm\\b).
+    - Longer stems (>= 4 chars) require a leading word boundary (\\bterm) to match plurals/inflections.
+    """
+    if not term or not text_lower or term not in text_lower:
+        return False
+    escaped = re.escape(term)
+    if len(term) <= 3 or " " in term:
+        return bool(re.search(rf"\b{escaped}\b", text_lower))
+    return bool(re.search(rf"\b{escaped}", text_lower))
+
+
+def _is_word_negated(raw_words: list, idx: int) -> bool:
+    """Returns True if raw_words[idx] is preceded by a negation modifier within its local clause."""
+    start = max(0, idx - 3)
+    for j in range(idx - 1, start - 1, -1):
+        w = raw_words[j]
+        if w in CHAT_NEGATION_WORDS:
+            return True
+    return False
+
+
 def _extract_chat_query_signals(raw_message, history=None):
     text_lower = (raw_message or "").lower().strip()
     raw_words = re.findall(r"[a-z0-9_@.-]+", text_lower)
@@ -1137,23 +1167,43 @@ def _extract_chat_query_signals(raw_message, history=None):
     post_triggers = {"post", "posts", "story", "stories", "discussion", "discussions"}
     space_triggers = {"space", "spaces", "group", "groups"}
 
-    if any(w in event_triggers for w in raw_words) or "this week" in text_lower or "this month" in text_lower or "next week" in text_lower:
+    pos_event = any(w in event_triggers and not _is_word_negated(raw_words, i) for i, w in enumerate(raw_words))
+    neg_event = any(w in event_triggers and _is_word_negated(raw_words, i) for i, w in enumerate(raw_words))
+    pos_resource = any(w in resource_triggers and not _is_word_negated(raw_words, i) for i, w in enumerate(raw_words))
+    neg_resource = any(w in resource_triggers and _is_word_negated(raw_words, i) for i, w in enumerate(raw_words))
+    pos_kudos = any(w in kudos_triggers and not _is_word_negated(raw_words, i) for i, w in enumerate(raw_words))
+    neg_kudos = any(w in kudos_triggers and _is_word_negated(raw_words, i) for i, w in enumerate(raw_words))
+    pos_post = any(w in post_triggers and not _is_word_negated(raw_words, i) for i, w in enumerate(raw_words))
+    neg_post = any(w in post_triggers and _is_word_negated(raw_words, i) for i, w in enumerate(raw_words))
+
+    excluded_item_types = []
+    excluded_subtypes = []
+    if neg_kudos and not pos_kudos:
+        excluded_item_types.append("KUDOS")
+    if neg_post and not pos_post:
+        excluded_item_types.append("POST")
+    if neg_event and not pos_event:
+        excluded_subtypes.append("EVENT")
+    if neg_resource and not pos_resource:
+        excluded_subtypes.append("RESOURCE")
+
+    if pos_event or "this week" in text_lower or "this month" in text_lower or "next week" in text_lower:
         intent_subtype = "EVENT"
         intent_item_type = "POST"
         if any(w in raw_words for w in ("upcoming", "next", "future", "soon", "scheduled")) or "coming up" in text_lower:
             wants_upcoming = True
-    elif any(w in resource_triggers for w in raw_words):
+    elif pos_resource:
         intent_subtype = "RESOURCE"
         intent_item_type = "POST"
-    elif any(w in kudos_triggers for w in raw_words):
+    elif pos_kudos:
         intent_item_type = "KUDOS"
-    elif any(w in post_triggers for w in raw_words):
+    elif pos_post:
         intent_item_type = "POST"
 
-    if any(w in space_triggers for w in raw_words):
+    if any(w in space_triggers and not _is_word_negated(raw_words, i) for i, w in enumerate(raw_words)):
         wants_spaces = True
 
-    intent_strip_words = event_triggers | resource_triggers | kudos_triggers | post_triggers | space_triggers | {
+    intent_strip_words = event_triggers | resource_triggers | kudos_triggers | post_triggers | space_triggers | CHAT_NEGATION_WORDS | {
         "contact", "contacts", "reach", "organizer", "organizers", "info", "information"
     }
     # Preserve "will" as a topical noun when user asks about "will clinic" or "free will"
@@ -1189,6 +1239,8 @@ def _extract_chat_query_signals(raw_message, history=None):
         "topical_tokens": topical_tokens,
         "intent_subtype": intent_subtype,
         "intent_item_type": intent_item_type,
+        "excluded_item_types": excluded_item_types,
+        "excluded_subtypes": excluded_subtypes,
         "wants_upcoming": wants_upcoming,
         "wants_spaces": wants_spaces,
         "wants_contact": wants_contact,
@@ -1366,6 +1418,8 @@ def run_conversational_search(raw_message, history=None, user=None, scope=""):
     tokens = signals["topical_tokens"]
     intent_subtype = signals["intent_subtype"]
     intent_item_type = signals["intent_item_type"]
+    excluded_item_types = set(signals.get("excluded_item_types") or [])
+    excluded_subtypes = set(signals.get("excluded_subtypes") or [])
     wants_upcoming = signals["wants_upcoming"]
 
     uid = user["id"] if user else None
@@ -1403,6 +1457,15 @@ def run_conversational_search(raw_message, history=None, user=None, scope=""):
 
     scored_entries = []
     for item in all_items:
+        item_type_val = item.get("item_type") or ""
+        subtypes = item.get("post_subtypes") or []
+        if item_type_val in excluded_item_types:
+            continue
+        if excluded_subtypes and any(st in excluded_subtypes for st in subtypes):
+            continue
+        if "EVENT" in excluded_subtypes and bool(item.get("event_date")):
+            continue
+
         title_l = (item.get("title") or "").lower()
         content_l = (item.get("content") or "").lower()
         cat_l = ((item.get("category") or "") + " " + (item.get("theme") or "")).lower()
@@ -1418,11 +1481,11 @@ def run_conversational_search(raw_message, history=None, user=None, scope=""):
 
         topical_score = 0
         if tokens:
-            if len(tokens) > 1 and phrase_lower in title_l:
+            if len(tokens) > 1 and _word_boundary_match(phrase_lower, title_l):
                 topical_score += 25
-            elif len(tokens) > 1 and phrase_lower in content_l:
+            elif len(tokens) > 1 and _word_boundary_match(phrase_lower, content_l):
                 topical_score += 15
-            elif len(tokens) > 1 and phrase_lower in ext_l:
+            elif len(tokens) > 1 and _word_boundary_match(phrase_lower, ext_l):
                 topical_score += 14
 
             for tok in tokens:
@@ -1432,46 +1495,53 @@ def run_conversational_search(raw_message, history=None, user=None, scope=""):
                 for cand in primary_candidates:
                     if not cand or len(cand) < 2:
                         continue
-                    if cand in title_l:
+                    if _word_boundary_match(cand, title_l):
                         topical_score += 14
                         matched_primary = True
-                    if cand in groups_l:
+                    if _word_boundary_match(cand, groups_l):
                         topical_score += 12
                         matched_primary = True
-                    if cand in cat_l:
+                    if _word_boundary_match(cand, cat_l):
                         topical_score += 10
                         matched_primary = True
-                    if cand in meta_l:
+                    if _word_boundary_match(cand, meta_l):
                         topical_score += 9
                         matched_primary = True
-                    if cand in content_l:
+                    if _word_boundary_match(cand, content_l):
                         topical_score += 7
                         matched_primary = True
-                    if cand in ext_l:
+                    if _word_boundary_match(cand, ext_l):
                         topical_score += 8
                         matched_primary = True
 
                 if not matched_primary:
                     for syn in CHAT_DOMAIN_SYNONYMS.get(tok, CHAT_DOMAIN_SYNONYMS.get(stem, [])):
-                        if syn in title_l or syn in groups_l or syn in cat_l:
+                        if (
+                            _word_boundary_match(syn, title_l)
+                            or _word_boundary_match(syn, groups_l)
+                            or _word_boundary_match(syn, cat_l)
+                        ):
                             topical_score += 6
-                        elif syn in content_l or syn in meta_l or syn in ext_l:
+                        elif (
+                            _word_boundary_match(syn, content_l)
+                            or _word_boundary_match(syn, meta_l)
+                            or _word_boundary_match(syn, ext_l)
+                        ):
                             topical_score += 3
 
-        subtypes = item.get("post_subtypes") or []
         matches_type_strict = True
         if intent_item_type == "KUDOS":
-            matches_type_strict = (item.get("item_type") == "KUDOS")
+            matches_type_strict = (item_type_val == "KUDOS")
         elif intent_subtype == "EVENT":
-            matches_type_strict = (item.get("item_type") == "POST" and ("EVENT" in subtypes or bool(item.get("event_date"))))
+            matches_type_strict = (item_type_val == "POST" and ("EVENT" in subtypes or bool(item.get("event_date"))))
             if matches_type_strict and wants_upcoming and item.get("event_date"):
                 ev_d = str(item.get("event_date")).split("T")[0]
                 if ev_d < today_str:
                     matches_type_strict = False
         elif intent_subtype == "RESOURCE":
-            matches_type_strict = (item.get("item_type") == "POST" and "RESOURCE" in subtypes)
+            matches_type_strict = (item_type_val == "POST" and "RESOURCE" in subtypes)
         elif intent_item_type == "POST":
-            matches_type_strict = (item.get("item_type") == "POST")
+            matches_type_strict = (item_type_val == "POST")
 
         if tokens and topical_score == 0:
             continue
@@ -1515,17 +1585,18 @@ def run_conversational_search(raw_message, history=None, user=None, scope=""):
     elif tokens:
         space_scored = []
         for sp in all_spaces:
-            sp_blob = f"{sp.get('name') or ''} {sp.get('description') or ''} {sp.get('theme') or ''}".lower()
+            sp_name_l = (sp.get("name") or "").lower()
+            sp_blob = f"{sp_name_l} {sp.get('description') or ''} {sp.get('theme') or ''}".lower()
             s_score = 0
             for tok in tokens:
                 stem = _stem_token(tok)
-                if tok in (sp.get("name") or "").lower() or stem in (sp.get("name") or "").lower():
+                if _word_boundary_match(tok, sp_name_l) or _word_boundary_match(stem, sp_name_l):
                     s_score += 15
-                elif tok in sp_blob or stem in sp_blob:
+                elif _word_boundary_match(tok, sp_blob) or _word_boundary_match(stem, sp_blob):
                     s_score += 7
                 else:
                     for syn in CHAT_DOMAIN_SYNONYMS.get(tok, CHAT_DOMAIN_SYNONYMS.get(stem, [])):
-                        if syn in sp_blob:
+                        if _word_boundary_match(syn, sp_blob):
                             s_score += 4
             if s_score > 0:
                 space_scored.append((s_score, sp))
@@ -3074,11 +3145,55 @@ def handle_api_request(method, path, headers, body_bytes):
                     for t in clean_search.split()
                 ]
                 tokens = [t for t in tokens if t]
+
+                search_signals = _extract_chat_query_signals(clean_search)
+                excluded_item_types = set(search_signals.get("excluded_item_types") or [])
+                excluded_subtypes = set(search_signals.get("excluded_subtypes") or [])
+                nl_intent_subtype = search_signals.get("intent_subtype") or ""
+                nl_intent_item_type = search_signals.get("intent_item_type") or ""
+                nl_topical_tokens = search_signals.get("topical_tokens") or []
+
+                if "KUDOS" in excluded_item_types:
+                    where_parts.append("f.item_type != 'KUDOS'")
+                if "POST" in excluded_item_types:
+                    where_parts.append("f.item_type != 'POST'")
+                if "EVENT" in excluded_subtypes:
+                    where_parts.append("((',' || UPPER(COALESCE(f.post_subtype, '')) || ',') NOT LIKE '%,EVENT,%' AND (f.event_date IS NULL OR f.event_date = ''))")
+                if "RESOURCE" in excluded_subtypes:
+                    where_parts.append("(',' || UPPER(COALESCE(f.post_subtype, '')) || ',') NOT LIKE '%,RESOURCE,%'")
+
                 if len(tokens) > 1:
                     token_clauses = " AND ".join([f"{searchable_row_expr} LIKE ?" for _ in tokens])
-                    where_parts.append(f"({searchable_row_expr} LIKE ? OR ({token_clauses}))")
-                    params.append(like_q)
-                    params.extend([f"%{t}%" for t in tokens])
+                    nl_subclauses = []
+                    nl_params = []
+                    if len(nl_topical_tokens) < len(tokens):
+                        if nl_intent_subtype == "EVENT" and not subtype_param:
+                            nl_subclauses.append("(f.item_type = 'POST' AND ((',' || UPPER(COALESCE(f.post_subtype, '')) || ',') LIKE '%,EVENT,%' OR (f.event_date IS NOT NULL AND f.event_date != '')))")
+                        elif nl_intent_subtype == "RESOURCE" and not subtype_param:
+                            nl_subclauses.append("(f.item_type = 'POST' AND ((',' || UPPER(COALESCE(f.post_subtype, '')) || ',') LIKE '%,RESOURCE,%' OR (TRIM(COALESCE(f.post_subtype, '')) = '' AND (f.event_date IS NULL OR f.event_date = '') AND (f.resource_url IS NOT NULL AND f.resource_url != '' AND f.resource_url != '[]'))))")
+                        elif nl_intent_item_type in ("KUDOS", "POST") and not filter_type:
+                            nl_subclauses.append(f"f.item_type = '{nl_intent_item_type}'")
+
+                        for ntok in nl_topical_tokens:
+                            nstem = _stem_token(ntok.lower())
+                            syn_cands = []
+                            for c in [ntok.lower(), nstem] + list(CHAT_DOMAIN_SYNONYMS.get(ntok.lower(), CHAT_DOMAIN_SYNONYMS.get(nstem, []))):
+                                if c and c not in syn_cands:
+                                    syn_cands.append(c)
+                            if syn_cands:
+                                nl_subclauses.append("(" + " OR ".join([f"{searchable_row_expr} LIKE ?" for _ in syn_cands]) + ")")
+                                nl_params.extend([f"%{c}%" for c in syn_cands])
+
+                    if nl_subclauses:
+                        nl_combined = " AND ".join(nl_subclauses)
+                        where_parts.append(f"({searchable_row_expr} LIKE ? OR ({token_clauses}) OR ({nl_combined}))")
+                        params.append(like_q)
+                        params.extend([f"%{t}%" for t in tokens])
+                        params.extend(nl_params)
+                    else:
+                        where_parts.append(f"({searchable_row_expr} LIKE ? OR ({token_clauses}))")
+                        params.append(like_q)
+                        params.extend([f"%{t}%" for t in tokens])
                 else:
                     single_tok = tokens[0] if tokens else clean_search
                     like_single = f"%{single_tok}%"
@@ -3095,6 +3210,61 @@ def handle_api_request(method, path, headers, body_bytes):
 
         uid = user["id"] if user else None
         feed_items = fetch_enriched_items(where_clause, params, uid, sort_mode)
+
+        if search and "author:" not in search.lower():
+            clean_s_low = search.lstrip("@").strip().lower()
+            raw_toks_low = [
+                t.strip(".,;:!?\"'()[]{}").lstrip("@").strip().lower()
+                for t in clean_s_low.split()
+            ]
+            raw_toks_low = [t for t in raw_toks_low if t]
+            sig_check = _extract_chat_query_signals(clean_s_low)
+            nl_toks_low = [t.lower() for t in (sig_check.get("topical_tokens") or []) if t]
+            is_nl_query = len(raw_toks_low) > 1 and len(nl_toks_low) < len(raw_toks_low)
+
+            def _tok_matches_blob(tok_l: str, blob_l: str) -> bool:
+                if not tok_l:
+                    return True
+                if not tok_l.isalpha() or len(tok_l) >= 5:
+                    if tok_l in blob_l:
+                        return True
+                stem_l = _stem_token(tok_l)
+                if _word_boundary_match(tok_l, blob_l) or _word_boundary_match(stem_l, blob_l):
+                    return True
+                for syn in CHAT_DOMAIN_SYNONYMS.get(tok_l, CHAT_DOMAIN_SYNONYMS.get(stem_l, [])):
+                    if _word_boundary_match(syn, blob_l):
+                        return True
+                return False
+
+            filtered_feed_items = []
+            for it in feed_items:
+                blob_l = " ".join([
+                    str(it.get("title") or ""),
+                    str(it.get("content") or ""),
+                    str(it.get("theme") or ""),
+                    str(it.get("category") or ""),
+                    str(it.get("extracted_text") or ""),
+                    strip_base64_payloads(str(it.get("resource_url") or "")),
+                    str(it.get("target_audience") or ""),
+                    str(it.get("target_geography") or ""),
+                    str(it.get("contact_info") or ""),
+                    str(it.get("post_subtype") or ""),
+                    str(it.get("event_date") or ""),
+                    str(it.get("event_time") or ""),
+                    str(it.get("author_name") or ""),
+                    str(it.get("recipient_name") or ""),
+                    " ".join(str(g.get("name") or "") for g in (it.get("groups") or [])),
+                ]).lower()
+                if clean_s_low in blob_l and (len(clean_s_low) > 3 or _word_boundary_match(clean_s_low, blob_l) or search.startswith("@")):
+                    filtered_feed_items.append(it)
+                    continue
+                if raw_toks_low and all(_tok_matches_blob(t, blob_l) for t in raw_toks_low):
+                    filtered_feed_items.append(it)
+                    continue
+                if is_nl_query and (not nl_toks_low or all(_tok_matches_blob(t, blob_l) for t in nl_toks_low)):
+                    filtered_feed_items.append(it)
+                    continue
+            feed_items = filtered_feed_items
         total_count = len(feed_items)
 
         if limit_param.isdigit():

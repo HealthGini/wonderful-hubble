@@ -5703,6 +5703,117 @@ class TestRegressionCoverage(GoodDeedsTestCase):
             self.database.DB_PATH = orig_db_path
             shutil.rmtree(tmp_dir, ignore_errors=True)
 
+    def test_conversational_search_negation_stopwords_and_word_boundaries(self):
+        """
+        Regression test verifying:
+        1. Conjunctions and negation words ('but', 'no', 'not', 'without', 'except', 'only')
+           are stripped from topical_tokens rather than scored as search keywords.
+        2. Negated type/subtype triggers (e.g., 'with no kudos', 'without events') populate
+           excluded_item_types / excluded_subtypes and exclude those items from results.
+        3. _word_boundary_match prevents short tokens from matching inside unrelated words
+           (such as 'no' inside 'donors'/'November' or 'but' inside 'distribution').
+        """
+        from unittest.mock import patch
+
+        sig = self.handlers._extract_chat_query_signals("healthcare resources but with no kudos")
+        self.assertEqual(sig["topical_tokens"], ["healthcare"])
+        self.assertEqual(sig["intent_subtype"], "RESOURCE")
+        self.assertEqual(sig["intent_item_type"], "POST")
+        self.assertIn("KUDOS", sig["excluded_item_types"])
+
+        self.assertFalse(self.handlers._word_boundary_match("no", "local donors in november"))
+        self.assertFalse(self.handlers._word_boundary_match("but", "distribution hours"))
+        self.assertTrue(self.handlers._word_boundary_match("health", "immigrant healthcare coverage"))
+
+        token = self.get_token("maya@gooddeeds.space")
+        headers = self.get_auth_headers(token)
+
+        # Create a non-healthcare resource post that contains 'donors', 'November', 'no ID', and 'distribution'
+        st_coat, _, coat_res = self.make_request(
+            "POST",
+            "/api/posts",
+            headers=headers,
+            body={
+                "title": "Annual Winter Coat & Blanket Drive",
+                "content": "November distribution hours for local donors — no ID needed.",
+                "theme": "Community & Action",
+                "post_subtype": "EVENT,RESOURCE",
+                "event_date": "2026-11-14",
+                "target_audience": "Local Donors & Volunteers",
+            },
+        )
+        self.assertEqual(st_coat, 201)
+        coat_id = coat_res["item"]["id"]
+
+        # Create a genuine healthcare resource post
+        st_hc, _, hc_res = self.make_request(
+            "POST",
+            "/api/posts",
+            headers=headers,
+            body={
+                "title": "Community Healthcare & Apple Health Coverage Guide",
+                "content": "Free healthcare enrollment navigation and sliding-scale clinic directory.",
+                "theme": "Wellbeing & Care",
+                "post_subtype": "RESOURCE",
+            },
+        )
+        self.assertEqual(st_hc, 201)
+        hc_id = hc_res["item"]["id"]
+
+        # Create a Kudos item that mentions 'healthcare'
+        st_kudos, _, kudos_res = self.make_request(
+            "POST",
+            "/api/kudos",
+            headers=headers,
+            body={
+                "recipient_id": 2,
+                "content": "Thank you for helping families navigate healthcare coverage!",
+                "theme": "Wellbeing & Care",
+            },
+        )
+        self.assertEqual(st_kudos, 201)
+        kudos_id = kudos_res["item"]["id"]
+
+        with patch.dict(os.environ, {"DISABLE_EXTERNAL_LLM": "1"}):
+            st_q, _, q_body = self.make_request(
+                "POST",
+                "/api/chat_search",
+                body={"message": "healthcare resources but with no kudos"},
+            )
+            self.assertEqual(st_q, 200)
+            matched_ids = q_body.get("matched_item_ids", [])
+            self.assertIn(hc_id, matched_ids)
+            self.assertNotIn(coat_id, matched_ids, "Winter Coat Drive must not match via 'no'/'but' substrings")
+            self.assertNotIn(kudos_id, matched_ids, "Kudos items must be excluded when query specifies 'no kudos'")
+            for it in q_body.get("matched_items", []):
+                self.assertNotEqual(it.get("item_type"), "KUDOS")
+
+            # Also verify Search Controls box (GET /api/feed?search=...) handles the same query & exclusions
+            st_feed_s, _, feed_s_body = self.make_request(
+                "GET",
+                "/api/feed?search=healthcare%20resources%20but%20with%20no%20kudos",
+            )
+            self.assertEqual(st_feed_s, 200)
+            feed_matched_ids = [it["id"] for it in feed_s_body.get("feed", [])]
+            self.assertIn(hc_id, feed_matched_ids)
+            self.assertNotIn(coat_id, feed_matched_ids)
+            self.assertNotIn(kudos_id, feed_matched_ids)
+            for it in feed_s_body.get("feed", []):
+                self.assertNotEqual(it.get("item_type"), "KUDOS")
+
+        base_dir = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+        with open(os.path.join(base_dir, "static", "index.html"), "r", encoding="utf-8") as f:
+            html = f.read()
+        with open(os.path.join(base_dir, "static", "app.js"), "r", encoding="utf-8") as f:
+            js = f.read()
+        self.assertIn('id="btn-landing-chat-reset"', html)
+        self.assertIn('id="btn-feed-chat-reset"', html)
+        self.assertIn('resetBtn.textContent = "Reset Search"', js)
+        self.assertIn('resetBtn.textContent = "Reset Chat"', js)
+        self.assertIn("clearLandingSearchInput()", js)
+        self.assertIn("clearFeedSearchInput()", js)
+
+
 
 
 

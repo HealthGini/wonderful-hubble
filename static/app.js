@@ -7927,7 +7927,10 @@ function switchSearchMode(context, mode) {
       btnChat.setAttribute("aria-selected", "true");
     }
     if (helperLabel) helperLabel.classList.add("hidden");
-    if (resetBtn) resetBtn.classList.remove("hidden");
+    if (resetBtn) {
+      resetBtn.classList.remove("hidden");
+      resetBtn.textContent = "Reset Chat";
+    }
     if (scopeSel) {
       if (currentUser) scopeSel.classList.remove("hidden");
       else scopeSel.classList.add("hidden");
@@ -7950,7 +7953,10 @@ function switchSearchMode(context, mode) {
       btnChat.setAttribute("aria-selected", "false");
     }
     if (helperLabel) helperLabel.classList.remove("hidden");
-    if (resetBtn) resetBtn.classList.add("hidden");
+    if (resetBtn) {
+      resetBtn.classList.remove("hidden");
+      resetBtn.textContent = "Reset Search";
+    }
     if (scopeSel) scopeSel.classList.add("hidden");
 
     if (chatFilterActive[ctx]) {
@@ -8006,6 +8012,10 @@ function clearChatSearch(context) {
   }
   if (chatFilterActive[ctx]) {
     clearChatFeedFilter(ctx);
+  } else if (ctx === "landing") {
+    clearLandingSearchInput();
+  } else {
+    clearFeedSearchInput();
   }
 }
 window.clearChatSearch = clearChatSearch;
