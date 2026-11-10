@@ -5979,7 +5979,11 @@ class TestRegressionCoverage(GoodDeedsTestCase):
         self.assertIn("const icon = getActiveDomElementById(iconId);", js)
         self.assertIn('if (viewId !== "view-landing")', js)
 
-        # 5. Verify Beta badge and active-development banner in header
+        # 5. Verify joined GoodDeeds.space brand logo and distinct Beta badge/banner in header
+        self.assertIn('id="site-brand-logo"', html)
+        self.assertIn(">GoodDeeds</span><span", html)
+        self.assertIn(">.space</span>", html)
+        self.assertNotIn("space ✨", html)
         self.assertIn('id="site-beta-banner"', html)
         self.assertIn('id="site-beta-badge"', html)
         self.assertIn("under active development", html)
