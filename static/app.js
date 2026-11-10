@@ -320,6 +320,8 @@ let signupInviteGroupId = null;
 let pendingAfterAuthRoute = null;
 let pendingGroupTab = null;
 let _kudosSavedLinkSelection = { start: 0, end: 0 };
+let chatMentionMatches = [];
+let chatMentionActiveIndex = 0;
 
 /* ================= INITIALIZATION & ROUTING ================= */
 
@@ -685,10 +687,36 @@ async function browseSourceFile(filename) {
 }
 
 function showView(viewId) {
+  if (viewId !== "view-landing") {
+    const landingFeed = document.getElementById("landing-preview-feed");
+    if (landingFeed) landingFeed.innerHTML = "";
+  }
   const el = document.getElementById(viewId);
   if (el) el.classList.remove("hidden");
   window.scrollTo({ top: 0, behavior: "smooth" });
 }
+
+function getAllDomElementsById(id) {
+  if (!id) return [];
+  const all = Array.from(document.querySelectorAll(`[id="${id}"]`));
+  if (all.length > 0) return all;
+  const single = document.getElementById(id);
+  return single ? [single] : [];
+}
+
+function getActiveDomElementById(id) {
+  const all = getAllDomElementsById(id);
+  if (all.length === 0) return null;
+  if (all.length === 1) return all[0];
+  for (let i = all.length - 1; i >= 0; i--) {
+    const el = all[i];
+    const hiddenAncestor = el.parentElement ? el.parentElement.closest(".hidden") : null;
+    if (!hiddenAncestor) return el;
+  }
+  return all[all.length - 1];
+}
+window.getAllDomElementsById = getAllDomElementsById;
+window.getActiveDomElementById = getActiveDomElementById;
 
 function openCreatePostPage(options = {}) {
   if (!currentUser) {
@@ -1627,30 +1655,31 @@ function buildSearchMatchInfo(item, searchContext) {
 }
 
 function toggleSearchCardExpand(itemId) {
-  const detailsEl = document.getElementById(`feed-card-details-${itemId}`);
-  const compactExtraEl = document.getElementById(`feed-card-compact-extra-${itemId}`);
-  const btnEl = document.getElementById(`btn-expand-card-${itemId}`);
-  const articleEl = document.getElementById(`feed-card-${itemId}`);
+  const detailsId = `feed-card-details-${itemId}`;
+  const compactExtraId = `feed-card-compact-extra-${itemId}`;
+  const btnId = `btn-expand-card-${itemId}`;
+  const articleId = `feed-card-${itemId}`;
+  const detailsEl = getActiveDomElementById(detailsId);
   if (!detailsEl) return;
 
   const isCurrentlyHidden = detailsEl.classList.contains("hidden");
   if (isCurrentlyHidden) {
-    detailsEl.classList.remove("hidden");
-    if (compactExtraEl) compactExtraEl.classList.add("hidden");
-    if (btnEl) btnEl.innerHTML = `<span>▲ Collapse Card</span>`;
-    if (articleEl) {
-      articleEl.classList.remove("p-4", "sm:p-5", "space-y-2.5");
-      articleEl.classList.add("p-6", "sm:p-8", "space-y-5");
-    }
+    getAllDomElementsById(detailsId).forEach(el => el.classList.remove("hidden"));
+    getAllDomElementsById(compactExtraId).forEach(el => el.classList.add("hidden"));
+    getAllDomElementsById(btnId).forEach(el => { el.innerHTML = `<span>▲ Collapse Card</span>`; });
+    getAllDomElementsById(articleId).forEach(el => {
+      el.classList.remove("p-4", "sm:p-5", "space-y-2.5");
+      el.classList.add("p-6", "sm:p-8", "space-y-5");
+    });
     expandedSearchCards.add(Number(itemId));
   } else {
-    detailsEl.classList.add("hidden");
-    if (compactExtraEl) compactExtraEl.classList.remove("hidden");
-    if (btnEl) btnEl.innerHTML = `<span>▼ Expand Card</span>`;
-    if (articleEl) {
-      articleEl.classList.remove("p-6", "sm:p-8", "space-y-5");
-      articleEl.classList.add("p-4", "sm:p-5", "space-y-2.5");
-    }
+    getAllDomElementsById(detailsId).forEach(el => el.classList.add("hidden"));
+    getAllDomElementsById(compactExtraId).forEach(el => el.classList.remove("hidden"));
+    getAllDomElementsById(btnId).forEach(el => { el.innerHTML = `<span>▼ Expand Card</span>`; });
+    getAllDomElementsById(articleId).forEach(el => {
+      el.classList.remove("p-6", "sm:p-8", "space-y-5");
+      el.classList.add("p-4", "sm:p-5", "space-y-2.5");
+    });
     expandedSearchCards.delete(Number(itemId));
     expandAllSearchCards = false;
   }
@@ -1832,19 +1861,20 @@ window.isLongPostContent = isLongPostContent;
 
 function togglePostFullText(itemId) {
   const numId = Number(itemId);
-  const bodyEl = document.getElementById(`post-body-content-${numId}`);
-  const labelEl = document.getElementById(`post-text-toggle-label-${numId}`);
+  const bodyId = `post-body-content-${numId}`;
+  const labelId = `post-text-toggle-label-${numId}`;
+  const bodyEl = getActiveDomElementById(bodyId);
   if (!bodyEl) return;
 
   const willExpand = bodyEl.classList.contains("post-content-collapsed");
   if (willExpand) {
     expandedLongPosts.add(numId);
-    bodyEl.classList.remove("post-content-collapsed");
-    if (labelEl) labelEl.textContent = "Show less ↑";
+    getAllDomElementsById(bodyId).forEach(el => el.classList.remove("post-content-collapsed"));
+    getAllDomElementsById(labelId).forEach(el => { el.textContent = "Show less ↑"; });
   } else {
     expandedLongPosts.delete(numId);
-    bodyEl.classList.add("post-content-collapsed");
-    if (labelEl) labelEl.textContent = "Click here to see the full text ↓";
+    getAllDomElementsById(bodyId).forEach(el => el.classList.add("post-content-collapsed"));
+    getAllDomElementsById(labelId).forEach(el => { el.textContent = "Click here to see the full text ↓"; });
   }
 }
 window.togglePostFullText = togglePostFullText;
@@ -1920,7 +1950,7 @@ function renderFeedCard(item, isProfileView = false, searchContext = null) {
   `;
   }).join("");
 
-  const isExpanded = expandedThreads.has(item.id);
+  const isExpanded = expandedThreads.has(item.id) || expandedThreads.has(Number(item.id));
   const commentsBoxClass = isExpanded 
     ? "space-y-3.5 pt-2.5 border-t border-stone-200/40" 
     : "space-y-3.5 hidden pt-2.5 border-t border-stone-200/40";
@@ -3752,6 +3782,16 @@ function openSpaceEventPostModal() {
 }
 window.openSpaceEventPostModal = openSpaceEventPostModal;
 
+function openSpaceResourcePostModal() {
+  if (!currentUser) {
+    showToast("Please log in to share resources.");
+    openModal("modal-login");
+    return;
+  }
+  openCreatePostPage({ subtype: "RESOURCE" });
+}
+window.openSpaceResourcePostModal = openSpaceResourcePostModal;
+
 async function populateGroupCheckboxes(containerId, inputName) {
   const container = document.getElementById(containerId);
   if (!container) return;
@@ -3980,16 +4020,16 @@ async function confirmPublishPost() {
     togglePostSubtype("GENERAL");
     backToPostStep1(false);
     showToast("✅ Post published permanently to community feed!");
+    const publishedSubtypesList = String(publishedSubtype || "").split(",").map(s => s.trim().toUpperCase());
+    const returnSpaceTab = publishedSubtypesList.includes("EVENT")
+      ? "events"
+      : (publishedSubtypesList.includes("RESOURCE") ? "resources" : "posts");
     if (originSpaceId) {
-      pendingGroupTab = String(publishedSubtype || "").split(",").map(s => s.trim()).includes("EVENT") ? "events" : "posts";
+      pendingGroupTab = returnSpaceTab;
       navigateTo(`/group/${originSpaceId}`);
     } else if (window.location.hash.startsWith("#/group/")) {
       await loadGroupDetail(activeGroupId);
-      if (String(publishedSubtype || "").split(",").map(s => s.trim()).includes("EVENT")) {
-        switchGroupTab("events");
-      } else {
-        switchGroupTab("posts");
-      }
+      switchGroupTab(returnSpaceTab);
     } else {
       navigateTo("/feed");
       loadFeed();
@@ -4155,6 +4195,8 @@ async function toggleReaction(itemId, emoji) {
     if (window.location.hash.includes("/kudos/") || window.location.hash.includes("/post/")) {
       const id = window.location.hash.split("/")[2];
       loadSingleItemView(id);
+    } else if (window.location.hash.includes("/group/") && activeGroupId) {
+      await refreshActiveSpaceFeedTabs();
     } else if (window.location.hash.includes("/profile") || window.location.hash.includes("/user/")) {
       renderProfileTabContent();
     } else {
@@ -4182,10 +4224,14 @@ async function handleCommentSubmit(e, itemId) {
       body: JSON.stringify({ item_id: itemId, content })
     });
     input.value = "";
+    expandedThreads.add(itemId);
+    expandedThreads.add(Number(itemId));
     showToast("💬 Discussion reply added!");
     if (window.location.hash.includes("/kudos/") || window.location.hash.includes("/post/")) {
       const id = window.location.hash.split("/")[2];
       loadSingleItemView(id);
+    } else if (window.location.hash.includes("/group/") && activeGroupId) {
+      await refreshActiveSpaceFeedTabs();
     } else if (window.location.hash.includes("/profile") || window.location.hash.includes("/user/")) {
       const uId = activeProfileData ? activeProfileData.user.id : currentUser.id;
       await loadUserProfile(uId);
@@ -4572,7 +4618,206 @@ function renderGroupChatList() {
   }).join("");
 }
 
+function getChatMentionCandidates() {
+  const byUsername = new Map();
+  const addCandidate = (u, isSpaceMember = false) => {
+    if (!u || !u.username) return;
+    const uname = String(u.username).trim();
+    if (!uname) return;
+    const key = uname.toLowerCase();
+    const existing = byUsername.get(key);
+    if (existing) {
+      if (isSpaceMember) existing.isSpaceMember = true;
+      if (u.is_admin) existing.is_admin = 1;
+      if (u.is_site_admin) existing.is_site_admin = 1;
+      if (!existing.avatar_url && u.avatar_url) existing.avatar_url = u.avatar_url;
+      if (!existing.email && u.email) existing.email = u.email;
+      return;
+    }
+    byUsername.set(key, {
+      id: u.id,
+      username: uname,
+      avatar_url: u.avatar_url || "https://images.unsplash.com/photo-1535713875002-d1d0cf377fde?w=100",
+      email: u.email || "",
+      is_admin: Number(u.is_admin) === 1 ? 1 : 0,
+      is_site_admin: Number(u.is_site_admin) === 1 ? 1 : 0,
+      isSpaceMember: Boolean(isSpaceMember),
+    });
+  };
+
+  if (activeGroupData) {
+    (activeGroupData.roster || []).forEach(m => addCandidate(m, true));
+    (activeGroupData.chat_messages || []).forEach(m => {
+      if (m && m.author_name) {
+        addCandidate({ id: m.user_id, username: m.author_name, avatar_url: m.author_avatar }, true);
+      }
+    });
+  }
+  if (Array.isArray(allUsersCache) && allUsersCache.length > 0) {
+    allUsersCache.forEach(u => addCandidate(u, false));
+  } else if (typeof fetchUsersCache === "function" && !window._fetchingUsersForChatMention) {
+    window._fetchingUsersForChatMention = true;
+    fetchUsersCache().finally(() => {
+      window._fetchingUsersForChatMention = false;
+      const inp = document.getElementById("group-chat-input");
+      if (inp && document.activeElement === inp) {
+        handleChatMentionInput(inp);
+      }
+    });
+  }
+  return Array.from(byUsername.values());
+}
+
+function extractActiveChatMention(inputEl) {
+  if (!inputEl) return null;
+  const val = String(inputEl.value || "");
+  const caret = typeof inputEl.selectionStart === "number" ? inputEl.selectionStart : val.length;
+  const before = val.slice(0, caret);
+  const match = before.match(/(?:^|\s)@([A-Za-z0-9_.\-]*)$/);
+  if (!match) return null;
+  const atIndex = before.lastIndexOf("@");
+  return {
+    query: (match[1] || "").trim().toLowerCase(),
+    atIndex,
+    caret,
+  };
+}
+
+function closeChatMentionSuggestions() {
+  const sugBox = document.getElementById("group-chat-mention-suggestions");
+  if (sugBox) {
+    sugBox.classList.add("hidden");
+    sugBox.innerHTML = "";
+  }
+  chatMentionMatches = [];
+  chatMentionActiveIndex = 0;
+}
+window.closeChatMentionSuggestions = closeChatMentionSuggestions;
+
+function renderChatMentionSuggestions() {
+  const sugBox = document.getElementById("group-chat-mention-suggestions");
+  if (!sugBox) return;
+  if (!chatMentionMatches.length) {
+    closeChatMentionSuggestions();
+    return;
+  }
+  sugBox.innerHTML = chatMentionMatches.map((u, idx) => {
+    const isActive = idx === chatMentionActiveIndex;
+    const safeUsername = String(u.username || "").replace(/\\/g, "\\\\").replace(/'/g, "\\'");
+    const roleLabel = (u.is_admin || u.is_site_admin)
+      ? `<span class="text-[11px] font-extrabold px-2 py-0.5 rounded-full bg-amber-100 text-amber-800 shrink-0">Space Admin</span>`
+      : (u.isSpaceMember
+          ? `<span class="text-[11px] font-extrabold px-2 py-0.5 rounded-full bg-teal-50 text-teal-800 border border-teal-200 shrink-0">Space Member</span>`
+          : `<span class="text-[11px] font-semibold px-2 py-0.5 rounded-full bg-slate-100 text-slate-600 shrink-0">Community</span>`);
+    return `
+      <div onmousedown="event.preventDefault(); selectChatMention('${safeUsername}')" onclick="selectChatMention('${safeUsername}')" class="px-4 py-2.5 cursor-pointer flex items-center justify-between gap-3 transition ${isActive ? 'bg-indigo-50' : 'hover:bg-indigo-50/70'}">
+        <div class="flex items-center space-x-3 min-w-0">
+          <img src="${escapeHtml(u.avatar_url)}" alt="${escapeHtml(u.username)}" class="w-8 h-8 rounded-full object-cover border border-slate-200 shrink-0">
+          <div class="truncate text-left">
+            <strong class="text-sm font-black text-slate-900 block truncate">@${escapeHtml(u.username)}</strong>
+          </div>
+        </div>
+        ${roleLabel}
+      </div>
+    `;
+  }).join("");
+  sugBox.classList.remove("hidden");
+}
+
+function handleChatMentionInput(inputEl) {
+  const input = inputEl || document.getElementById("group-chat-input");
+  const mentionCtx = extractActiveChatMention(input);
+  if (!mentionCtx) {
+    closeChatMentionSuggestions();
+    return;
+  }
+  const term = mentionCtx.query;
+  const candidates = getChatMentionCandidates();
+  let matches = candidates.filter(u => {
+    const uname = u.username.toLowerCase();
+    const uemail = (u.email || "").toLowerCase();
+    return !term || uname.includes(term) || uemail.includes(term);
+  });
+
+  // Prefer non-self members unless self is the only match
+  const nonSelf = matches.filter(u => !currentUser || Number(u.id) !== Number(currentUser.id));
+  if (nonSelf.length > 0) {
+    matches = nonSelf;
+  }
+
+  matches.sort((a, b) => {
+    if (a.isSpaceMember !== b.isSpaceMember) return a.isSpaceMember ? -1 : 1;
+    if (term) {
+      const aStarts = a.username.toLowerCase().startsWith(term);
+      const bStarts = b.username.toLowerCase().startsWith(term);
+      if (aStarts !== bStarts) return aStarts ? -1 : 1;
+    }
+    return a.username.localeCompare(b.username);
+  });
+
+  chatMentionMatches = matches.slice(0, 6);
+  chatMentionActiveIndex = 0;
+  renderChatMentionSuggestions();
+}
+window.handleChatMentionInput = handleChatMentionInput;
+
+function selectChatMention(username) {
+  const input = document.getElementById("group-chat-input");
+  if (!input || !username) return;
+  const mentionCtx = extractActiveChatMention(input);
+  const val = String(input.value || "");
+  if (mentionCtx) {
+    const beforeAt = val.slice(0, mentionCtx.atIndex);
+    const afterCaret = val.slice(mentionCtx.caret);
+    const inserted = `@${username} `;
+    input.value = beforeAt + inserted + afterCaret.replace(/^\s+/, "");
+    const nextPos = (beforeAt + inserted).length;
+    input.focus();
+    try {
+      input.setSelectionRange(nextPos, nextPos);
+    } catch (_) {}
+  } else {
+    input.value = (val ? val.trimEnd() + " " : "") + `@${username} `;
+    input.focus();
+  }
+  closeChatMentionSuggestions();
+}
+window.selectChatMention = selectChatMention;
+
+function handleChatMentionKeydown(event) {
+  const sugBox = document.getElementById("group-chat-mention-suggestions");
+  if (!sugBox || sugBox.classList.contains("hidden") || !chatMentionMatches.length) return;
+  if (event.key === "ArrowDown") {
+    event.preventDefault();
+    chatMentionActiveIndex = (chatMentionActiveIndex + 1) % chatMentionMatches.length;
+    renderChatMentionSuggestions();
+  } else if (event.key === "ArrowUp") {
+    event.preventDefault();
+    chatMentionActiveIndex = (chatMentionActiveIndex - 1 + chatMentionMatches.length) % chatMentionMatches.length;
+    renderChatMentionSuggestions();
+  } else if (event.key === "Enter" || event.key === "Tab") {
+    const chosen = chatMentionMatches[chatMentionActiveIndex] || chatMentionMatches[0];
+    if (chosen && chosen.username) {
+      event.preventDefault();
+      selectChatMention(chosen.username);
+    }
+  } else if (event.key === "Escape") {
+    event.preventDefault();
+    closeChatMentionSuggestions();
+  }
+}
+window.handleChatMentionKeydown = handleChatMentionKeydown;
+
+document.addEventListener("click", e => {
+  const sugBox = document.getElementById("group-chat-mention-suggestions");
+  const input = document.getElementById("group-chat-input");
+  if (sugBox && !sugBox.classList.contains("hidden") && e.target !== input && !sugBox.contains(e.target)) {
+    closeChatMentionSuggestions();
+  }
+});
+
 async function sendGroupChat() {
+  closeChatMentionSuggestions();
   if (!currentUser) {
     showToast("Please log in to chat on this board.");
     openModal("modal-login");
@@ -4686,6 +4931,27 @@ async function renderGroupResources() {
   const container = document.getElementById("group-resources-list");
   if (!container || !activeGroupData) return;
 
+  const parent = container.parentNode;
+  if (parent) {
+    let banner = document.getElementById("group-resources-creation-banner");
+    if (!banner) {
+      banner = document.createElement("div");
+      banner.id = "group-resources-creation-banner";
+      parent.insertBefore(banner, container);
+    }
+    const spaceName = activeGroupData ? activeGroupData.name : 'this space';
+    banner.className = "bg-gradient-to-r from-emerald-500/10 via-white to-teal-500/10 p-6 rounded-3xl border border-emerald-200/80 shadow-sm flex flex-col sm:flex-row items-center justify-between gap-4 mb-6";
+    banner.innerHTML = `
+      <div class="space-y-1 text-center sm:text-left">
+        <h3 class="text-lg font-black text-slate-900">Share &amp; Discover Space Resources</h3>
+        <p class="text-sm font-medium text-slate-600">Share helpful guides, links, PDFs, or reference materials in ${spaceName}.</p>
+      </div>
+      <button onclick="openSpaceResourcePostModal()" class="px-6 py-3 rounded-2xl font-black text-sm bg-gradient-to-r from-emerald-600 to-teal-600 hover:from-emerald-700 hover:to-teal-700 text-white shadow-md transition touch-target flex items-center space-x-2 shrink-0">
+        <span>📚 + Share Space Resources</span>
+      </button>
+    `;
+  }
+
   container.className = "flex flex-col space-y-4";
   container.innerHTML = `<p class="text-stone-500 font-bold text-center py-8">Loading space resources and attachments...</p>`;
 
@@ -4719,9 +4985,31 @@ async function renderGroupResources() {
     });
   });
 
-  // 2. Post / Kudos attachments
+  // 2. Post / Kudos attachments and Resource-tagged posts
   feedItems.forEach(item => {
-    if (!item.resource_url) return;
+    const isResourcePost = item.item_type === "POST" && getItemSubtypes(item).includes("RESOURCE");
+    if (!item.resource_url) {
+      if (isResourcePost) {
+        const cacheKey = `resource_post_${item.id}`;
+        const filename = `resource_post_${item.id}`;
+        const postTitle = item.title || (item.content ? (item.content.length > 80 ? item.content.substring(0, 80) + "..." : item.content) : "Untitled Resource");
+        const authorName = item.author_name || "Anonymous";
+        const dateStr = item.created_at ? ` • ${item.created_at}` : "";
+        unifiedList.push({
+          url: `/#/post/${item.id}`,
+          cacheKey: cacheKey,
+          filename: filename,
+          theme: item.theme || "Community Resource",
+          title: `From post: ${postTitle}`,
+          description: "",
+          content: item.content || "",
+          extracted_text: item.extracted_text || "",
+          meta: `Shared by ${authorName}${dateStr}`,
+          isAdmin: false
+        });
+      }
+      return;
+    }
     let urls = [];
     const resUrlStr = String(item.resource_url || "").trim();
     if (resUrlStr) {
@@ -6223,22 +6511,34 @@ async function respondGroupInvite(inviteId, action) {
 }
 
 function toggleCommentsStream(itemId) {
-  const box = document.getElementById(`comments-stream-box-${itemId}`);
-  const icon = document.getElementById(`comments-toggle-icon-${itemId}`);
+  const numId = Number(itemId);
+  const boxId = `comments-stream-box-${itemId}`;
+  const iconId = `comments-toggle-icon-${itemId}`;
+  const box = getActiveDomElementById(boxId);
+  const icon = getActiveDomElementById(iconId);
   if (!box || !icon) return;
 
   const isCollapsed = box.classList.contains("hidden");
   const text = icon.textContent.trim();
   const isReplyFlow = text.includes("Reply") || text.includes("Write");
+  const nextLabel = isCollapsed
+    ? (isReplyFlow ? "▲ Hide Reply" : "▲ Hide Thread")
+    : (isReplyFlow ? "▼ Write Reply" : "▼ Show Thread");
+
+  getAllDomElementsById(boxId).forEach(el => {
+    if (isCollapsed) el.classList.remove("hidden");
+    else el.classList.add("hidden");
+  });
+  getAllDomElementsById(iconId).forEach(el => {
+    el.textContent = nextLabel;
+  });
 
   if (isCollapsed) {
-    box.classList.remove("hidden");
-    icon.textContent = isReplyFlow ? "▲ Hide Reply" : "▲ Hide Thread";
     expandedThreads.add(itemId);
+    expandedThreads.add(numId);
   } else {
-    box.classList.add("hidden");
-    icon.textContent = isReplyFlow ? "▼ Write Reply" : "▼ Show Thread";
     expandedThreads.delete(itemId);
+    expandedThreads.delete(numId);
   }
 }
 
@@ -7644,12 +7944,15 @@ async function refreshActiveSpaceFeedTabs() {
   const kudosBox = document.getElementById("gcontent-kudos");
   const postsBox = document.getElementById("gcontent-posts");
   const eventsBox = document.getElementById("gcontent-events");
+  const resourcesBox = document.getElementById("gcontent-resources");
   if (kudosBox && !kudosBox.classList.contains("hidden")) {
     await renderGroupKudos();
   } else if (postsBox && !postsBox.classList.contains("hidden")) {
     await renderGroupPosts();
   } else if (eventsBox && !eventsBox.classList.contains("hidden")) {
     await renderGroupEvents();
+  } else if (resourcesBox && !resourcesBox.classList.contains("hidden")) {
+    await renderGroupResources();
   }
   if (typeof renderGroupCalendar === "function") {
     renderGroupCalendar();
@@ -7666,8 +7969,7 @@ async function deleteFeedItem(itemId, itemType = "POST", spaceCount = 1) {
   }
   try {
     await apiFetch(`/feed/${itemId}`, { method: "DELETE" });
-    const cardEl = document.getElementById(`feed-card-${itemId}`);
-    if (cardEl) cardEl.remove();
+    getAllDomElementsById(`feed-card-${itemId}`).forEach(cardEl => cardEl.remove());
     showToast(`🗑️ ${label} deleted.`);
 
     const hash = window.location.hash || "";

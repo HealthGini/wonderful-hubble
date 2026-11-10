@@ -42,6 +42,12 @@
 
   <!-- Header & Primary Navigation -->
   <header class="bg-white/85 backdrop-blur-xl border-b border-stone-200/70 sticky top-0 z-40 shadow-sm">
+    <div id="site-beta-banner" class="bg-indigo-50/90 border-b border-indigo-100 text-indigo-900 text-xs font-semibold py-1.5 px-4 text-center">
+      <span class="inline-flex flex-wrap items-center justify-center gap-1.5">
+        <span class="px-2 py-0.5 rounded-full bg-indigo-600 text-white font-black text-[10px] uppercase tracking-wider">Beta</span>
+        <span>GoodDeeds.space is currently in <strong>Beta</strong> and under active development — some features may change as we continue improving the community experience.</span>
+      </span>
+    </div>
     <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
       <div class="flex justify-between items-center min-h-[80px] py-2 gap-4">
         
@@ -53,10 +59,15 @@
         </button>
 
         <!-- Logo -->
-        <a href="/#/" class="flex items-center space-x-2 py-1 px-2 rounded-2xl touch-target shrink-0 transition hover:opacity-90 select-none">
-          <span class="text-2xl sm:text-3xl font-black tracking-tight bg-gradient-to-r from-emerald-600 via-teal-600 to-amber-600 bg-clip-text text-transparent font-heading">GoodDeeds</span>
-          <span class="px-2 py-0.5 text-xs font-black tracking-widest text-amber-900 bg-amber-100/90 rounded-full border border-amber-200 uppercase">space ✨</span>
-        </a>
+        <div class="flex items-center space-x-2 shrink-0">
+          <a href="/#/" class="flex items-center space-x-2 py-1 px-2 rounded-2xl touch-target shrink-0 transition hover:opacity-90 select-none">
+            <span class="text-2xl sm:text-3xl font-black tracking-tight bg-gradient-to-r from-emerald-600 via-teal-600 to-amber-600 bg-clip-text text-transparent font-heading">GoodDeeds</span>
+            <span class="px-2 py-0.5 text-xs font-black tracking-widest text-amber-900 bg-amber-100/90 rounded-full border border-amber-200 uppercase">space ✨</span>
+          </a>
+          <span id="site-beta-badge" title="GoodDeeds.space is in Beta — under active development and some features may change." class="px-2.5 py-0.5 text-[11px] font-black tracking-wider uppercase rounded-full bg-indigo-50 text-indigo-700 border border-indigo-200 shadow-2xs select-none cursor-help">
+            Beta
+          </span>
+        </div>
 
         <!-- Navigation Links -->
         <nav class="hidden lg:flex items-center space-x-2" aria-label="Main Navigation">
@@ -696,7 +707,10 @@
           <h3 class="text-xl font-extrabold text-slate-900 tracking-tight">💬 Chat Board</h3>
           <form onsubmit="event.preventDefault(); sendGroupChat();" class="space-y-3">
             <div class="flex flex-col sm:flex-row gap-3">
-              <input type="text" id="group-chat-input" placeholder="Type a message (use @username to email a member directly)..." class="flex-1 px-4 py-3.5 rounded-xl border border-slate-300 font-medium text-base bg-slate-50 text-slate-900 placeholder:text-slate-400 focus:bg-white focus:border-indigo-600 transition">
+              <div class="relative flex-1">
+                <input type="text" id="group-chat-input" autocomplete="off" oninput="handleChatMentionInput(this)" onclick="handleChatMentionInput(this)" onkeydown="handleChatMentionKeydown(event)" placeholder="Type a message (use @username to email a member directly)..." class="w-full px-4 py-3.5 rounded-xl border border-slate-300 font-medium text-base bg-slate-50 text-slate-900 placeholder:text-slate-400 focus:bg-white focus:border-indigo-600 transition">
+                <div id="group-chat-mention-suggestions" class="hidden absolute left-0 right-0 top-full mt-1.5 bg-white rounded-2xl border border-slate-200 shadow-xl z-40 max-h-64 overflow-y-auto divide-y divide-slate-100"></div>
+              </div>
               <button type="submit" class="px-6 py-3.5 bg-indigo-600 hover:bg-indigo-700 text-white font-bold text-base rounded-xl shadow-sm transition touch-target shrink-0">
                 Send Message
               </button>

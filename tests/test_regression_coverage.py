@@ -5942,6 +5942,52 @@ class TestRegressionCoverage(GoodDeedsTestCase):
             conn2.close()
             self.assertIsNone(otp_after)
 
+    def test_space_resources_share_button_and_chat_mention_autocomplete(self):
+        """Verify 'Share Space Resources' button in Space Resources tab and @username autocomplete on Space Chat Board."""
+        base_dir = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+        with open(os.path.join(base_dir, "static", "index.html"), "r", encoding="utf-8") as f:
+            html = f.read()
+        with open(os.path.join(base_dir, "static", "app.js"), "r", encoding="utf-8") as f:
+            js = f.read()
+
+        # 1. Verify '📚 + Share Space Resources' CTA banner and helper in Space Resources tab
+        self.assertIn("group-resources-creation-banner", js)
+        self.assertIn("📚 + Share Space Resources", js)
+        self.assertIn("openSpaceResourcePostModal", js)
+        self.assertIn('openCreatePostPage({ subtype: "RESOURCE" })', js)
+
+        # 2. Verify Space Chat Board @mention autocomplete UI and handlers
+        self.assertIn('id="group-chat-mention-suggestions"', html)
+        self.assertIn("handleChatMentionInput(this)", html)
+        self.assertIn("handleChatMentionKeydown(event)", html)
+        self.assertIn("function getChatMentionCandidates()", js)
+        self.assertIn("function extractActiveChatMention(inputEl)", js)
+        self.assertIn("function handleChatMentionInput(inputEl)", js)
+        self.assertIn("function selectChatMention(username)", js)
+        self.assertIn("function handleChatMentionKeydown(event)", js)
+
+        # 3. Verify Space detail API returns roster including Arthur_74 for @A mention lookup
+        st_grp, _, grp_body = self.make_request("GET", "/api/groups/2")
+        self.assertEqual(st_grp, 200)
+        roster_usernames = [m["username"] for m in grp_body["group"].get("roster", [])]
+        self.assertTrue(any(u.lower().startswith("arthur") for u in roster_usernames))
+
+        # 4. Verify 'Show Thread' (toggleCommentsStream) resolves active visible DOM card after login without Cmd-R
+        self.assertIn("function getAllDomElementsById(id)", js)
+        self.assertIn("function getActiveDomElementById(id)", js)
+        self.assertIn("const box = getActiveDomElementById(boxId);", js)
+        self.assertIn("const icon = getActiveDomElementById(iconId);", js)
+        self.assertIn('if (viewId !== "view-landing")', js)
+
+        # 5. Verify Beta badge and active-development banner in header
+        self.assertIn('id="site-beta-banner"', html)
+        self.assertIn('id="site-beta-badge"', html)
+        self.assertIn("under active development", html)
+        self.assertIn("some features may change", html)
+
+
+
+
 
 
 
